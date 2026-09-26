@@ -14,7 +14,7 @@ import {
   ListPartsCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { Readable } from "stream";
+import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
 import { CONFIG } from "../config.js";
 
@@ -704,27 +704,41 @@ export class S3MediaStorage implements MediaStorage {
       Key: storageKey,
     });
     const s3Response = await this.client.send(command);
-    if (!s3Response.Body || !(s3Response.Body instanceof Readable)) {
-      throw new Error(`Failed to stream object from S3 storage: ${storageKey}`);
+    const body = s3Response.Body;
+    if (!body) {
+      throw new Error(`Failed to stream object from S3 storage (empty body): ${storageKey}`);
     }
 
     const totalBytes = s3Response.ContentLength || 0;
     let downloadedBytes = 0;
     let lastProgressTime = 0;
 
-    if (onProgress && totalBytes > 0) {
-      s3Response.Body.on("data", (chunk: Buffer) => {
+    const progressTracker = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
         downloadedBytes += chunk.length;
         const now = Date.now();
-        if (now - lastProgressTime > 800 || downloadedBytes === totalBytes) {
+        if (onProgress && totalBytes > 0 && (now - lastProgressTime > 800 || downloadedBytes === totalBytes)) {
           lastProgressTime = now;
-          onProgress(downloadedBytes, totalBytes);
+          try {
+            onProgress(downloadedBytes, totalBytes);
+          } catch {
+            // ignore progress reporting errors
+          }
         }
-      });
-    }
+        callback(null, chunk);
+      },
+    });
 
     const out = fs.createWriteStream(destinationPath);
-    await pipeline(s3Response.Body, out);
+    if (typeof (body as any).pipe === "function") {
+      await pipeline(body as any, progressTracker, out);
+    } else if (typeof (body as any).transformToByteArray === "function") {
+      const byteArray = await (body as any).transformToByteArray();
+      await fs.promises.writeFile(destinationPath, Buffer.from(byteArray));
+      if (onProgress) onProgress(byteArray.length, byteArray.length);
+    } else {
+      throw new Error(`Unsupported body type from S3 storage for: ${storageKey}`);
+    }
   }
 
   async listUploadedParts(storageKey: string, uploadId: string): Promise<number[]> {
