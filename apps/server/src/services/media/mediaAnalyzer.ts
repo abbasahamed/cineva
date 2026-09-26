@@ -1,3 +1,4 @@
+import { getFfprobePath } from './binaryResolver.js';
 import { execFile } from 'child_process';
 import util from 'util';
 import path from 'path';
@@ -51,7 +52,7 @@ export async function analyzeMediaFile(filePath: string): Promise<MediaAnalysis>
     absPath,
   ];
 
-  const { stdout } = await execFilePromise('ffprobe', args, {
+  const { stdout } = await execFilePromise(getFfprobePath(), args, {
     timeout: 30000,
     maxBuffer: 10 * 1024 * 1024,
   });

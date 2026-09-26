@@ -1,3 +1,4 @@
+import { getFfmpegPath, getFfprobePath } from './services/media/binaryResolver.js';
 import express, { Request, Response, NextFunction } from 'express';
 import { execFile } from 'child_process';
 import util from 'util';
@@ -20,13 +21,22 @@ const execFilePromise = util.promisify(execFile);
 
 export async function checkBinary(bin: string): Promise<{ available: boolean; path?: string; version?: string; error?: string }> {
   try {
+    const resolved = bin === "ffmpeg" ? getFfmpegPath() : bin === "ffprobe" ? getFfprobePath() : bin;
     const whichCmd = process.platform === "win32" ? "where" : "which";
-    const { stdout: binPath } = await execFilePromise(whichCmd, [bin]);
-    const { stdout: versionOut } = await execFilePromise(bin, ["-version"]);
+    let binPath = resolved;
+    try {
+      const { stdout: whichOut } = await execFilePromise(whichCmd, [bin]);
+      if (whichOut?.trim()) {
+        binPath = whichOut.trim().split("\n")[0].trim();
+      }
+    } catch {
+      // Fall back to resolved binary path
+    }
+    const { stdout: versionOut } = await execFilePromise(resolved, ["-version"]);
     const firstLine = (versionOut || "").split("\n")[0] || "";
     return {
       available: true,
-      path: binPath.trim(),
+      path: binPath,
       version: firstLine.trim(),
     };
   } catch (err: any) {

@@ -1,3 +1,4 @@
 # Nixpacks configuration for Cineva Railway production deployment
 [phases.setup]
-nixPkgs = ["ffmpeg"]
+nixPkgs = ["...", "ffmpeg"]
+aptPkgs = ["...", "ffmpeg"]

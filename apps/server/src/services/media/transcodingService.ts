@@ -1,3 +1,4 @@
+import { getFfmpegPath } from './binaryResolver.js';
 import { spawn, ChildProcess, execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
@@ -36,7 +37,7 @@ export class TranscodingService {
     }
     try {
       if (process.platform === 'darwin') {
-        const stdout = execSync('ffmpeg -encoders', { encoding: 'utf-8', timeout: 3000 });
+        const stdout = execSync(`"${getFfmpegPath()}" -encoders`, { encoding: 'utf-8', timeout: 3000 });
         if (stdout.includes('h264_videotoolbox')) {
           this.hasHardwareVideoToolbox = true;
           logger.info('VideoToolbox H.264 hardware acceleration detected and enabled');
@@ -205,7 +206,7 @@ export class TranscodingService {
     const startTimeMs = Date.now();
 
     return new Promise<TranscodeResult>((resolve, reject) => {
-      const ffmpeg = spawn('ffmpeg', args, {
+      const ffmpeg = spawn(getFfmpegPath(), args, {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
