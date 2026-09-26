@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Film,
@@ -9,7 +9,7 @@ import {
   AlertCircle,
   Tv,
 } from 'lucide-react';
-import { createRoom, createDemoRoom, uploadMedia } from '../services/api.js';
+import { createRoom, createDemoRoom, uploadMedia, abortRoom, sendAbortBeacon } from '../services/api.js';
 import { CinematicBackground } from '../components/CinematicBackground.js';
 
 export const CreateRoomPage: React.FC = () => {
@@ -20,6 +20,40 @@ export const CreateRoomPage: React.FC = () => {
   const [useDemoMedia, setUseDemoMedia] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadDetails, setUploadDetails] = useState<{ uploadedBytes: number; totalBytes: number } | null>(null);
+  const activeRoomRef = useRef<{ roomId: string; sessionId: string } | null>(null);
+  const isCancelledRef = useRef<boolean>(false);
+
+  // Clean up abandoned room if user closes browser during upload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (activeRoomRef.current) {
+        const { roomId, sessionId } = activeRoomRef.current;
+        // Dispatches single CORS-simple application/x-www-form-urlencoded beacon to Railway API
+        sendAbortBeacon(roomId, sessionId);
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleCancelUpload = async () => {
+    isCancelledRef.current = true;
+    if (activeRoomRef.current) {
+      const { roomId, sessionId } = activeRoomRef.current;
+      activeRoomRef.current = null;
+      await abortRoom(roomId, sessionId);
+    }
+    setIsSubmitting(false);
+    setUploadProgress(null);
+    setUploadDetails(null);
+    setError("Upload cancelled by user.");
+  };
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -88,12 +122,17 @@ export const CreateRoomPage: React.FC = () => {
         return;
       }
 
-      // 1. Create Room
+      isCancelledRef.current = false;
+
+      // 1. Create Room & Host Session
       const result = await createRoom({
         displayName: name,
         roomName: rName,
         allowGuestControl: false,
       });
+
+      // Track active room for cleanup in case of upload failure or cancellation
+      activeRoomRef.current = { roomId: result.room.id, sessionId: result.hostSessionId };
 
       // Save Host identity in session
       sessionStorage.setItem(`sw_session_${result.room.roomCode}`, result.hostSessionId);
@@ -107,15 +146,30 @@ export const CreateRoomPage: React.FC = () => {
           result.hostSessionId,
           selectedFile,
           selectedFile.name.replace(/\.[^/.]+$/, ''),
-          (pct) => setUploadProgress(pct)
+          (pct, info) => {
+            if (isCancelledRef.current) throw new Error("Upload cancelled");
+            setUploadProgress(pct);
+            if (info) {
+              setUploadDetails({ uploadedBytes: info.uploadedBytes, totalBytes: info.totalBytes });
+            }
+          }
         );
       }
 
+      // Upload completed successfully; disarm cleanup
+      activeRoomRef.current = null;
       navigate(`/room/${result.room.roomCode}`);
     } catch (err: any) {
+      // Abort room and active multipart uploads to prevent orphaned rooms in DB and B2
+      if (activeRoomRef.current) {
+        const { roomId, sessionId } = activeRoomRef.current;
+        activeRoomRef.current = null;
+        await abortRoom(roomId, sessionId);
+      }
       setError(err.message || 'Failed to create room.');
       setIsSubmitting(false);
       setUploadProgress(null);
+      setUploadDetails(null);
     }
   };
 
@@ -318,14 +372,27 @@ export const CreateRoomPage: React.FC = () => {
             {uploadProgress !== null && (
               <div className="pt-2">
                 <div className="flex items-center justify-between text-xs font-mono text-slate-300 mb-1.5">
-                  <span>Uploading video to room...</span>
-                  <span>{uploadProgress}%</span>
+                  <span>Uploading video directly to storage...</span>
+                  <span>
+                    {uploadDetails
+                      ? `${formatBytes(uploadDetails.uploadedBytes)} / ${formatBytes(uploadDetails.totalBytes)} (${uploadProgress}%)`
+                      : `${uploadProgress}%`}
+                  </span>
                 </div>
                 <div className="w-full h-2 rounded-full bg-white/[0.08] overflow-hidden border border-white/[0.08] p-0.5">
                   <div
                     className="h-full bg-gradient-to-r from-brand-500 to-indigo-400 rounded-full transition-all duration-150 shadow-[0_0_10px_rgba(99,102,241,0.6)]"
                     style={{ width: `${uploadProgress}%` }}
                   />
+                </div>
+                <div className="mt-2 text-right">
+                  <button
+                    type="button"
+                    onClick={handleCancelUpload}
+                    className="text-[11px] text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
+                  >
+                    Cancel upload & discard room
+                  </button>
                 </div>
               </div>
             )}

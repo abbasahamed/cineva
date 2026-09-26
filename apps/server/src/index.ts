@@ -4,7 +4,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import { CONFIG } from './config.js';
+import { CONFIG, validateStorageConfig } from './config.js';
 import { connectDB } from './db.js';
 import roomRoutes from './routes/roomRoutes.js';
 import mediaRoutes from './routes/mediaRoutes.js';
@@ -182,6 +182,7 @@ import { tempFileLifecycle } from './services/media/tempFileLifecycle.js';
 // Start server
 async function start() {
   await connectDB();
+  validateStorageConfig();
 
   // Run startup cleanup of stale temporary files older than 1 hour
   try {

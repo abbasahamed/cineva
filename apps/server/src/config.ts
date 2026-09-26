@@ -8,13 +8,33 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
   : [clientUrl];
 
-const s3Bucket = process.env.B2_BUCKET || process.env.S3_BUCKET || "";
-const s3Region = process.env.B2_REGION || process.env.S3_REGION || "us-east-1";
-const s3Endpoint = process.env.B2_ENDPOINT || process.env.S3_ENDPOINT || undefined;
-const s3AccessKeyId = process.env.B2_KEY_ID || process.env.S3_ACCESS_KEY_ID || "";
-const s3SecretAccessKey = process.env.B2_APPLICATION_KEY || process.env.S3_SECRET_ACCESS_KEY || "";
-const s3PublicBaseUrl = process.env.B2_PUBLIC_BASE_URL || process.env.S3_PUBLIC_BASE_URL || "";
-const s3ForcePathStyle = process.env.B2_FORCE_PATH_STYLE === "true" || process.env.S3_FORCE_PATH_STYLE === "true";
+const cleanEnv = (val: string | undefined): string => {
+  return (val || "").trim().replace(/^[\"']|[\"']$/g, "");
+};
+
+const s3Bucket = cleanEnv(process.env.B2_BUCKET || process.env.S3_BUCKET || process.env.BUCKET_NAME);
+const s3Region = cleanEnv(process.env.B2_REGION || process.env.S3_REGION || process.env.AWS_REGION || "us-east-1");
+const rawEndpoint = cleanEnv(process.env.B2_ENDPOINT || process.env.S3_ENDPOINT);
+const s3Endpoint = rawEndpoint || undefined;
+const s3AccessKeyId = cleanEnv(
+  process.env.B2_KEY_ID ||
+  process.env.B2_ACCESS_KEY_ID ||
+  process.env.keyID ||
+  process.env.KEY_ID ||
+  process.env.S3_ACCESS_KEY_ID ||
+  process.env.AWS_ACCESS_KEY_ID
+);
+const s3SecretAccessKey = cleanEnv(
+  process.env.B2_APPLICATION_KEY ||
+  process.env.B2_APP_KEY ||
+  process.env.applicationKey ||
+  process.env.APPLICATION_KEY ||
+  process.env.B2_SECRET_ACCESS_KEY ||
+  process.env.S3_SECRET_ACCESS_KEY ||
+  process.env.AWS_SECRET_ACCESS_KEY
+);
+const s3PublicBaseUrl = cleanEnv(process.env.B2_PUBLIC_BASE_URL || process.env.S3_PUBLIC_BASE_URL);
+const s3ForcePathStyle = cleanEnv(process.env.B2_FORCE_PATH_STYLE || process.env.S3_FORCE_PATH_STYLE) === "true";
 
 const rawDriver = (process.env.STORAGE_DRIVER || "").toLowerCase();
 const nodeEnv = process.env.NODE_ENV || "development";

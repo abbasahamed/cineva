@@ -37,6 +37,54 @@ export async function createRoom(data: CreateRoomInput): Promise<CreateRoomRespo
   return res.json();
 }
 
+
+/**
+ * Normal cancellation or upload failure: issues a standard JSON POST request.
+ */
+export async function abortRoom(roomId: string, sessionId: string): Promise<void> {
+  try {
+    const url = `${API_BASE}/rooms/${encodeURIComponent(roomId)}/abort`;
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roomId, sessionId }),
+    });
+  } catch (err) {
+    console.warn("Failed to abort room:", err);
+  }
+}
+
+/**
+ * Dedicated unload beacon: issues a single CORS-simple application/x-www-form-urlencoded
+ * request to the Railway API without requiring an OPTIONS preflight.
+ */
+export function sendAbortBeacon(roomId: string, sessionId: string): void {
+  try {
+    const url = `${API_BASE}/rooms/${encodeURIComponent(roomId)}/abort`;
+    const formData = new URLSearchParams();
+    formData.append("roomId", roomId);
+    formData.append("sessionId", sessionId);
+    const blob = new Blob([formData.toString()], { type: "application/x-www-form-urlencoded" });
+
+    if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+      navigator.sendBeacon(url, blob);
+      return;
+    }
+
+    if (typeof fetch === "function") {
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: formData.toString(),
+        keepalive: true,
+        mode: "cors",
+      }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn("Failed to dispatch abort beacon:", err);
+  }
+}
+
 export async function createDemoRoom(displayName: string = "Host"): Promise<CreateRoomResponse> {
   const res = await fetch(`${API_BASE}/rooms/demo`, {
     method: "POST",

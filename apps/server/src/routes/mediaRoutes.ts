@@ -165,9 +165,13 @@ router.post("/uploads/multipart/init", uploadLimiter, async (req: Request, res: 
       parts: initData.parts,
     });
   } catch (err: any) {
-    console.error("Multipart init error:", err.message);
+    console.error("Multipart init error:", err);
+    const errMessage = (err.message || "").replace(/[A-Za-z0-9_-]{24,}/g, "[REDACTED]");
+    const safeError = CONFIG.NODE_ENV === "production"
+      ? (err.name ? `Upload init failed (${err.name}): ${errMessage.substring(0, 120)}` : "Failed to initialize upload")
+      : err.message;
     res.status(500).json({
-      error: CONFIG.NODE_ENV === "production" ? "Failed to initialize upload" : err.message,
+      error: safeError,
     });
   }
 });

@@ -304,4 +304,151 @@ describe("Backblaze B2 & Large Multipart Upload Migration Test Suite", () => {
     // Deleting a non-existent storage key must be idempotent
     await expect(mediaStorage.deleteFile("media/non_existent_room/99999_missing.mp4")).resolves.not.toThrow();
   });
+  it("12. Create Room flow creates valid room/session and successfully initializes multipart upload", async () => {
+    // 1. Client calls POST /api/rooms (Create Room page step 1)
+    const createRes = await request(app)
+      .post("/api/rooms")
+      .send({
+        displayName: "Director",
+        roomName: "Premiere Room",
+        allowGuestControl: false,
+      });
+
+    expect(createRes.status).toBe(201);
+    const newRoomId = createRes.body.room.id;
+    const newHostSessionId = createRes.body.hostSessionId;
+
+    expect(newRoomId).toBeDefined();
+    expect(newHostSessionId).toBeDefined();
+
+    // 2. Client immediately initializes multipart upload with the valid roomId & hostSessionId
+    const initRes = await request(app)
+      .post("/api/media/uploads/multipart/init")
+      .send({
+        roomId: newRoomId,
+        sessionId: newHostSessionId,
+        filename: "premiere_feature.mp4",
+        fileSize: 3200 * 1024 * 1024, // 3.2 GB
+        mimeType: "video/mp4",
+      });
+
+    expect(initRes.status).toBe(201);
+    expect(initRes.body.uploadId).toBeDefined();
+    expect(initRes.body.totalParts).toBe(64); // 3200MB / 50MB
+    expect(initRes.body.parts).toHaveLength(64);
+
+    // Clean up
+    await roomManager.cleanupRoomMedia(newRoomId);
+    await prisma.room.deleteMany({ where: { id: newRoomId } });
+  });
+
+  it("13. POST /api/rooms/:roomId/abort safely aborts active uploads and removes abandoned room", async () => {
+    // 1. Create a fresh room
+    const createRes = await request(app)
+      .post("/api/rooms")
+      .send({
+        displayName: "Abandon Tester",
+        roomName: "To Be Abandoned",
+        allowGuestControl: false,
+      });
+
+    const newRoomId = createRes.body.room.id;
+    const newHostSessionId = createRes.body.hostSessionId;
+
+    // 2. Initialize a multipart upload for this room
+    const initRes = await request(app)
+      .post("/api/media/uploads/multipart/init")
+      .send({
+        roomId: newRoomId,
+        sessionId: newHostSessionId,
+        filename: "abandoned_upload.mp4",
+        fileSize: 100 * 1024 * 1024,
+      });
+
+    const uploadId = initRes.body.uploadId;
+    expect(multipartManager.getUpload(uploadId)).toBeDefined();
+
+    // 3. User cancels or upload fails; client calls POST /api/rooms/:roomId/abort
+    const abortRes = await request(app)
+      .post(`/api/rooms/${newRoomId}/abort`)
+      .send({ sessionId: newHostSessionId });
+
+    expect(abortRes.status).toBe(200);
+    expect(abortRes.body.success).toBe(true);
+
+    // Active upload is aborted
+    expect(multipartManager.getUpload(uploadId)).toBeUndefined();
+
+    // Room is deleted from database
+    const roomInDb = await prisma.room.findUnique({ where: { id: newRoomId } });
+    expect(roomInDb).toBeNull();
+  });
+
+  it("14. Rejects unauthorized abort from non-host", async () => {
+    const abortRes = await request(app)
+      .post(`/api/rooms/${roomId}/abort`)
+      .send({ sessionId: guestSessionId });
+
+    expect(abortRes.status).toBe(403);
+    expect(abortRes.body.error).toContain("Only the room host");
+  });
+  it("15. POST /api/rooms/:roomId/abort handles CORS-simple application/x-www-form-urlencoded beacon", async () => {
+    // 1. Create room
+    const createRes = await request(app)
+      .post("/api/rooms")
+      .send({
+        displayName: "Beacon Tester",
+        roomName: "Beacon Unload Room",
+        allowGuestControl: false,
+      });
+
+    const bRoomId = createRes.body.room.id;
+    const bSessionId = createRes.body.hostSessionId;
+
+    // 2. Start upload
+    const initRes = await request(app)
+      .post("/api/media/uploads/multipart/init")
+      .send({
+        roomId: bRoomId,
+        sessionId: bSessionId,
+        filename: "beacon_upload.mp4",
+        fileSize: 50 * 1024 * 1024,
+      });
+
+    const bUploadId = initRes.body.uploadId;
+    expect(multipartManager.getUpload(bUploadId)).toBeDefined();
+
+    // 3. Dispatch CORS-simple application/x-www-form-urlencoded abort (mimicking beforeunload beacon with roomId and sessionId in body)
+    const beaconRes = await request(app)
+      .post(`/api/rooms/${bRoomId}/abort`)
+      .type("form")
+      .send({ roomId: bRoomId, sessionId: bSessionId });
+
+    expect(beaconRes.status).toBe(200);
+    expect(beaconRes.body.success).toBe(true);
+
+    expect(multipartManager.getUpload(bUploadId)).toBeUndefined();
+    const dbRoom = await prisma.room.findUnique({ where: { id: bRoomId } });
+    expect(dbRoom).toBeNull();
+  });
+
+  it("16. Preserves room isolation and idempotent abort calls", async () => {
+    // 1. Room isolation: body roomId mismatch returns 400
+    const mismatchRes = await request(app)
+      .post(`/api/rooms/${roomId}/abort`)
+      .type("form")
+      .send({ roomId: "different_room_id", sessionId: hostSessionId });
+
+    expect(mismatchRes.status).toBe(400);
+    expect(mismatchRes.body.error).toContain("Room ID mismatch");
+
+    // 2. Idempotent cleanup: repeated abort of an already aborted room returns 200
+    const repeatRes = await request(app)
+      .post("/api/rooms/already_deleted_room/abort")
+      .type("form")
+      .send({ roomId: "already_deleted_room", sessionId: "any_session" });
+
+    expect(repeatRes.status).toBe(200);
+    expect(repeatRes.body.success).toBe(true);
+  });
 });
