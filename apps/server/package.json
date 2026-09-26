@@ -5,16 +5,13 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "npm run build --workspace=@syncwatch/shared && prisma generate && tsc",
+    "build": "npm run build --workspace=@syncwatch/shared && node scripts/generate-prisma.js && tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "vitest run --fileParallelism=false",
-    "db:push": "prisma db push",
-    "db:generate": "prisma generate",
-    "db:push:prod": "prisma db push --schema=prisma/schema.postgresql.prisma",
-    "db:generate:prod": "prisma generate --schema=prisma/schema.postgresql.prisma",
-    "db:migrate:prod": "prisma migrate deploy --schema=prisma/schema.postgresql.prisma"
+    "db:push": "node scripts/generate-prisma.js && prisma db push",
+    "db:generate": "node scripts/generate-prisma.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1140.0",
