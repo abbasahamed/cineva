@@ -56,6 +56,8 @@ export function setupSocketHandlers(io: SocketIOServer) {
 
   // Room active video participants: roomId -> (participantId -> ActiveVideoParticipant)
   const roomVideoParticipants = new Map<string, Map<string, ActiveVideoParticipant>>();
+  // Room connected participant sockets: roomId -> (participantId -> { socketId, displayName })
+  const roomParticipantSockets = new Map<string, Map<string, { socketId: string; displayName: string }>>();
   const videoSignalingRateLimit = new Map<string, { count: number; resetTime: number }>();
 
   const isVideoSignalingAllowed = (socketId: string): boolean => {
@@ -184,10 +186,41 @@ export function setupSocketHandlers(io: SocketIOServer) {
         // Join Socket.io room channel
         socket.join(roomId);
 
+        // Track connected room participant socket for direct signaling
+        let roomSockets = roomParticipantSockets.get(roomId);
+        if (!roomSockets) {
+          roomSockets = new Map();
+          roomParticipantSockets.set(roomId, roomSockets);
+        }
+        roomSockets.set(joinResult.participant.id, {
+          socketId: socket.id,
+          displayName: joinResult.participant.displayName,
+        });
+
         // Send full initial state snapshot to joining user
         const snapshot = await roomManager.getRoomSnapshot(roomId, joinResult.sessionId);
         if (snapshot) {
           socket.emit(SOCKET_EVENTS.ROOM_STATE, snapshot);
+        }
+
+        // Send current active video participants in room to joining user
+        const activeVideos = roomVideoParticipants.get(roomId);
+        if (activeVideos && activeVideos.size > 0) {
+          const activeList: VideoParticipant[] = [];
+          for (const p of activeVideos.values()) {
+            if (p.participantId !== joinResult.participant.id) {
+              activeList.push({
+                participantId: p.participantId,
+                displayName: p.displayName,
+                isMuted: p.isMuted,
+                isCameraOff: p.isCameraOff,
+                joinedAt: p.joinedAt,
+              });
+            }
+          }
+          if (activeList.length > 0) {
+            socket.emit(SOCKET_EVENTS.VIDEO_PARTICIPANTS, { participants: activeList });
+          }
         }
 
         // Send recent chat history
@@ -560,8 +593,9 @@ export function setupSocketHandlers(io: SocketIOServer) {
       const { targetParticipantId, sdp } = parsed.data;
       if (targetParticipantId === socketData.participantId) return; // Prevent self-signaling
 
+      const roomSockets = roomParticipantSockets.get(socketData.roomId);
       const roomVideos = roomVideoParticipants.get(socketData.roomId);
-      const target = roomVideos?.get(targetParticipantId);
+      const target = roomSockets?.get(targetParticipantId) || roomVideos?.get(targetParticipantId);
       if (!target) return;
 
       // Authoritative identity: sender cannot forge fromParticipantId
@@ -588,8 +622,9 @@ export function setupSocketHandlers(io: SocketIOServer) {
       const { targetParticipantId, sdp } = parsed.data;
       if (targetParticipantId === socketData.participantId) return;
 
+      const roomSockets = roomParticipantSockets.get(socketData.roomId);
       const roomVideos = roomVideoParticipants.get(socketData.roomId);
-      const target = roomVideos?.get(targetParticipantId);
+      const target = roomSockets?.get(targetParticipantId) || roomVideos?.get(targetParticipantId);
       if (!target) return;
 
       io.to(target.socketId).emit(SOCKET_EVENTS.VIDEO_ANSWER, {
@@ -612,8 +647,9 @@ export function setupSocketHandlers(io: SocketIOServer) {
       const { targetParticipantId, candidate } = parsed.data;
       if (targetParticipantId === socketData.participantId) return;
 
+      const roomSockets = roomParticipantSockets.get(socketData.roomId);
       const roomVideos = roomVideoParticipants.get(socketData.roomId);
-      const target = roomVideos?.get(targetParticipantId);
+      const target = roomSockets?.get(targetParticipantId) || roomVideos?.get(targetParticipantId);
       if (!target) return;
 
       io.to(target.socketId).emit(SOCKET_EVENTS.VIDEO_ICE_CANDIDATE, {
@@ -654,6 +690,13 @@ export function setupSocketHandlers(io: SocketIOServer) {
       // Clean up video call immediately upon socket disconnect (no need to wait grace period for WebRTC P2P)
       if (participantId) {
         cleanVideoParticipant(roomId, participantId);
+        const roomSockets = roomParticipantSockets.get(roomId);
+        if (roomSockets) {
+          roomSockets.delete(participantId);
+          if (roomSockets.size === 0) {
+            roomParticipantSockets.delete(roomId);
+          }
+        }
       }
       videoSignalingRateLimit.delete(socket.id);
 

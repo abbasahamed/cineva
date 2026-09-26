@@ -14,6 +14,7 @@ export interface VideoCallManagerCallbacks {
 
 export class VideoCallManager {
   private localStream: MediaStream | null = null;
+  private remoteStreams: Map<string, MediaStream> = new Map();
   private peerConnections: Map<string, RTCPeerConnection> = new Map();
   private pendingCandidates: Map<string, RTCIceCandidateInitLike[]> = new Map();
   private callbacks: VideoCallManagerCallbacks;
@@ -32,30 +33,90 @@ export class VideoCallManager {
     );
   }
 
+  public getLocalStream(): MediaStream | null {
+    return this.localStream;
+  }
+
+  public getStream(participantId: string, isLocal?: boolean): MediaStream | null {
+    if (isLocal) {
+      return this.localStream;
+    }
+    return this.remoteStreams.get(participantId) || null;
+  }
+
   public async acquireLocalMedia(): Promise<MediaStream> {
+    return this.enableCamera();
+  }
+
+  public async enableCamera(): Promise<MediaStream> {
     if (!VideoCallManager.isSupported()) {
       throw new Error('WebRTC is not supported in this browser.');
     }
 
-    // Try acquiring both camera and microphone with optimal watch-party constraints
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      // Optimal webcam constraints: 1280x720 max, 30fps max
+      const constraints: MediaStreamConstraints = {
         video: {
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          frameRate: { max: 24 },
+          width: { ideal: 640, max: 1280 },
+          height: { ideal: 480, max: 720 },
+          frameRate: { ideal: 24, max: 30 },
         },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+        audio: !this.localStream?.getAudioTracks().length
+          ? {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            }
+          : false,
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const newVideoTrack = stream.getVideoTracks()[0];
+      const newAudioTrack = stream.getAudioTracks()[0];
+
+      const local: MediaStream = this.localStream || (typeof MediaStream !== 'undefined' ? new MediaStream() : (stream as any));
+      this.localStream = local;
+
+      if (newAudioTrack && !local.getAudioTracks().length) {
+        newAudioTrack.enabled = !this.isMuted;
+        local.addTrack(newAudioTrack);
+      }
+
+      // Stop and remove old video tracks
+      local.getVideoTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {}
+        local.removeTrack(track);
       });
-      this.localStream = stream;
-      return stream;
+
+      if (newVideoTrack) {
+        local.addTrack(newVideoTrack);
+      }
+
+      this.isCameraOff = false;
+
+      // Update video sender on all active peer connections
+      for (const pc of this.peerConnections.values()) {
+        const videoSender = pc
+          .getSenders()
+          .find((s) => s.track?.kind === 'video' || (!s.track && (s as any).dtlsTransport));
+        if (videoSender && newVideoTrack) {
+          try {
+            await videoSender.replaceTrack(newVideoTrack);
+          } catch {
+            pc.addTrack(newVideoTrack, local);
+          }
+        } else if (newVideoTrack) {
+          const sender = pc.addTrack(newVideoTrack, local);
+          this.applySenderBitrate(sender);
+        }
+      }
+
+      return local;
     } catch (err: any) {
-      // If user has no camera but has mic, fallback to audio-only
       if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        // Fallback to audio only if camera hardware is missing
         try {
           const audioOnlyStream = await navigator.mediaDevices.getUserMedia({
             audio: { echoCancellation: true, noiseSuppression: true },
@@ -63,34 +124,85 @@ export class VideoCallManager {
           this.localStream = audioOnlyStream;
           this.isCameraOff = true;
           return audioOnlyStream;
-        } catch {
-          // If audio-only also fails, rethrow original error
-        }
+        } catch {}
       }
       throw err;
     }
   }
 
-  public getLocalStream(): MediaStream | null {
-    return this.localStream;
+  public disableCamera(): void {
+    this.isCameraOff = true;
+    if (this.localStream) {
+      this.localStream.getVideoTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {}
+        this.localStream!.removeTrack(track);
+      });
+    }
+
+    for (const pc of this.peerConnections.values()) {
+      const videoSender = pc.getSenders().find((s) => s.track?.kind === 'video');
+      if (videoSender) {
+        videoSender.replaceTrack(null).catch(() => {});
+      }
+    }
+  }
+
+  public async enableMic(): Promise<void> {
+    this.isMuted = false;
+    if (!this.localStream || !this.localStream.getAudioTracks().length) {
+      const audioStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      const audioTrack = audioStream.getAudioTracks()[0];
+      if (audioTrack) {
+        const local: MediaStream = this.localStream || (typeof MediaStream !== 'undefined' ? new MediaStream() : (audioStream as any));
+        this.localStream = local;
+        local.addTrack(audioTrack);
+        for (const pc of this.peerConnections.values()) {
+          const audioSender = pc.getSenders().find((s) => s.track?.kind === 'audio');
+          if (audioSender) {
+            audioSender.replaceTrack(audioTrack).catch(() => {});
+          } else {
+            pc.addTrack(audioTrack, local);
+          }
+        }
+      }
+    } else {
+      this.localStream.getAudioTracks().forEach((track) => {
+        track.enabled = true;
+      });
+    }
+  }
+
+  public disableMic(): void {
+    this.isMuted = true;
+    if (this.localStream) {
+      this.localStream.getAudioTracks().forEach((track) => {
+        track.enabled = false;
+      });
+    }
   }
 
   public setMute(muted: boolean): boolean {
-    this.isMuted = muted;
-    if (this.localStream) {
-      this.localStream.getAudioTracks().forEach((track) => {
-        track.enabled = !muted;
-      });
+    if (muted) {
+      this.disableMic();
+    } else {
+      this.enableMic().catch(() => {});
     }
     return this.isMuted;
   }
 
   public setCameraOff(cameraOff: boolean): boolean {
-    this.isCameraOff = cameraOff;
-    if (this.localStream) {
-      this.localStream.getVideoTracks().forEach((track) => {
-        track.enabled = !cameraOff;
-      });
+    if (cameraOff) {
+      this.disableCamera();
+    } else {
+      this.enableCamera().catch(() => {});
     }
     return this.isCameraOff;
   }
@@ -127,8 +239,6 @@ export class VideoCallManager {
 
     try {
       await pc.setRemoteDescription(new RTCSessionDescription(sdp as RTCSessionDescriptionInit));
-
-      // Flush any queued candidates
       await this.flushPendingCandidates(fromParticipantId, pc);
 
       const answer = await pc.createAnswer();
@@ -178,7 +288,6 @@ export class VideoCallManager {
         console.warn('Error adding ICE candidate:', err);
       }
     } else {
-      // Queue until remote description is set
       const pending = this.pendingCandidates.get(fromParticipantId) || [];
       pending.push(candidate);
       this.pendingCandidates.set(fromParticipantId, pending);
@@ -195,6 +304,7 @@ export class VideoCallManager {
       pc.close();
       this.peerConnections.delete(participantId);
     }
+    this.remoteStreams.delete(participantId);
     this.pendingCandidates.delete(participantId);
     this.callbacks.onRemotePeerLeft(participantId);
   }
@@ -205,9 +315,7 @@ export class VideoCallManager {
       this.localStream.getTracks().forEach((track) => {
         try {
           track.stop();
-        } catch {
-          // ignore track stop error
-        }
+        } catch {}
       });
       this.localStream = null;
     }
@@ -220,12 +328,11 @@ export class VideoCallManager {
         pc.onconnectionstatechange = null;
         pc.oniceconnectionstatechange = null;
         pc.close();
-      } catch {
-        // ignore close error
-      }
+      } catch {}
       this.callbacks.onRemotePeerLeft(participantId);
     }
     this.peerConnections.clear();
+    this.remoteStreams.clear();
     this.pendingCandidates.clear();
   }
 
@@ -240,10 +347,11 @@ export class VideoCallManager {
 
     pc = new RTCPeerConnection(configuration);
 
-    // Attach local media stream tracks to this peer connection
+    // Attach local media stream tracks if active
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => {
-        pc!.addTrack(track, this.localStream!);
+        const sender = pc!.addTrack(track, this.localStream!);
+        this.applySenderBitrate(sender);
       });
     }
 
@@ -263,6 +371,7 @@ export class VideoCallManager {
 
     pc.ontrack = (event) => {
       if (event.streams && event.streams[0]) {
+        this.remoteStreams.set(targetParticipantId, event.streams[0]);
         this.callbacks.onRemoteStream(targetParticipantId, event.streams[0]);
       }
     };
@@ -281,14 +390,25 @@ export class VideoCallManager {
       if (pc.iceConnectionState === 'failed') {
         try {
           pc.restartIce();
-        } catch {
-          // restartIce not supported in older engines
-        }
+        } catch {}
       }
     };
 
     this.peerConnections.set(targetParticipantId, pc);
     return pc;
+  }
+
+  private applySenderBitrate(sender: RTCRtpSender) {
+    if (sender.track?.kind === 'video') {
+      try {
+        const params = sender.getParameters();
+        if (!params.encodings || params.encodings.length === 0) {
+          params.encodings = [{}];
+        }
+        params.encodings[0].maxBitrate = 750000; // 750 kbps max for webcam tile
+        sender.setParameters(params).catch(() => {});
+      } catch {}
+    }
   }
 
   private async flushPendingCandidates(participantId: string, pc: RTCPeerConnection): Promise<void> {

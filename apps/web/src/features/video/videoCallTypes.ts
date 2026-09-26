@@ -24,6 +24,15 @@ export interface RemotePeerState {
   isCameraOff: boolean;
 }
 
+export interface VideoPeerDisplayState {
+  participantId: string;
+  displayName: string;
+  isLocal: boolean;
+  isMuted: boolean;
+  isCameraOff: boolean;
+  connectionState?: RTCPeerConnectionState;
+}
+
 export interface VideoCallControls {
   isCallActive: boolean;
   isConnecting: boolean;

@@ -10,9 +10,9 @@ import { SettingsModal } from '../components/SettingsModal.js';
 import { ShareModal } from '../components/ShareModal.js';
 import { DebugPanel } from '../components/DebugPanel.js';
 import { useToast } from '../components/Toast.js';
-import { MessageSquare, Users, AlertCircle, ArrowLeft, RefreshCw, UploadCloud, Film, Video } from 'lucide-react';
+import { MessageSquare, Users, AlertCircle, ArrowLeft, RefreshCw, UploadCloud, Video, VideoOff, Mic, MicOff } from 'lucide-react';
 import { CinematicBackground } from '../components/CinematicBackground.js';
-import { useVideoCall, VideoCallPanel } from '../features/video/index.js';
+import { VideoProvider, useVideoControls, VideoCallsPanel } from '../features/video/index.js';
 
 function formatMediaInfo(media: { title: string; size?: number | string } | null | undefined) {
   if (!media) return { displayTitle: 'Private Screening', size: null, rawTitle: '' };
@@ -35,6 +35,58 @@ function formatMediaInfo(media: { title: string; size?: number | string } | null
     rawTitle: media.title,
   };
 }
+
+/**
+ * Isolated device controls in room header to prevent re-rendering the whole page
+ */
+const RoomHeaderDeviceControls: React.FC = () => {
+  const { isCameraOn, isMuted, isConnecting, toggleCamera, toggleMute } = useVideoControls();
+
+  return (
+    <div className="flex items-center gap-1.5 sm:gap-2">
+      {/* Camera Toggle Button */}
+      <button
+        onClick={toggleCamera}
+        disabled={isConnecting}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all active:scale-95 ${
+          isCameraOn
+            ? 'bg-brand-500/20 hover:bg-brand-500/30 border-brand-500/40 text-brand-300 shadow-glass-glow'
+            : isConnecting
+            ? 'bg-brand-500/10 border-brand-500/20 text-brand-300 animate-pulse cursor-wait'
+            : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08] text-slate-300 hover:text-white'
+        }`}
+        title={isCameraOn ? 'Turn camera off' : 'Turn camera on'}
+        aria-label={isCameraOn ? 'Turn camera off' : 'Turn camera on'}
+      >
+        {isCameraOn ? (
+          <Video className="w-3.5 h-3.5 text-brand-400" />
+        ) : (
+          <VideoOff className="w-3.5 h-3.5 text-slate-400" />
+        )}
+        <span>{isCameraOn ? 'Camera' : isConnecting ? 'Starting...' : 'Camera Off'}</span>
+      </button>
+
+      {/* Mic Toggle Button */}
+      <button
+        onClick={toggleMute}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all active:scale-95 ${
+          isMuted
+            ? 'bg-rose-500/15 hover:bg-rose-500/25 border-rose-500/30 text-rose-300'
+            : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08] text-emerald-400 hover:text-emerald-300'
+        }`}
+        title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+        aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+      >
+        {isMuted ? (
+          <MicOff className="w-3.5 h-3.5 text-rose-400" />
+        ) : (
+          <Mic className="w-3.5 h-3.5 text-emerald-400" />
+        )}
+        <span>{isMuted ? 'Muted' : 'Mic'}</span>
+      </button>
+    </div>
+  );
+};
 
 export const WatchRoomPage: React.FC = () => {
   const { roomCode } = useParams<{ roomCode: string }>();
@@ -93,6 +145,7 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isShareOpen, setIsShareOpen] = useState(false);
+  const [isCompanionOpen, setIsCompanionOpen] = useState(true);
 
   const {
     videoRef,
@@ -122,12 +175,6 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
   const currentParticipant = participants.find((p) => p.sessionId === sessionId);
   const mediaInfo = formatMediaInfo(room?.media);
 
-  const videoCall = useVideoCall({
-    roomCode,
-    currentParticipantId: currentParticipant?.id,
-    currentDisplayName: displayName,
-  });
-
   // Handle Room Ended or Fatal Error
   if (connectionStatus === 'ended' || (connectionStatus === 'error' && errorMessage)) {
     return (
@@ -153,244 +200,227 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
     );
   }
 
-  const [isCompanionOpen, setIsCompanionOpen] = useState(true);
-
   return (
-    <div className="min-h-screen h-screen flex flex-col bg-[#020306] text-slate-100 overflow-hidden select-none relative">
-      {/* Subtle Cinema Atmosphere Background (faint distant stars & deep space ambient) */}
-      <CinematicBackground variant="cinema" />
+    <VideoProvider
+      roomCode={roomCode}
+      currentParticipantId={currentParticipant?.id}
+      currentDisplayName={displayName}
+    >
+      <div className="min-h-screen h-screen flex flex-col bg-[#020306] text-slate-100 overflow-hidden select-none relative">
+        {/* Subtle Cinema Atmosphere Background (faint distant stars & deep space ambient) */}
+        <CinematicBackground variant="cinema" />
 
-      {/* Top Cinema Navbar */}
-      <Navbar
-        room={room}
-        participants={participants}
-        connectionStatus={connectionStatus}
-        isHost={isHost}
-        onOpenShare={() => setIsShareOpen(true)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onLeaveRoom={() => navigate('/')}
-        activeSidebarTab={activeTab}
-        onToggleSidebarTab={(tab) => {
-          setActiveTab(tab);
-          setIsCompanionOpen(true);
-        }}
-        isCompanionOpen={isCompanionOpen}
-        onToggleCompanion={() => setIsCompanionOpen(!isCompanionOpen)}
-      />
-
-      {/* Main Theater Viewport */}
-      <main className="flex-1 flex flex-col xl:flex-row overflow-hidden p-3 sm:p-5 lg:p-6 gap-4 sm:gap-6 min-h-0 relative z-10 justify-center items-center">
-        {/* Dominant Cinema Stage */}
-        <div className={`flex-1 flex flex-col justify-start items-center min-w-0 min-h-0 h-full w-full overflow-y-auto no-scrollbar transition-all duration-300 ${isCompanionOpen ? 'max-w-5xl 2xl:max-w-6xl' : 'max-w-6xl 2xl:max-w-7xl'
-          }`}>
-          <div className="w-full flex flex-col justify-center relative my-auto">
-            {/* Screen-Light Ambient Backlight Glow emitting into surrounding theater */}
-            <div
-              className="absolute -inset-6 sm:-inset-12 rounded-3xl bg-gradient-to-tr from-brand-600/25 via-indigo-600/20 to-purple-600/15 blur-[70px] sm:blur-[110px] opacity-45 sm:opacity-55 pointer-events-none -z-10 transition-opacity duration-1000"
-              aria-hidden="true"
-            />
-
-            {/* Cinema Video Screen */}
-            <VideoPlayer
-              videoRef={videoRef}
-              media={room?.media}
-              playback={playback}
-              isHost={isHost}
-              canControl={canControl}
-              needsUserGesture={needsUserGesture}
-              onPlay={handlePlay}
-              onPause={handlePause}
-              onSeek={handleSeek}
-              onLocalScrubPreview={handleLocalScrubPreview}
-              onPlaybackRate={handlePlaybackRate}
-              onUserGestureStart={handleUserGestureStart}
-              onOpenUpload={() => setIsUploadOpen(true)}
-            />
-
-            {/* Cinematic Movie Title & Metadata Header Area */}
-            <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-2 sm:px-3">
-              {/* Left: Movie Title & Format */}
-              <div className="min-w-0">
-                <div className="flex items-center gap-2.5">
-                  <h2 className="text-base sm:text-xl font-bold tracking-tight text-white truncate drop-shadow-xs">
-                    {room?.media ? mediaInfo.displayTitle : room?.name || 'Private Screening'}
-                  </h2>
-                  {isHost && (
-                    <span className="text-[9px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand-500/15 text-brand-300 border border-brand-500/30 shrink-0">
-                      HOST
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2 text-xs text-slate-400 font-mono mt-1">
-                  {mediaInfo.size && (
-                    <span className="text-slate-300 font-medium">{mediaInfo.size}</span>
-                  )}
-                  {mediaInfo.size && <span className="text-white/20">•</span>}
-                  <span className="text-brand-300 font-medium">1080p HD</span>
-                  <span className="text-white/20">•</span>
-                  <span className="text-slate-400">Sub-frame Sync</span>
-                </div>
-              </div>
-
-              {/* Right: Actions, Video Call & Companion Dock Trigger */}
-              <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-                {isHost && room?.media && (
-                  <button
-                    onClick={() => setIsUploadOpen(true)}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-xs font-medium text-brand-300 hover:text-brand-200 transition-all active:scale-95"
-                    title="Change screening video"
-                  >
-                    <UploadCloud className="w-3.5 h-3.5" />
-                    <span>Change Video</span>
-                  </button>
-                )}
-
-                {/* Video Call Trigger Button */}
-                <button
-                  onClick={() => {
-                    if (videoCall.isCallActive) {
-                      videoCall.leaveCall();
-                    } else {
-                      videoCall.startCall();
-                    }
-                  }}
-                  disabled={videoCall.isConnecting}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border text-xs font-semibold transition-all active:scale-95 ${
-                    videoCall.isCallActive
-                      ? 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-500/40 text-emerald-300 shadow-glass-glow'
-                      : videoCall.isConnecting
-                      ? 'bg-brand-500/20 border-brand-500/30 text-brand-300 animate-pulse cursor-wait'
-                      : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08] text-slate-300 hover:text-white'
-                  }`}
-                  title={videoCall.isCallActive ? 'Leave video call' : 'Start video call'}
-                  aria-label={videoCall.isCallActive ? 'Leave video call' : 'Start video call'}
-                >
-                  <Video className={`w-3.5 h-3.5 ${videoCall.isCallActive ? 'text-emerald-400' : 'text-brand-400'}`} />
-                  <span>
-                    {videoCall.isCallActive
-                      ? 'In Call'
-                      : videoCall.isConnecting
-                      ? 'Starting...'
-                      : 'Start Video'}
-                  </span>
-                </button>
-
-                {/* Companion Expand/Collapse Quick Toggle on Desktop */}
-                <button
-                  onClick={() => setIsCompanionOpen(!isCompanionOpen)}
-                  className={`hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all ${
-                    isCompanionOpen
-                      ? 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08] text-slate-300'
-                      : 'bg-brand-500/20 hover:bg-brand-500/30 border-brand-500/40 text-brand-300 shadow-glass-glow'
-                  }`}
-                  title={isCompanionOpen ? 'Hide companion panel' : 'Show companion panel'}
-                >
-                  <MessageSquare className="w-3.5 h-3.5 text-brand-400" />
-                  <span>{isCompanionOpen ? 'Hide Chat' : 'Show Chat'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Video Call Active Panel */}
-            {(videoCall.isCallActive || videoCall.permissionError || videoCall.status === 'requesting-permissions') && (
-              <VideoCallPanel controls={videoCall} currentDisplayName={displayName} />
-            )}
-          </div>
-        </div>
-
-        {/* Floating Cinema Companion Panel (Chat & Audience) */}
-        {isCompanionOpen && (
-          <div className="w-full xl:w-80 2xl:w-88 flex flex-col shrink-0 h-64 sm:h-72 xl:h-full max-h-[580px] xl:max-h-full animate-fadeIn">
-            {/* Segmented Tab Switcher */}
-            <div className="flex items-center bg-[#0a0c16]/70 p-1 rounded-2xl border border-white/[0.08] backdrop-blur-xl mb-3 shrink-0 shadow-xs">
-              <button
-                onClick={() => setActiveTab('chat')}
-                className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-xl text-xs font-medium transition-all ${activeTab === 'chat'
-                    ? 'bg-gradient-to-r from-brand-600 to-indigo-600 text-white shadow-md shadow-brand-600/30 border border-white/20'
-                    : 'text-slate-400 hover:text-slate-200'
-                  }`}
-              >
-                <MessageSquare className="w-3.5 h-3.5" />
-                <span>Chat</span>
-              </button>
-              <button
-                onClick={() => setActiveTab('participants')}
-                className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-xl text-xs font-medium transition-all ${activeTab === 'participants'
-                    ? 'bg-gradient-to-r from-brand-600 to-indigo-600 text-white shadow-md shadow-brand-600/30 border border-white/20'
-                    : 'text-slate-400 hover:text-slate-200'
-                  }`}
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span>Audience ({participants.length})</span>
-              </button>
-            </div>
-
-            {/* Tab Content Panel */}
-            <div className="flex-1 min-h-0 overflow-hidden">
-              {activeTab === 'chat' ? (
-                <ChatPanel
-                  messages={chatMessages}
-                  currentParticipantId={currentParticipant?.id}
-                  onSendMessage={handleSendMessage}
-                />
-              ) : (
-                <ParticipantsList
-                  participants={participants}
-                  currentSessionId={sessionId}
-                  isHost={isHost}
-                  onKickParticipant={handleKickParticipant}
-                />
-              )}
-            </div>
-          </div>
-        )}
-      </main>
-
-      {/* Share Modal */}
-      {room && (
-        <ShareModal
-          isOpen={isShareOpen}
-          roomCode={room.roomCode}
-          roomName={room.name}
-          onClose={() => setIsShareOpen(false)}
-        />
-      )}
-
-      {/* Upload Media Modal */}
-      {room && (
-        <MediaUploadModal
-          roomId={room.id}
-          sessionId={sessionId}
-          isOpen={isUploadOpen}
-          onClose={() => setIsUploadOpen(false)}
-          onUploadComplete={() => {
-            // Socket will receive updated room state automatically
-          }}
-        />
-      )}
-
-      {/* Settings Modal */}
-      <SettingsModal
-        room={room}
-        isOpen={isSettingsOpen}
-        isHost={isHost}
-        onClose={() => setIsSettingsOpen(false)}
-        onUpdateSettings={handleUpdateSettings}
-        onUpdateTitle={handleUpdateTitle}
-        onEndRoom={handleEndRoom}
-      />
-
-      {/* Synchronization Diagnostics Panel (Visible ONLY when explicitly requesting ?debug=1) */}
-      {(window.location.search.includes('debug=1') || searchParams.get('debug') === '1') && (
-        <DebugPanel
-          playback={playback}
+        {/* Top Cinema Navbar */}
+        <Navbar
+          room={room}
+          participants={participants}
           connectionStatus={connectionStatus}
           isHost={isHost}
-          rtt={rtt}
-          videoRef={videoRef as React.RefObject<HTMLVideoElement>}
+          onOpenShare={() => setIsShareOpen(true)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onLeaveRoom={() => navigate('/')}
+          activeSidebarTab={activeTab}
+          onToggleSidebarTab={(tab) => {
+            setActiveTab(tab);
+            setIsCompanionOpen(true);
+          }}
+          isCompanionOpen={isCompanionOpen}
+          onToggleCompanion={() => setIsCompanionOpen(!isCompanionOpen)}
         />
-      )}
-    </div>
+
+        {/* Main Theater Viewport: Dominant Movie (~70%) + Right Sidebar (~30%) */}
+        <main className="flex-1 flex flex-col lg:flex-row overflow-hidden p-3 sm:p-4 lg:p-5 gap-3 sm:gap-4 lg:gap-5 min-h-0 relative z-10 justify-center items-center">
+          {/* Dominant Cinema Stage (Movie ~70%) */}
+          <div
+            className={`flex-1 flex flex-col justify-start items-center min-w-0 min-h-0 h-full w-full overflow-y-auto no-scrollbar transition-all duration-300 ${
+              isCompanionOpen ? 'max-w-5xl 2xl:max-w-6xl' : 'max-w-6xl 2xl:max-w-7xl'
+            }`}
+          >
+            <div className="w-full flex flex-col justify-center relative my-auto">
+              {/* Screen-Light Ambient Backlight Glow emitting into surrounding theater */}
+              <div
+                className="absolute -inset-6 sm:-inset-12 rounded-3xl bg-gradient-to-tr from-brand-600/25 via-indigo-600/20 to-purple-600/15 blur-[70px] sm:blur-[110px] opacity-45 sm:opacity-55 pointer-events-none -z-10 transition-opacity duration-1000"
+                aria-hidden="true"
+              />
+
+              {/* Cinema Video Screen */}
+              <VideoPlayer
+                videoRef={videoRef}
+                media={room?.media}
+                playback={playback}
+                isHost={isHost}
+                canControl={canControl}
+                needsUserGesture={needsUserGesture}
+                onPlay={handlePlay}
+                onPause={handlePause}
+                onSeek={handleSeek}
+                onLocalScrubPreview={handleLocalScrubPreview}
+                onPlaybackRate={handlePlaybackRate}
+                onUserGestureStart={handleUserGestureStart}
+                onOpenUpload={() => setIsUploadOpen(true)}
+              />
+
+              {/* Cinematic Movie Title & Metadata Header Area */}
+              <div className="mt-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-2 sm:px-3">
+                {/* Left: Movie Title & Format */}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2.5">
+                    <h2 className="text-base sm:text-xl font-bold tracking-tight text-white truncate drop-shadow-xs">
+                      {room?.media ? mediaInfo.displayTitle : room?.name || 'Private Screening'}
+                    </h2>
+                    {isHost && (
+                      <span className="text-[9px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand-500/15 text-brand-300 border border-brand-500/30 shrink-0">
+                        HOST
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs text-slate-400 font-mono mt-1">
+                    {mediaInfo.size && (
+                      <span className="text-slate-300 font-medium">{mediaInfo.size}</span>
+                    )}
+                    {mediaInfo.size && <span className="text-white/20">•</span>}
+                    <span className="text-brand-300 font-medium">1080p HD</span>
+                    <span className="text-white/20">•</span>
+                    <span className="text-slate-400">Sub-frame Sync</span>
+                  </div>
+                </div>
+
+                {/* Right: Actions (Change Video, Camera/Mic Quick Controls, Companion toggle) */}
+                <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+                  {isHost && room?.media && (
+                    <button
+                      onClick={() => setIsUploadOpen(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-xs font-medium text-brand-300 hover:text-brand-200 transition-all active:scale-95"
+                      title="Change screening video"
+                    >
+                      <UploadCloud className="w-3.5 h-3.5" />
+                      <span>Change Video</span>
+                    </button>
+                  )}
+
+                  {/* Camera and Mic Quick Device Controls */}
+                  <RoomHeaderDeviceControls />
+
+                  {/* Companion Expand/Collapse Toggle on Desktop */}
+                  <button
+                    onClick={() => setIsCompanionOpen(!isCompanionOpen)}
+                    className={`hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all ${
+                      isCompanionOpen
+                        ? 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08] text-slate-300'
+                        : 'bg-brand-500/20 hover:bg-brand-500/30 border-brand-500/40 text-brand-300 shadow-glass-glow'
+                    }`}
+                    title={isCompanionOpen ? 'Hide companion sidebar' : 'Show companion sidebar'}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 text-brand-400" />
+                    <span>{isCompanionOpen ? 'Hide Sidebar' : 'Show Sidebar'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Sidebar: Stacked VIDEO CALLS + CHAT (~30% width) */}
+          {isCompanionOpen && (
+            <div className="w-full lg:w-[350px] xl:w-[380px] 2xl:w-[420px] flex flex-col shrink-0 h-full min-h-0 animate-fadeIn">
+              {/* Upper Section: VIDEO CALLS */}
+              <VideoCallsPanel />
+
+              {/* Lower Section: CHAT (with tab to switch to Audience) */}
+              <div className="flex-1 flex flex-col min-h-0 bg-[#070913]/90 border border-white/[0.08] rounded-2xl p-3 shadow-xl overflow-hidden">
+                {/* Segmented Tab Switcher */}
+                <div className="flex items-center bg-[#0a0c16]/70 p-1 rounded-xl border border-white/[0.06] mb-2.5 shrink-0">
+                  <button
+                    onClick={() => setActiveTab('chat')}
+                    className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      activeTab === 'chat'
+                        ? 'bg-gradient-to-r from-brand-600 to-indigo-600 text-white shadow-sm border border-white/20'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>Chat</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('participants')}
+                    className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      activeTab === 'participants'
+                        ? 'bg-gradient-to-r from-brand-600 to-indigo-600 text-white shadow-sm border border-white/20'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    <span>Audience ({participants.length})</span>
+                  </button>
+                </div>
+
+                {/* Tab Content Panel */}
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  {activeTab === 'chat' ? (
+                    <ChatPanel
+                      messages={chatMessages}
+                      currentParticipantId={currentParticipant?.id}
+                      onSendMessage={handleSendMessage}
+                    />
+                  ) : (
+                    <ParticipantsList
+                      participants={participants}
+                      currentSessionId={sessionId}
+                      isHost={isHost}
+                      onKickParticipant={handleKickParticipant}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </main>
+
+        {/* Share Modal */}
+        {room && (
+          <ShareModal
+            isOpen={isShareOpen}
+            roomCode={room.roomCode}
+            roomName={room.name}
+            onClose={() => setIsShareOpen(false)}
+          />
+        )}
+
+        {/* Upload Media Modal */}
+        {room && (
+          <MediaUploadModal
+            roomId={room.id}
+            sessionId={sessionId}
+            isOpen={isUploadOpen}
+            onClose={() => setIsUploadOpen(false)}
+            onUploadComplete={() => {
+              // Socket will receive updated room state automatically
+            }}
+          />
+        )}
+
+        {/* Settings Modal */}
+        <SettingsModal
+          room={room}
+          isOpen={isSettingsOpen}
+          isHost={isHost}
+          onClose={() => setIsSettingsOpen(false)}
+          onUpdateSettings={handleUpdateSettings}
+          onUpdateTitle={handleUpdateTitle}
+          onEndRoom={handleEndRoom}
+        />
+
+        {/* Synchronization Diagnostics Panel (Visible ONLY when explicitly requesting ?debug=1) */}
+        {(window.location.search.includes('debug=1') || searchParams.get('debug') === '1') && (
+          <DebugPanel
+            playback={playback}
+            connectionStatus={connectionStatus}
+            isHost={isHost}
+            rtt={rtt}
+            videoRef={videoRef as React.RefObject<HTMLVideoElement>}
+          />
+        )}
+      </div>
+    </VideoProvider>
   );
 };
