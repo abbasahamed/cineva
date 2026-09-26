@@ -552,9 +552,14 @@ export class MediaJobQueue {
         .replace(/\/Users\/[^\s]+/g, "[path]")
         .replace(/\/app\/[^\s]+/g, "[path]")
         .replace(/[A-Za-z0-9_-]{24,}/g, "[REDACTED]");
-      const userFacingError = (err.message && err.message.includes("Not enough temporary storage"))
-        ? "Not enough temporary storage to prepare this video."
-        : `Video processing failed (${cleanMsg.substring(0, 120)})`;
+      let userFacingError: string;
+      if (err.message && err.message.includes("cap exceeded")) {
+        userFacingError = "Video processing failed: Storage provider download limit reached (Backblaze B2 Bandwidth/Class B cap exceeded). Please check Caps & Alerts in your B2 console.";
+      } else if (err.message && err.message.includes("Not enough temporary storage")) {
+        userFacingError = "Not enough temporary storage to prepare this video.";
+      } else {
+        userFacingError = `Video processing failed (${cleanMsg.substring(0, 120)})`;
+      }
 
       if (await this.isRoomActive(roomId)) {
         await prisma.media.update({

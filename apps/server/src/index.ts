@@ -1,6 +1,7 @@
+import { analyzeMediaFile } from './services/media/mediaAnalyzer.js';
 import { getFfmpegPath, getFfprobePath } from './services/media/binaryResolver.js';
 import express, { Request, Response, NextFunction } from 'express';
-import { execFile } from 'child_process';
+import { execFile, execSync } from 'child_process';
 import util from 'util';
 import path from 'path';
 import fs from 'fs';
@@ -209,10 +210,36 @@ app.get('/api/system/diagnostics', async (_req: Request, res: Response) => {
     diskInfo.error = err.message;
   }
 
+  let pipelineSelfTest: any = null;
+  try {
+    const samplePath = path.join(tempDir, "selftest.mp4");
+    if (!fs.existsSync(samplePath)) {
+      const ffmpegBin = getFfmpegPath();
+      execSync(`"${ffmpegBin}" -y -f lavfi -i testsrc=duration=0.1:size=64x64:rate=10 -f lavfi -i sine=frequency=1000:duration=0.1 -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest "${samplePath}"`, { timeout: 10000, stdio: "ignore" });
+    }
+    if (fs.existsSync(samplePath)) {
+      const analysis = await analyzeMediaFile(samplePath);
+      pipelineSelfTest = {
+        success: true,
+        ffprobeExecuted: true,
+        videoCodec: analysis.videoCodec,
+        audioCodec: analysis.audioCodec,
+        duration: analysis.duration,
+        streamsCount: analysis.streams.length,
+      };
+    }
+  } catch (testErr: any) {
+    pipelineSelfTest = {
+      success: false,
+      error: testErr.message,
+    };
+  }
+
   res.json({
-    status: 'ok',
+    status: "ok",
     ffmpeg: ffmpegInfo,
     ffprobe: ffprobeInfo,
+    pipelineSelfTest,
     disk: diskInfo,
     storageDriver: CONFIG.STORAGE_DRIVER,
     nodeEnv: CONFIG.NODE_ENV,
