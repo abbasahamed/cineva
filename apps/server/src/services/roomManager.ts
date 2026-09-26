@@ -5,6 +5,7 @@ import { generateRoomCode, generateSessionId } from '../utils/idGenerator.js';
 import { syncEngine } from './syncEngine.js';
 import { mediaStorage } from './mediaStorage.js';
 import { mediaJobQueue } from './media/mediaJobQueue.js';
+import { multipartManager } from './media/multipartManager.js';
 import {
   CreateRoomInput,
   JoinRoomInput,
@@ -406,6 +407,7 @@ export class RoomManager {
     try {
       // 1. Cancel any active or queued media jobs for this room
       await mediaJobQueue.cancelJobsForRoom(roomId);
+      await multipartManager.abortUploadsForRoom(roomId);
 
       // 2. Fetch all media records associated ONLY with this room
       const mediaList = await prisma.media.findMany({

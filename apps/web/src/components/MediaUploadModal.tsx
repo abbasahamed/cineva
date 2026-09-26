@@ -23,9 +23,16 @@ export const MediaUploadModal: React.FC<MediaUploadModalProps> = ({
   const [customTitle, setCustomTitle] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [progressDetails, setProgressDetails] = useState<{ uploadedBytes: number; totalBytes: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  
+  const formatBytes = (bytes: number): string => {
+    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   if (!isOpen) return null;
 
@@ -75,8 +82,11 @@ export const MediaUploadModal: React.FC<MediaUploadModalProps> = ({
       setError(null);
       setProgress(0);
 
-      const result = await uploadMedia(roomId, sessionId, file, customTitle, (pct) => {
+      const result = await uploadMedia(roomId, sessionId, file, customTitle, (pct, info) => {
         setProgress(pct);
+        if (info) {
+          setProgressDetails({ uploadedBytes: info.uploadedBytes, totalBytes: info.totalBytes });
+        }
       });
 
       showToast('Video added to watch room', 'success');
@@ -121,9 +131,21 @@ export const MediaUploadModal: React.FC<MediaUploadModalProps> = ({
 
         {/* Error Alert */}
         {error && (
-          <div className="mb-4 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs flex items-center gap-2.5 backdrop-blur-xs">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-            <span>{error}</span>
+          <div className="mb-4 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs flex items-center justify-between gap-2.5 backdrop-blur-xs">
+            <div className="flex items-center gap-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+              <span>{error}</span>
+            </div>
+            {file && (
+              <button
+                type="button"
+                onClick={handleUpload}
+                disabled={isUploading}
+                className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/30 transition-colors shrink-0"
+              >
+                Retry
+              </button>
+            )}
           </div>
         )}
 
@@ -211,7 +233,11 @@ export const MediaUploadModal: React.FC<MediaUploadModalProps> = ({
           <div className="mt-4">
             <div className="flex items-center justify-between text-xs font-mono text-slate-300 mb-1.5">
               <span>Uploading video...</span>
-              <span>{progress}%</span>
+              <span>
+                {progressDetails
+                  ? `${formatBytes(progressDetails.uploadedBytes)} / ${formatBytes(progressDetails.totalBytes)} (${progress}%)`
+                  : `${progress}%`}
+              </span>
             </div>
             <div className="w-full h-2 rounded-full bg-white/[0.08] overflow-hidden border border-white/[0.08] p-0.5">
               <div

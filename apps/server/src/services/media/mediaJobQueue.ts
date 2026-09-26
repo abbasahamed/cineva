@@ -1,16 +1,16 @@
-import path from 'path';
-import fs from 'fs';
-import { prisma } from '../../db.js';
-import { mediaStorage } from '../mediaStorage.js';
-import { roomManager } from '../roomManager.js';
-import { syncEngine } from '../syncEngine.js';
-import { analyzeMediaFile } from './mediaAnalyzer.js';
-import { evaluateMediaCompatibility, validatePlaybackFile } from './mediaCompatibility.js';
-import { transcodingService } from './transcodingService.js';
-import { SOCKET_EVENTS } from '@syncwatch/shared';
-import { logger } from '../../utils/logger.js';
-import { CONFIG } from '../../config.js';
-import { tempFileLifecycle } from './tempFileLifecycle.js';
+import path from "path";
+import fs from "fs";
+import { prisma } from "../../db.js";
+import { mediaStorage } from "../mediaStorage.js";
+import { roomManager } from "../roomManager.js";
+import { syncEngine } from "../syncEngine.js";
+import { analyzeMediaFile } from "./mediaAnalyzer.js";
+import { evaluateMediaCompatibility, validatePlaybackFile } from "./mediaCompatibility.js";
+import { transcodingService } from "./transcodingService.js";
+import { SOCKET_EVENTS } from "@syncwatch/shared";
+import { logger } from "../../utils/logger.js";
+import { CONFIG } from "../../config.js";
+import { tempFileLifecycle } from "./tempFileLifecycle.js";
 
 let ioInstance: any = null;
 
@@ -27,7 +27,9 @@ function broadcastToRoom(roomId: string, event: string, payload: any) {
 export interface MediaJob {
   id: string;
   roomId: string;
-  localSourcePath: string;
+  localSourcePath?: string;
+  sourceStorageKey?: string;
+  sourceSize?: number;
   filename: string;
   title?: string;
   createdAt: number;
@@ -56,10 +58,12 @@ export class MediaJobQueue {
       if (this.queue[i].roomId === roomId) {
         const [cancelledJob] = this.queue.splice(i, 1);
         if (cancelledJob) {
-          tempFileLifecycle.unregisterActiveFile(cancelledJob.localSourcePath);
-          tempFileLifecycle.safeDeleteFile(cancelledJob.localSourcePath, true);
-          tempFileLifecycle.safeDeleteFile(`${cancelledJob.localSourcePath}_storage.tmp`, true);
-          logger.info('[MediaJobQueue] Cancelled queued job for room', { jobId: cancelledJob.id, roomId });
+          if (cancelledJob.localSourcePath) {
+            tempFileLifecycle.unregisterActiveFile(cancelledJob.localSourcePath);
+            tempFileLifecycle.safeDeleteFile(cancelledJob.localSourcePath, true);
+            tempFileLifecycle.safeDeleteFile(`${cancelledJob.localSourcePath}_storage.tmp`, true);
+          }
+          logger.info("[MediaJobQueue] Cancelled queued job for room", { jobId: cancelledJob.id, roomId });
         }
       }
     }
@@ -68,49 +72,55 @@ export class MediaJobQueue {
     const activeJob = this.activeJobMap.get(roomId);
     if (activeJob) {
       transcodingService.cancelJob(activeJob.id);
-      logger.info('[MediaJobQueue] Cancelled active transcoding job for room', { jobId: activeJob.id, roomId });
+      logger.info("[MediaJobQueue] Cancelled active transcoding job for room", { jobId: activeJob.id, roomId });
     }
   }
 
   /**
-   * Enqueues an uploaded file for analysis, compatibility evaluation, and background transcoding.
+   * Enqueues an uploaded file or stored object for analysis, compatibility evaluation, and background transcoding.
    */
   async enqueueMediaProcessing(
     roomId: string,
-    localSourcePath: string,
+    source: string | { storageKey: string; filename?: string; size?: number },
     filename: string,
     title?: string
   ): Promise<void> {
     const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const isStorageKey = typeof source === "object";
     const job: MediaJob = {
       id: jobId,
       roomId,
-      localSourcePath,
+      localSourcePath: isStorageKey ? undefined : source,
+      sourceStorageKey: isStorageKey ? source.storageKey : undefined,
+      sourceSize: isStorageKey ? source.size : undefined,
       filename,
       title,
       createdAt: Date.now(),
     };
 
-    const safeTitle = title || filename.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+    const safeTitle = title || filename.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
+    const initialStorageKey = isStorageKey ? source.storageKey : `pending_${jobId}`;
 
-    // 1. Immediately create/update media record in DB with status 'processing'
+    // 1. Immediately create/update media record in DB with status "processing"
     const mediaRecord = await prisma.media.upsert({
       where: { roomId },
       create: {
         roomId,
         title: safeTitle,
         filename,
-        mimeType: 'video/mp4',
-        size: BigInt(0),
-        storageKey: `pending_${jobId}`,
-        originalStorageKey: `pending_${jobId}`,
-        status: 'processing',
+        mimeType: "video/mp4",
+        size: BigInt(isStorageKey && source.size ? source.size : 0),
+        storageKey: initialStorageKey,
+        originalStorageKey: initialStorageKey,
+        status: "processing",
         transcodeProgress: 5,
       },
       update: {
         title: safeTitle,
         filename,
-        status: 'processing',
+        storageKey: initialStorageKey,
+        originalStorageKey: initialStorageKey,
+        status: "processing",
         transcodeProgress: 5,
         transcodeError: null,
       },
@@ -119,17 +129,18 @@ export class MediaJobQueue {
     // 2. Broadcast MEDIA_PROCESSING socket event immediately to room channel
     broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_PROCESSING, {
       roomId,
-      status: 'processing',
+      status: "processing",
       progress: 5,
       media: {
         ...mediaRecord,
         size: mediaRecord.size.toString(),
-        url: mediaRecord.storageKey ? mediaStorage.getUrl(mediaRecord.storageKey) : '',
+        url: mediaRecord.storageKey ? mediaStorage.getUrl(mediaRecord.storageKey) : "",
       },
     });
 
-    // Register input file as active to prevent concurrent stale cleanup from unlinking it
-    tempFileLifecycle.registerActiveFile(localSourcePath);
+    if (job.localSourcePath) {
+      tempFileLifecycle.registerActiveFile(job.localSourcePath);
+    }
 
     this.queue.push(job);
     this.processNext();
@@ -139,11 +150,10 @@ export class MediaJobQueue {
    * Cancels a job by jobId (whether queued or currently executing).
    */
   async cancelJob(jobId: string): Promise<boolean> {
-    // 1. Remove from queue if pending
     const queuedIdx = this.queue.findIndex((j) => j.id === jobId);
     if (queuedIdx !== -1) {
       const [cancelledJob] = this.queue.splice(queuedIdx, 1);
-      if (cancelledJob) {
+      if (cancelledJob && cancelledJob.localSourcePath) {
         tempFileLifecycle.unregisterActiveFile(cancelledJob.localSourcePath);
         tempFileLifecycle.safeDeleteFile(cancelledJob.localSourcePath, true);
         tempFileLifecycle.safeDeleteFile(`${cancelledJob.localSourcePath}_storage.tmp`, true);
@@ -151,7 +161,6 @@ export class MediaJobQueue {
       return true;
     }
 
-    // 2. Kill FFmpeg if currently processing
     const isTranscodingCancelled = transcodingService.cancelJob(jobId);
     return isTranscodingCancelled;
   }
@@ -159,7 +168,7 @@ export class MediaJobQueue {
   private async isRoomActive(roomId: string): Promise<boolean> {
     if (this.cancelledRoomIds.has(roomId)) return false;
     const room = await prisma.room.findUnique({ where: { id: roomId } });
-    return !!room && room.status === 'active';
+    return !!room && room.status === "active";
   }
 
   private async processNext() {
@@ -174,7 +183,7 @@ export class MediaJobQueue {
     try {
       await this.runJob(job);
     } catch (err: any) {
-      logger.error('Media processing job unhandled error', { jobId: job.id, message: err.message });
+      logger.error("Media processing job unhandled error", { jobId: job.id, message: err.message });
     } finally {
       this.activeJobsCount--;
       this.processNext();
@@ -182,60 +191,100 @@ export class MediaJobQueue {
   }
 
   private async runJob(job: MediaJob) {
-    const { roomId, localSourcePath, filename, title } = job;
-    logger.info('Starting media processing job', { jobId: job.id, roomId, filename });
+    const { roomId, localSourcePath, sourceStorageKey, sourceSize, filename, title } = job;
+    logger.info("Starting media processing job", { jobId: job.id, roomId, filename, sourceStorageKey });
 
     this.activeJobMap.set(roomId, job);
 
     let tempConvertedPath: string | null = null;
     let sourceStorageInput: string | null = null;
+    let actualSourcePath: string | null = null;
 
-    // Register active files
-    tempFileLifecycle.registerActiveFile(localSourcePath);
+    if (localSourcePath) {
+      tempFileLifecycle.registerActiveFile(localSourcePath);
+      actualSourcePath = localSourcePath;
+    }
 
     try {
       // Pre-execution check: abort if room is no longer active / cancelled
       if (!(await this.isRoomActive(roomId))) {
-        logger.info('[MediaJobQueue] Aborting job start for cancelled room', { jobId: job.id, roomId });
+        logger.info("[MediaJobQueue] Aborting job start for cancelled room", { jobId: job.id, roomId });
         return;
       }
 
-      // 1. Analyze media using ffprobe first to know action and size
-      const analysis = await analyzeMediaFile(localSourcePath);
-      const decision = evaluateMediaCompatibility(analysis, filename);
-      const safeTitle = title || filename.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
-
-      const tempDir = path.join(CONFIG.MEDIA_STORAGE_PATH, 'temp');
+      const tempDir = path.join(CONFIG.MEDIA_STORAGE_PATH, "temp");
       if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir, { recursive: true });
       }
 
-      const inputStat = fs.existsSync(localSourcePath) ? fs.statSync(localSourcePath) : null;
-      const inputSizeBytes = inputStat ? inputStat.size : (analysis.sizeBytes || 0);
+      // If source is already in storage (e.g. Backblaze B2 direct multipart upload):
+      if (sourceStorageKey) {
+        const localPath = mediaStorage.getLocalPath(sourceStorageKey);
+        if (localPath && fs.existsSync(localPath)) {
+          actualSourcePath = localPath;
+        } else {
+          sourceStorageInput = path.join(
+            tempDir,
+            `b2_source_${Date.now()}_${path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, "_")}`
+          );
+          tempFileLifecycle.registerActiveFile(sourceStorageInput);
+          logger.info("[MediaJobQueue] Downloading source object from storage for analysis", {
+            jobId: job.id,
+            sourceStorageKey,
+          });
+          await mediaStorage.downloadToFile(sourceStorageKey, sourceStorageInput);
+          actualSourcePath = sourceStorageInput;
+        }
+      }
+
+      if (!actualSourcePath || !fs.existsSync(actualSourcePath)) {
+        throw new Error("Source media file could not be located on disk for analysis");
+      }
+
+      // 1. Analyze media using ffprobe first to know action and size
+      const analysis = await analyzeMediaFile(actualSourcePath);
+      const decision = evaluateMediaCompatibility(analysis, filename);
+      const safeTitle = title || filename.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
+
+      const inputStat = fs.existsSync(actualSourcePath) ? fs.statSync(actualSourcePath) : null;
+      const inputSizeBytes = inputStat ? inputStat.size : (analysis.sizeBytes || sourceSize || 0);
 
       // Realistic required output space: 1.2x input size + 200MB buffer for transcoded output
       const requiredBytes = Math.ceil(inputSizeBytes * 1.2) + 200 * 1024 * 1024;
       const diskCheck = tempFileLifecycle.checkDiskSpace(tempDir, requiredBytes);
       if (!diskCheck.hasEnoughSpace) {
-        throw new Error('Not enough temporary storage to prepare this video.');
+        throw new Error("Not enough temporary storage to prepare this video.");
       }
 
-      if (decision.action === 'DIRECT_PLAY') {
-        logger.info('Media eligible for DIRECT_PLAY', { roomId, filename, reason: decision.reason });
+      if (decision.action === "DIRECT_PLAY") {
+        logger.info("Media eligible for DIRECT_PLAY", { roomId, filename, reason: decision.reason });
 
-        // Check if room is still active before saving
         if (!(await this.isRoomActive(roomId))) {
-          logger.info('[MediaJobQueue] Aborting DIRECT_PLAY save for cancelled room', { jobId: job.id, roomId });
+          logger.info("[MediaJobQueue] Aborting DIRECT_PLAY save for cancelled room", { jobId: job.id, roomId });
           return;
         }
 
-        // Save original file to media storage
-        const savedMedia = await mediaStorage.saveFile(
-          roomId,
-          filename,
-          localSourcePath,
-          decision.targetMimeType
-        );
+        let savedMedia: { storageKey: string; size: number };
+        if (sourceStorageKey) {
+          // B2 object already exists in storage! No re-upload needed.
+          savedMedia = {
+            storageKey: sourceStorageKey,
+            size: analysis.sizeBytes || sourceSize || inputSizeBytes,
+          };
+          if (sourceStorageInput && fs.existsSync(sourceStorageInput)) {
+            tempFileLifecycle.unregisterActiveFile(sourceStorageInput);
+            tempFileLifecycle.safeDeleteFile(sourceStorageInput, true);
+            sourceStorageInput = null;
+          }
+        } else {
+          // Save original local file to media storage
+          savedMedia = await mediaStorage.saveFile(
+            roomId,
+            filename,
+            actualSourcePath,
+            decision.targetMimeType
+          );
+        }
 
         // Record ready media in DB
         const mediaRecord = await prisma.media.upsert({
@@ -250,7 +299,7 @@ export class MediaJobQueue {
             storageKey: savedMedia.storageKey,
             originalStorageKey: savedMedia.storageKey,
             playbackStorageKey: savedMedia.storageKey,
-            status: 'ready',
+            status: "ready",
             transcodeProgress: 100,
             videoCodec: analysis.videoCodec || undefined,
             audioCodec: analysis.audioCodec || undefined,
@@ -266,7 +315,7 @@ export class MediaJobQueue {
             storageKey: savedMedia.storageKey,
             originalStorageKey: savedMedia.storageKey,
             playbackStorageKey: savedMedia.storageKey,
-            status: 'ready',
+            status: "ready",
             transcodeProgress: 100,
             transcodeError: null,
             videoCodec: analysis.videoCodec || undefined,
@@ -285,7 +334,7 @@ export class MediaJobQueue {
             roomId,
             media: roomInfo.media,
           });
-          broadcastToRoom(roomId, 'room:updated', {
+          broadcastToRoom(roomId, "room:updated", {
             room: roomInfo,
           });
         }
@@ -295,16 +344,21 @@ export class MediaJobQueue {
       // 3. REMUX or TRANSCODE required
       logger.info(`Media requires ${decision.action}`, { roomId, filename, reason: decision.reason });
 
-      // Save original source file to media storage
-      const savedOriginal = await mediaStorage.saveFile(
-        roomId,
-        `source_${filename}`,
-        localSourcePath,
-        decision.targetMimeType
-      );
-
-      // Local source path is now in media storage
-      const actualSourcePath = mediaStorage.getLocalPath(savedOriginal.storageKey) || localSourcePath;
+      let savedOriginal: { storageKey: string; size: number };
+      if (sourceStorageKey) {
+        savedOriginal = {
+          storageKey: sourceStorageKey,
+          size: analysis.sizeBytes || sourceSize || inputSizeBytes,
+        };
+      } else {
+        savedOriginal = await mediaStorage.saveFile(
+          roomId,
+          `source_${filename}`,
+          actualSourcePath,
+          decision.targetMimeType
+        );
+        actualSourcePath = mediaStorage.getLocalPath(savedOriginal.storageKey) || actualSourcePath;
+      }
 
       // Create / update media record in PROCESSING state
       await prisma.media.upsert({
@@ -319,7 +373,7 @@ export class MediaJobQueue {
           storageKey: savedOriginal.storageKey,
           originalStorageKey: savedOriginal.storageKey,
           playbackStorageKey: null,
-          status: 'processing',
+          status: "processing",
           transcodeProgress: 5,
           sourceMimeType: decision.targetMimeType,
           sourceSize: BigInt(analysis.sizeBytes || savedOriginal.size),
@@ -337,7 +391,7 @@ export class MediaJobQueue {
           storageKey: savedOriginal.storageKey,
           originalStorageKey: savedOriginal.storageKey,
           playbackStorageKey: null,
-          status: 'processing',
+          status: "processing",
           transcodeProgress: 5,
           transcodeError: null,
           videoCodec: analysis.videoCodec || undefined,
@@ -349,7 +403,7 @@ export class MediaJobQueue {
 
       broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_PROCESSING, {
         roomId,
-        status: 'processing',
+        status: "processing",
         progress: 5,
       });
 
@@ -358,13 +412,13 @@ export class MediaJobQueue {
       tempFileLifecycle.registerActiveFile(tempConvertedPath);
 
       // 4. Run FFmpeg conversion with diagnostics logging
-      logger.info('MEDIA_DIAGNOSTICS_START', {
+      logger.info("MEDIA_DIAGNOSTICS_START", {
         jobId: job.id,
         roomId,
         filename,
-        sourceVideoCodec: analysis.videoCodec || 'none',
-        sourceAudioCodec: analysis.audioCodec || 'none',
-        resolution: analysis.width && analysis.height ? `${analysis.width}x${analysis.height}` : 'unknown',
+        sourceVideoCodec: analysis.videoCodec || "none",
+        sourceAudioCodec: analysis.audioCodec || "none",
+        resolution: analysis.width && analysis.height ? `${analysis.width}x${analysis.height}` : "unknown",
         durationSeconds: analysis.duration,
         sourceSizeBytes: analysis.sizeBytes,
         action: decision.action,
@@ -376,7 +430,7 @@ export class MediaJobQueue {
       const result = await transcodingService.processVideo(job.id, {
         inputPath: actualSourcePath,
         outputPath: tempConvertedPath,
-        mode: (decision.action as 'REMUX' | 'TRANSCODE' | 'AUDIO_TRANSCODE_VIDEO_COPY'),
+        mode: (decision.action as "REMUX" | "TRANSCODE" | "AUDIO_TRANSCODE_VIDEO_COPY"),
         audioStreamIndex: decision.selectedAudioStreamIndex,
         isAudioCompatible: decision.isAudioCompatible,
         durationSeconds: analysis.duration,
@@ -388,28 +442,28 @@ export class MediaJobQueue {
 
           broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_PROGRESS, {
             roomId,
-            status: 'processing',
+            status: "processing",
             progress: progressPercent,
             speed,
             etaSeconds,
-            stage: stage || (decision.action === 'REMUX' ? 'Remuxing container...' : decision.action === 'AUDIO_TRANSCODE_VIDEO_COPY' ? 'Converting audio (copying video)...' : 'Re-encoding video...'),
+            stage: stage || (decision.action === "REMUX" ? "Remuxing container..." : decision.action === "AUDIO_TRANSCODE_VIDEO_COPY" ? "Converting audio (copying video)..." : "Re-encoding video..."),
           });
         },
       });
 
-      logger.info('MEDIA_DIAGNOSTICS_COMPLETE', {
+      logger.info("MEDIA_DIAGNOSTICS_COMPLETE", {
         jobId: job.id,
         roomId,
         action: decision.action,
         executionTimeMs: result.executionTimeMs,
         processingDurationSec: Math.round(result.executionTimeMs / 1000),
         outputSizeBytes: result.outputSize,
-        processingSpeedRatio: (analysis.duration / Math.max(0.001, result.executionTimeMs / 1000)).toFixed(2) + 'x',
+        processingSpeedRatio: (analysis.duration / Math.max(0.001, result.executionTimeMs / 1000)).toFixed(2) + "x",
       });
 
       // Check if room is still active before registering playback output
       if (!(await this.isRoomActive(roomId))) {
-        logger.info('[MediaJobQueue] Room was cancelled during transcoding. Cleaning output and suppressing MEDIA_READY.', { jobId: job.id, roomId });
+        logger.info("[MediaJobQueue] Room was cancelled during transcoding. Cleaning output and suppressing MEDIA_READY.", { jobId: job.id, roomId });
         if (result.outputPath) {
           tempFileLifecycle.safeDeleteFile(result.outputPath, true);
         }
@@ -420,33 +474,33 @@ export class MediaJobQueue {
       const verifiedAnalysis = await validatePlaybackFile(result.outputPath);
 
       // 6. Save converted playback file to media storage
-      const convertedFilename = `${filename.replace(/\.[^/.]+$/, '')}.mp4`;
+      const convertedFilename = `${filename.replace(/\.[^/.]+$/, "")}.mp4`;
       const savedPlayback = await mediaStorage.saveFile(
         roomId,
         convertedFilename,
         result.outputPath,
-        'video/mp4'
+        "video/mp4"
       );
 
       // 7. Update Media record to READY state with verified duration and metadata
-      const readyMedia = await prisma.media.update({
+      await prisma.media.update({
         where: { roomId },
         data: {
           filename: convertedFilename,
-          mimeType: 'video/mp4',
+          mimeType: "video/mp4",
           size: BigInt(savedPlayback.size),
           duration: verifiedAnalysis.duration || analysis.duration,
           storageKey: savedPlayback.storageKey,
           playbackStorageKey: savedPlayback.storageKey,
-          status: 'ready',
+          status: "ready",
           transcodeProgress: 100,
           transcodeError: null,
-          videoCodec: 'h264',
-          audioCodec: 'aac',
+          videoCodec: "h264",
+          audioCodec: "aac",
         },
       });
 
-      logger.info('Media processing completed successfully', { roomId, filename: convertedFilename, size: savedPlayback.size });
+      logger.info("Media processing completed successfully", { roomId, filename: convertedFilename, size: savedPlayback.size });
 
       // Initialize sync engine state for converted video
       syncEngine.getOrCreateState(roomId);
@@ -455,29 +509,28 @@ export class MediaJobQueue {
       if (roomInfo) {
         broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_READY, {
           roomId,
-          status: 'ready',
+          status: "ready",
           progress: 100,
           media: roomInfo.media,
         });
-        broadcastToRoom(roomId, 'room:updated', {
+        broadcastToRoom(roomId, "room:updated", {
           room: roomInfo,
         });
       }
     } catch (err: any) {
-      logger.error('Media processing job failed', { roomId, filename, error: err.message });
+      logger.error("Media processing job failed", { roomId, filename, error: err.message });
 
-      // Terminate any active FFmpeg process for this job
       transcodingService.cancelJob(job.id);
 
-      const userFacingError = (err.message && err.message.includes('Not enough temporary storage'))
-        ? 'Not enough temporary storage to prepare this video.'
-        : 'Video processing failed. Please try a different video format or file.';
+      const userFacingError = (err.message && err.message.includes("Not enough temporary storage"))
+        ? "Not enough temporary storage to prepare this video."
+        : "Video processing failed. Please try a different video format or file.";
 
       if (await this.isRoomActive(roomId)) {
         await prisma.media.update({
           where: { roomId },
           data: {
-            status: 'failed',
+            status: "failed",
             transcodeProgress: 0,
             transcodeError: userFacingError,
           },
@@ -485,14 +538,13 @@ export class MediaJobQueue {
 
         broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_FAILED, {
           roomId,
-          status: 'failed',
+          status: "failed",
           progress: 0,
           error: userFacingError,
         });
       }
     } finally {
       this.activeJobMap.delete(roomId);
-      // Always unregister and clean up temporary local files
       if (tempConvertedPath) {
         tempFileLifecycle.unregisterActiveFile(tempConvertedPath);
         tempFileLifecycle.safeDeleteFile(tempConvertedPath, true);
