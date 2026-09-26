@@ -1,0 +1,460 @@
+import path from 'path';
+import fs from 'fs';
+import { prisma } from '../../db.js';
+import { mediaStorage } from '../mediaStorage.js';
+import { roomManager } from '../roomManager.js';
+import { syncEngine } from '../syncEngine.js';
+import { analyzeMediaFile } from './mediaAnalyzer.js';
+import { evaluateMediaCompatibility, validatePlaybackFile } from './mediaCompatibility.js';
+import { transcodingService } from './transcodingService.js';
+import { SOCKET_EVENTS } from '@syncwatch/shared';
+import { logger } from '../../utils/logger.js';
+import { CONFIG } from '../../config.js';
+import { tempFileLifecycle } from './tempFileLifecycle.js';
+
+let ioInstance: any = null;
+
+export function setMediaSocketIO(io: any) {
+  ioInstance = io;
+}
+
+function broadcastToRoom(roomId: string, event: string, payload: any) {
+  if (ioInstance) {
+    ioInstance.to(roomId).emit(event, payload);
+  }
+}
+
+export interface MediaJob {
+  id: string;
+  roomId: string;
+  localSourcePath: string;
+  filename: string;
+  title?: string;
+  createdAt: number;
+}
+
+export class MediaJobQueue {
+  private queue: MediaJob[] = [];
+  private activeJobsCount = 0;
+  private maxConcurrentTranscodes = 1;
+
+  constructor(maxConcurrent = 1) {
+    this.maxConcurrentTranscodes = maxConcurrent;
+  }
+
+  /**
+   * Enqueues an uploaded file for analysis, compatibility evaluation, and background transcoding.
+   */
+  async enqueueMediaProcessing(
+    roomId: string,
+    localSourcePath: string,
+    filename: string,
+    title?: string
+  ): Promise<void> {
+    const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const job: MediaJob = {
+      id: jobId,
+      roomId,
+      localSourcePath,
+      filename,
+      title,
+      createdAt: Date.now(),
+    };
+
+    const safeTitle = title || filename.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+
+    // 1. Immediately create/update media record in DB with status 'processing'
+    const mediaRecord = await prisma.media.upsert({
+      where: { roomId },
+      create: {
+        roomId,
+        title: safeTitle,
+        filename,
+        mimeType: 'video/mp4',
+        size: BigInt(0),
+        storageKey: `pending_${jobId}`,
+        originalStorageKey: `pending_${jobId}`,
+        status: 'processing',
+        transcodeProgress: 5,
+      },
+      update: {
+        title: safeTitle,
+        filename,
+        status: 'processing',
+        transcodeProgress: 5,
+        transcodeError: null,
+      },
+    });
+
+    // 2. Broadcast MEDIA_PROCESSING socket event immediately to room channel
+    broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_PROCESSING, {
+      roomId,
+      status: 'processing',
+      progress: 5,
+      media: {
+        ...mediaRecord,
+        size: mediaRecord.size.toString(),
+        url: mediaRecord.storageKey ? mediaStorage.getUrl(mediaRecord.storageKey) : '',
+      },
+    });
+
+    // Register input file as active to prevent concurrent stale cleanup from unlinking it
+    tempFileLifecycle.registerActiveFile(localSourcePath);
+
+    this.queue.push(job);
+    this.processNext();
+  }
+
+  /**
+   * Cancels a job by jobId (whether queued or currently executing).
+   */
+  async cancelJob(jobId: string): Promise<boolean> {
+    // 1. Remove from queue if pending
+    const queuedIdx = this.queue.findIndex((j) => j.id === jobId);
+    if (queuedIdx !== -1) {
+      const [cancelledJob] = this.queue.splice(queuedIdx, 1);
+      if (cancelledJob) {
+        tempFileLifecycle.unregisterActiveFile(cancelledJob.localSourcePath);
+        tempFileLifecycle.safeDeleteFile(cancelledJob.localSourcePath, true);
+        tempFileLifecycle.safeDeleteFile(`${cancelledJob.localSourcePath}_storage.tmp`, true);
+      }
+      return true;
+    }
+
+    // 2. Kill FFmpeg if currently processing
+    const isTranscodingCancelled = transcodingService.cancelJob(jobId);
+    return isTranscodingCancelled;
+  }
+
+  private async processNext() {
+    if (this.activeJobsCount >= this.maxConcurrentTranscodes || this.queue.length === 0) {
+      return;
+    }
+
+    const job = this.queue.shift();
+    if (!job) return;
+
+    this.activeJobsCount++;
+    try {
+      await this.runJob(job);
+    } catch (err: any) {
+      logger.error('Media processing job unhandled error', { jobId: job.id, message: err.message });
+    } finally {
+      this.activeJobsCount--;
+      this.processNext();
+    }
+  }
+
+  private async runJob(job: MediaJob) {
+    const { roomId, localSourcePath, filename, title } = job;
+    logger.info('Starting media processing job', { jobId: job.id, roomId, filename });
+
+    let tempConvertedPath: string | null = null;
+    let sourceStorageInput: string | null = null;
+
+    // Register active files
+    tempFileLifecycle.registerActiveFile(localSourcePath);
+
+    try {
+      // Disk space pre-check
+      const tempDir = path.join(CONFIG.MEDIA_STORAGE_PATH, 'temp');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      const inputStat = fs.existsSync(localSourcePath) ? fs.statSync(localSourcePath) : null;
+      const inputSizeBytes = inputStat ? inputStat.size : 0;
+      const requiredBytes = inputSizeBytes * 2 + 500 * 1024 * 1024;
+
+      const diskCheck = tempFileLifecycle.checkDiskSpace(tempDir, requiredBytes);
+      if (!diskCheck.hasEnoughSpace) {
+        throw new Error('Not enough temporary storage to prepare this video.');
+      }
+
+      // 1. Analyze media using ffprobe
+      const analysis = await analyzeMediaFile(localSourcePath);
+
+      // 2. Evaluate compatibility
+      const decision = evaluateMediaCompatibility(analysis, filename);
+
+      const safeTitle = title || filename.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+
+      if (decision.action === 'DIRECT_PLAY') {
+        logger.info('Media eligible for DIRECT_PLAY', { roomId, filename, reason: decision.reason });
+
+        // Save original file to media storage
+        const savedMedia = await mediaStorage.saveFile(
+          roomId,
+          filename,
+          localSourcePath,
+          decision.targetMimeType
+        );
+
+        // Record ready media in DB
+        const mediaRecord = await prisma.media.upsert({
+          where: { roomId },
+          create: {
+            roomId,
+            title: safeTitle,
+            filename,
+            mimeType: decision.targetMimeType,
+            size: BigInt(analysis.sizeBytes || savedMedia.size),
+            duration: analysis.duration || undefined,
+            storageKey: savedMedia.storageKey,
+            originalStorageKey: savedMedia.storageKey,
+            playbackStorageKey: savedMedia.storageKey,
+            status: 'ready',
+            transcodeProgress: 100,
+            videoCodec: analysis.videoCodec || undefined,
+            audioCodec: analysis.audioCodec || undefined,
+            width: analysis.width || undefined,
+            height: analysis.height || undefined,
+          },
+          update: {
+            title: safeTitle,
+            filename,
+            mimeType: decision.targetMimeType,
+            size: BigInt(analysis.sizeBytes || savedMedia.size),
+            duration: analysis.duration || undefined,
+            storageKey: savedMedia.storageKey,
+            originalStorageKey: savedMedia.storageKey,
+            playbackStorageKey: savedMedia.storageKey,
+            status: 'ready',
+            transcodeProgress: 100,
+            transcodeError: null,
+            videoCodec: analysis.videoCodec || undefined,
+            audioCodec: analysis.audioCodec || undefined,
+            width: analysis.width || undefined,
+            height: analysis.height || undefined,
+          },
+        });
+
+        // Initialize sync engine state
+        syncEngine.getOrCreateState(roomId);
+
+        const roomInfo = await roomManager.getRoomInfo(roomId);
+        if (roomInfo) {
+          broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_READY, {
+            roomId,
+            media: roomInfo.media,
+          });
+          broadcastToRoom(roomId, 'room:updated', {
+            room: roomInfo,
+          });
+        }
+        return;
+      }
+
+      // 3. REMUX or TRANSCODE required
+      logger.info(`Media requires ${decision.action}`, { roomId, filename, reason: decision.reason });
+
+      // Create a temporary copy for mediaStorage.saveFile so localSourcePath is preserved for FFmpeg
+      sourceStorageInput = `${localSourcePath}_storage.tmp`;
+      tempFileLifecycle.registerActiveFile(sourceStorageInput);
+      await fs.promises.copyFile(localSourcePath, sourceStorageInput);
+
+      // Save original source file to media storage first
+      const savedOriginal = await mediaStorage.saveFile(
+        roomId,
+        `source_${filename}`,
+        sourceStorageInput,
+        decision.targetMimeType
+      );
+
+      // Unregister and clean up sourceStorageInput once saved in storage
+      tempFileLifecycle.unregisterActiveFile(sourceStorageInput);
+      tempFileLifecycle.safeDeleteFile(sourceStorageInput, true);
+      sourceStorageInput = null;
+
+      // Create / update media record in PROCESSING state
+      await prisma.media.upsert({
+        where: { roomId },
+        create: {
+          roomId,
+          title: safeTitle,
+          filename,
+          mimeType: decision.targetMimeType,
+          size: BigInt(analysis.sizeBytes || savedOriginal.size),
+          duration: analysis.duration || undefined,
+          storageKey: savedOriginal.storageKey,
+          originalStorageKey: savedOriginal.storageKey,
+          playbackStorageKey: null,
+          status: 'processing',
+          transcodeProgress: 5,
+          sourceMimeType: decision.targetMimeType,
+          sourceSize: BigInt(analysis.sizeBytes || savedOriginal.size),
+          videoCodec: analysis.videoCodec || undefined,
+          audioCodec: analysis.audioCodec || undefined,
+          width: analysis.width || undefined,
+          height: analysis.height || undefined,
+        },
+        update: {
+          title: safeTitle,
+          filename,
+          mimeType: decision.targetMimeType,
+          size: BigInt(analysis.sizeBytes || savedOriginal.size),
+          duration: analysis.duration || undefined,
+          storageKey: savedOriginal.storageKey,
+          originalStorageKey: savedOriginal.storageKey,
+          playbackStorageKey: null,
+          status: 'processing',
+          transcodeProgress: 5,
+          transcodeError: null,
+          videoCodec: analysis.videoCodec || undefined,
+          audioCodec: analysis.audioCodec || undefined,
+          width: analysis.width || undefined,
+          height: analysis.height || undefined,
+        },
+      });
+
+      broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_PROCESSING, {
+        roomId,
+        status: 'processing',
+        progress: 5,
+      });
+
+      // Prepare temp destination for converted MP4
+      tempConvertedPath = path.join(tempDir, `converted_${Date.now()}_${Math.random().toString(36).substr(2, 6)}.mp4`);
+      tempFileLifecycle.registerActiveFile(tempConvertedPath);
+
+      // 4. Run FFmpeg conversion with diagnostics logging
+      logger.info('MEDIA_DIAGNOSTICS_START', {
+        jobId: job.id,
+        roomId,
+        filename,
+        sourceVideoCodec: analysis.videoCodec || 'none',
+        sourceAudioCodec: analysis.audioCodec || 'none',
+        resolution: analysis.width && analysis.height ? `${analysis.width}x${analysis.height}` : 'unknown',
+        durationSeconds: analysis.duration,
+        sourceSizeBytes: analysis.sizeBytes,
+        action: decision.action,
+        reason: decision.reason,
+        selectedAudioStreamIndex: decision.selectedAudioStreamIndex,
+        isAudioCompatible: decision.isAudioCompatible,
+      });
+
+      const result = await transcodingService.processVideo(job.id, {
+        inputPath: localSourcePath,
+        outputPath: tempConvertedPath,
+        mode: (decision.action as 'REMUX' | 'TRANSCODE' | 'AUDIO_TRANSCODE_VIDEO_COPY'),
+        audioStreamIndex: decision.selectedAudioStreamIndex,
+        isAudioCompatible: decision.isAudioCompatible,
+        durationSeconds: analysis.duration,
+        onProgress: async (progressPercent, speed, etaSeconds, stage) => {
+          await prisma.media.update({
+            where: { roomId },
+            data: { transcodeProgress: progressPercent },
+          }).catch(() => { });
+
+          broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_PROGRESS, {
+            roomId,
+            status: 'processing',
+            progress: progressPercent,
+            speed,
+            etaSeconds,
+            stage: stage || (decision.action === 'REMUX' ? 'Remuxing container...' : decision.action === 'AUDIO_TRANSCODE_VIDEO_COPY' ? 'Converting audio (copying video)...' : 'Re-encoding video...'),
+          });
+        },
+      });
+
+      logger.info('MEDIA_DIAGNOSTICS_COMPLETE', {
+        jobId: job.id,
+        roomId,
+        action: decision.action,
+        executionTimeMs: result.executionTimeMs,
+        processingDurationSec: Math.round(result.executionTimeMs / 1000),
+        outputSizeBytes: result.outputSize,
+        processingSpeedRatio: (analysis.duration / Math.max(0.001, result.executionTimeMs / 1000)).toFixed(2) + 'x',
+      });
+
+      // 5. Post-processing validation step per Section 17
+      const verifiedAnalysis = await validatePlaybackFile(result.outputPath);
+
+      // 6. Save converted playback file to media storage
+      const convertedFilename = `${filename.replace(/\.[^/.]+$/, '')}.mp4`;
+      const savedPlayback = await mediaStorage.saveFile(
+        roomId,
+        convertedFilename,
+        result.outputPath,
+        'video/mp4'
+      );
+
+      // 7. Update Media record to READY state with verified duration and metadata
+      const readyMedia = await prisma.media.update({
+        where: { roomId },
+        data: {
+          filename: convertedFilename,
+          mimeType: 'video/mp4',
+          size: BigInt(savedPlayback.size),
+          duration: verifiedAnalysis.duration || analysis.duration,
+          storageKey: savedPlayback.storageKey,
+          playbackStorageKey: savedPlayback.storageKey,
+          status: 'ready',
+          transcodeProgress: 100,
+          transcodeError: null,
+          videoCodec: 'h264',
+          audioCodec: 'aac',
+        },
+      });
+
+      logger.info('Media processing completed successfully', { roomId, filename: convertedFilename, size: savedPlayback.size });
+
+      // Initialize sync engine state for converted video
+      syncEngine.getOrCreateState(roomId);
+
+      const roomInfo = await roomManager.getRoomInfo(roomId);
+      if (roomInfo) {
+        broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_READY, {
+          roomId,
+          status: 'ready',
+          progress: 100,
+          media: roomInfo.media,
+        });
+        broadcastToRoom(roomId, 'room:updated', {
+          room: roomInfo,
+        });
+      }
+    } catch (err: any) {
+      logger.error('Media processing job failed', { roomId, filename, error: err.message });
+
+      // Terminate any active FFmpeg process for this job
+      transcodingService.cancelJob(job.id);
+
+      const userFacingError = (err.message && err.message.includes('Not enough temporary storage'))
+        ? 'Not enough temporary storage to prepare this video.'
+        : 'Video processing failed. Please try a different video format or file.';
+
+      await prisma.media.update({
+        where: { roomId },
+        data: {
+          status: 'failed',
+          transcodeProgress: 0,
+          transcodeError: userFacingError,
+        },
+      }).catch(() => { });
+
+      broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_FAILED, {
+        roomId,
+        status: 'failed',
+        progress: 0,
+        error: userFacingError,
+      });
+    } finally {
+      // Always unregister and clean up temporary local files
+      if (tempConvertedPath) {
+        tempFileLifecycle.unregisterActiveFile(tempConvertedPath);
+        tempFileLifecycle.safeDeleteFile(tempConvertedPath, true);
+      }
+      if (sourceStorageInput) {
+        tempFileLifecycle.unregisterActiveFile(sourceStorageInput);
+        tempFileLifecycle.safeDeleteFile(sourceStorageInput, true);
+      }
+      if (localSourcePath) {
+        tempFileLifecycle.unregisterActiveFile(localSourcePath);
+        tempFileLifecycle.safeDeleteFile(localSourcePath, true);
+      }
+    }
+  }
+}
+
+export const mediaJobQueue = new MediaJobQueue(1);

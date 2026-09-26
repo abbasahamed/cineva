@@ -1,0 +1,265 @@
+import { z } from 'zod';
+
+// ==========================================
+// 1. Core Synchronization Types & Constants
+// ==========================================
+
+export interface PlaybackState {
+  isPlaying: boolean;
+  position: number; // in seconds
+  lastUpdatedAt: number; // server timestamp in milliseconds
+  playbackRate: number;
+  version: number;
+}
+
+export interface ClockSyncPing {
+  clientTime: number; // client performance.now() or Date.now()
+}
+
+export interface ClockSyncPong {
+  clientTime: number;
+  serverTime: number; // server Date.now()
+}
+
+export interface DriftCorrectionConfig {
+  minThreshold: number; // default: 0.25 seconds - below this, do nothing
+  maxThreshold: number; // default: 1.00 second - between min and max, adjust playbackRate
+  syncIntervalMs: number; // default: 500ms
+  rateNudgeLow: number; // 0.95
+  rateNudgeHigh: number; // 1.05
+}
+
+export const DEFAULT_DRIFT_CONFIG: DriftCorrectionConfig = {
+  minThreshold: 0.25,
+  maxThreshold: 1.0,
+  syncIntervalMs: 500,
+  rateNudgeLow: 0.95,
+  rateNudgeHigh: 1.05,
+};
+
+// ==========================================
+// 2. Room & Participant Data Types
+// ==========================================
+
+export interface ParticipantInfo {
+  id: string;
+  sessionId: string;
+  displayName: string;
+  isHost: boolean;
+  joinedAt: string;
+  lastSeenAt: string;
+  isOnline: boolean;
+}
+
+export type MediaStatus = 'ready' | 'processing' | 'failed';
+
+export interface MediaInfo {
+  id: string;
+  roomId: string;
+  title: string;
+  filename: string;
+  mimeType: string;
+  size: number | string;
+  duration?: number;
+  url: string;
+  status: MediaStatus;
+  transcodeProgress?: number;
+  transcodeError?: string;
+  videoCodec?: string;
+  audioCodec?: string;
+  width?: number;
+  height?: number;
+  speed?: string;
+  etaSeconds?: number;
+  stage?: string;
+  createdAt: string;
+}
+
+export interface MediaProgressPayload {
+  mediaId?: string;
+  roomId: string;
+  status: MediaStatus;
+  progress: number;
+  speed?: string;
+  etaSeconds?: number;
+  stage?: string;
+  error?: string;
+  media?: MediaInfo;
+}
+
+export interface RoomSettings {
+  allowGuestControl: boolean;
+  maxParticipants: number;
+}
+
+export interface RoomInfo {
+  id: string;
+  roomCode: string;
+  name: string;
+  hostParticipantId: string;
+  hostSessionId: string;
+  media?: MediaInfo | null;
+  settings: RoomSettings;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt?: string;
+  status: 'active' | 'ended' | 'expired';
+}
+
+export interface RoomStateSnapshot {
+  room: RoomInfo;
+  participants: ParticipantInfo[];
+  playback: PlaybackState;
+  serverTimestamp: number;
+  myParticipantId: string;
+  isHost: boolean;
+}
+
+// ==========================================
+// 3. Realtime Chat Types
+// ==========================================
+
+export interface ChatMessage {
+  id: string;
+  roomId: string;
+  participantId: string;
+  displayName: string;
+  message: string;
+  createdAt: string;
+  isSystem?: boolean;
+}
+
+export type PlaybackActivityType = 'PLAY' | 'PAUSE' | 'SEEK';
+
+export interface PlaybackActivityPayload {
+  type: PlaybackActivityType;
+  participantId: string;
+  displayName: string;
+  currentTime: number;
+  message: string;
+  timestamp: number;
+}
+
+// ==========================================
+// 4. Socket Events Enum & Signatures
+// ==========================================
+
+export const SOCKET_EVENTS = {
+  // Client -> Server
+  JOIN_ROOM: 'room:join',
+  LEAVE_ROOM: 'room:leave',
+  PLAYBACK_PLAY: 'playback:play',
+  PLAYBACK_PAUSE: 'playback:pause',
+  PLAYBACK_SEEK: 'playback:seek',
+  PLAYBACK_RATE: 'playback:rate',
+  ROOM_UPDATE_SETTINGS: 'room:updateSettings',
+  ROOM_UPDATE_TITLE: 'room:updateTitle',
+  ROOM_KICK_PARTICIPANT: 'room:kickParticipant',
+  ROOM_END: 'room:end',
+  CHAT_SEND: 'chat:send',
+  PING: 'sync:ping',
+
+  // Server -> Client
+  ROOM_STATE: 'room:state',
+  ROOM_NOT_FOUND: 'room:notFound',
+  ROOM_ENDED: 'room:ended',
+  PARTICIPANT_JOINED: 'participant:joined',
+  PARTICIPANT_LEFT: 'participant:left',
+  PARTICIPANT_KICKED: 'participant:kicked',
+  PLAYBACK_STATE: 'playback:state',
+  PLAYBACK_ACTIVITY: 'playback:activity',
+  CHAT_MESSAGE: 'chat:message',
+  CHAT_HISTORY: 'chat:history',
+  PONG: 'sync:pong',
+  ERROR: 'system:error',
+  MEDIA_PROCESSING: 'media:processing',
+  MEDIA_PROGRESS: 'media:progress',
+  MEDIA_READY: 'media:ready',
+  MEDIA_FAILED: 'media:failed',
+} as const;
+
+// ==========================================
+// 5. Validation Schemas (Zod)
+// ==========================================
+
+export const CreateRoomSchema = z.object({
+  displayName: z.string().trim().min(1, 'Display name is required').max(30, 'Display name too long'),
+  roomName: z.string().trim().min(1, 'Room name is required').max(60, 'Room name too long'),
+  mediaTitle: z.string().trim().max(100).optional(),
+  allowGuestControl: z.boolean().default(false),
+});
+
+export type CreateRoomInput = z.input<typeof CreateRoomSchema>;
+
+export const JoinRoomSchema = z.object({
+  roomCode: z.string().trim().min(4, 'Invalid room code').max(10, 'Invalid room code').toUpperCase(),
+  displayName: z.string().trim().min(1, 'Display name is required').max(30, 'Display name too long'),
+  sessionId: z.string().optional(),
+});
+
+export type JoinRoomInput = z.infer<typeof JoinRoomSchema>;
+
+export const SendChatMessageSchema = z.object({
+  message: z.string().trim().min(1, 'Message cannot be empty').max(500, 'Message too long (max 500 chars)'),
+});
+
+export type SendChatMessageInput = z.infer<typeof SendChatMessageSchema>;
+
+export const SeekPayloadSchema = z.object({
+  position: z.number().min(0, 'Position cannot be negative'),
+});
+
+export const RatePayloadSchema = z.object({
+  playbackRate: z.number().min(0.25).max(4.0),
+});
+
+export const UpdateMediaTitleSchema = z.object({
+  title: z.string().trim().min(1).max(100),
+});
+
+// ==========================================
+// 6. Authoritative Synchronization Calculations
+// ==========================================
+
+/**
+ * Computes current expected playback position based on server authoritative state and current server timestamp.
+ */
+export function calculateExpectedPosition(playback: PlaybackState, currentServerTime: number): number {
+  if (!playback.isPlaying) {
+    return playback.position;
+  }
+  const elapsedMs = Math.max(0, currentServerTime - playback.lastUpdatedAt);
+  const elapsedSeconds = (elapsedMs / 1000) * playback.playbackRate;
+  return playback.position + elapsedSeconds;
+}
+
+export function calculateServerOffset(requestClientTime: number, serverTime: number, responseClientTime: number): number {
+  const roundTripTime = responseClientTime - requestClientTime;
+  return serverTime - (requestClientTime + roundTripTime / 2);
+}
+
+/**
+ * Format runtime seconds to HH:MM:SS or MM:SS format. Safely handles NaN, null, and non-finite values.
+ */
+export function formatTime(seconds: number): string {
+  if (seconds === undefined || seconds === null || !Number.isFinite(seconds) || isNaN(seconds) || seconds < 0) {
+    return '00:00';
+  }
+  const totalSeconds = Math.floor(seconds);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) {
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  }
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
+// ==========================================
+// 7. Media & Upload Constants
+// ==========================================
+
+export const MAX_VIDEO_SIZE_BYTES = 5 * 1024 * 1024 * 1024; // 5,368,709,120 bytes (5 GB in binary)
+export const MAX_VIDEO_SIZE_MB = 5 * 1024; // 5120 MB
+export const MAX_VIDEO_SIZE_LABEL = '5GB';
+

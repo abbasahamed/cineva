@@ -1,0 +1,90 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Room {
+  id                String         @id @default(cuid())
+  roomCode          String         @unique
+  name              String
+  hostParticipantId String
+  hostSessionId     String
+  status            String         @default("active") // active, ended, expired
+  allowGuestControl Boolean        @default(false)
+  maxParticipants   Int            @default(20)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  expiresAt         DateTime?
+  
+  media             Media?
+  participants      Participant[]
+  messages          ChatMessage[]
+
+  @@index([roomCode])
+  @@index([status])
+}
+
+model Participant {
+  id          String   @id @default(cuid())
+  roomId      String
+  displayName String
+  sessionId   String
+  isHost      Boolean  @default(false)
+  isOnline    Boolean  @default(true)
+  joinedAt    DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, sessionId])
+  @@index([roomId])
+  @@index([sessionId])
+}
+
+model Media {
+  id                  String   @id @default(cuid())
+  roomId              String   @unique
+  title               String
+  filename            String
+  mimeType            String
+  size                BigInt
+  duration            Float?
+  storageKey          String
+  originalStorageKey  String?
+  playbackStorageKey  String?
+  status              String   @default("ready") // ready, processing, failed
+  transcodeProgress   Int      @default(100)     // 0 - 100
+  transcodeError      String?
+  sourceMimeType      String?
+  sourceSize          BigInt?
+  videoCodec          String?
+  audioCodec          String?
+  width               Int?
+  height              Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @default(now()) @updatedAt
+  
+  room                Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId])
+  @@index([status])
+}
+
+model ChatMessage {
+  id            String   @id @default(cuid())
+  roomId        String
+  participantId String
+  displayName   String
+  message       String
+  isSystem      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  
+  room          Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId])
+  @@index([createdAt])
+}
