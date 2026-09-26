@@ -1,4 +1,8 @@
 import express, { Request, Response, NextFunction } from 'express';
+import { execFile } from 'child_process';
+import util from 'util';
+import path from 'path';
+import fs from 'fs';
 import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
@@ -11,6 +15,27 @@ import mediaRoutes from './routes/mediaRoutes.js';
 import { mediaStorage } from './services/mediaStorage.js';
 import { setupSocketHandlers } from './sockets/socketHandler.js';
 import { logger } from './utils/logger.js';
+
+const execFilePromise = util.promisify(execFile);
+
+export async function checkBinary(bin: string): Promise<{ available: boolean; path?: string; version?: string; error?: string }> {
+  try {
+    const whichCmd = process.platform === "win32" ? "where" : "which";
+    const { stdout: binPath } = await execFilePromise(whichCmd, [bin]);
+    const { stdout: versionOut } = await execFilePromise(bin, ["-version"]);
+    const firstLine = (versionOut || "").split("\n")[0] || "";
+    return {
+      available: true,
+      path: binPath.trim(),
+      version: firstLine.trim(),
+    };
+  } catch (err: any) {
+    return {
+      available: false,
+      error: err.message,
+    };
+  }
+}
 
 // BigInt JSON serialization polyfill to prevent JSON.stringify errors
 (BigInt.prototype as any).toJSON = function () {
@@ -144,6 +169,46 @@ app.get(['/health', '/api/health'], (_req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' });
 });
 
+// System & Media Processing Diagnostics Endpoint (Safe, no secrets)
+app.get('/api/system/diagnostics', async (_req: Request, res: Response) => {
+  const [ffmpegInfo, ffprobeInfo] = await Promise.all([
+    checkBinary('ffmpeg'),
+    checkBinary('ffprobe'),
+  ]);
+
+  const tempDir = path.resolve(CONFIG.MEDIA_STORAGE_PATH, 'temp');
+  let diskInfo: any = { tempDir };
+  try {
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    if (typeof fs.statfsSync === 'function') {
+      const stats = fs.statfsSync(tempDir);
+      const availableBytes = stats.bavail * stats.bsize;
+      const totalBytes = stats.blocks * stats.bsize;
+      diskInfo = {
+        tempDir,
+        availableBytes,
+        availableGB: (availableBytes / (1024 * 1024 * 1024)).toFixed(2),
+        totalBytes,
+        totalGB: (totalBytes / (1024 * 1024 * 1024)).toFixed(2),
+        headroomFor3GB: availableBytes > (3.2 * 2.2 * 1024 * 1024 * 1024),
+      };
+    }
+  } catch (err: any) {
+    diskInfo.error = err.message;
+  }
+
+  res.json({
+    status: 'ok',
+    ffmpeg: ffmpegInfo,
+    ffprobe: ffprobeInfo,
+    disk: diskInfo,
+    storageDriver: CONFIG.STORAGE_DRIVER,
+    nodeEnv: CONFIG.NODE_ENV,
+  });
+});
+
 // REST Routes
 app.use('/api/rooms', roomRoutes);
 app.use('/api/media', mediaRoutes);
@@ -183,6 +248,27 @@ import { tempFileLifecycle } from './services/media/tempFileLifecycle.js';
 async function start() {
   await connectDB();
   validateStorageConfig();
+
+  // Run startup self-check for media processing tools and disk
+  try {
+    const [ffmpegCheck, ffprobeCheck] = await Promise.all([
+      checkBinary('ffmpeg'),
+      checkBinary('ffprobe'),
+    ]);
+    const tempDir = path.resolve(CONFIG.MEDIA_STORAGE_PATH, 'temp');
+    let diskAvailGB = 'unknown';
+    if (typeof fs.statfsSync === 'function' && fs.existsSync(tempDir)) {
+      const stats = fs.statfsSync(tempDir);
+      diskAvailGB = (stats.bavail * stats.bsize / (1024 * 1024 * 1024)).toFixed(2);
+    }
+    logger.info('[StartupDiagnostics]', {
+      ffmpeg: ffmpegCheck.available ? ffmpegCheck.version : 'NOT_FOUND',
+      ffprobe: ffprobeCheck.available ? ffprobeCheck.version : 'NOT_FOUND',
+      diskAvailableGB: diskAvailGB,
+    });
+  } catch (e: any) {
+    logger.warn('[StartupDiagnostics] Check error', { message: e.message });
+  }
 
   // Run startup cleanup of stale temporary files older than 1 hour
   try {

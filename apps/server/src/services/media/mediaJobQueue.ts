@@ -232,7 +232,24 @@ export class MediaJobQueue {
             jobId: job.id,
             sourceStorageKey,
           });
-          await mediaStorage.downloadToFile(sourceStorageKey, sourceStorageInput);
+          await mediaStorage.downloadToFile(sourceStorageKey, sourceStorageInput, async (downloaded, total) => {
+            const dlPercent = Math.min(25, 5 + Math.round((downloaded / total) * 20));
+            const dlMB = (downloaded / (1024 * 1024)).toFixed(0);
+            const totalMB = (total / (1024 * 1024)).toFixed(0);
+            const stage = `Retrieving video from storage (${dlMB}/${totalMB} MB)...`;
+
+            await prisma.media.update({
+              where: { roomId },
+              data: { transcodeProgress: dlPercent },
+            }).catch(() => {});
+
+            broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_PROGRESS, {
+              roomId,
+              status: "processing",
+              progress: dlPercent,
+              stage,
+            });
+          });
           actualSourcePath = sourceStorageInput;
         }
       }
@@ -240,6 +257,14 @@ export class MediaJobQueue {
       if (!actualSourcePath || !fs.existsSync(actualSourcePath)) {
         throw new Error("Source media file could not be located on disk for analysis");
       }
+
+      // Emit analysis stage
+      broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_PROGRESS, {
+        roomId,
+        status: "processing",
+        progress: 26,
+        stage: "Analyzing media streams...",
+      });
 
       // 1. Analyze media using ffprobe first to know action and size
       const analysis = await analyzeMediaFile(actualSourcePath);
@@ -435,15 +460,16 @@ export class MediaJobQueue {
         isAudioCompatible: decision.isAudioCompatible,
         durationSeconds: analysis.duration,
         onProgress: async (progressPercent, speed, etaSeconds, stage) => {
+          const scaledPercent = Math.min(99, 30 + Math.round(progressPercent * 0.69));
           await prisma.media.update({
             where: { roomId },
-            data: { transcodeProgress: progressPercent },
+            data: { transcodeProgress: scaledPercent },
           }).catch(() => { });
 
           broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_PROGRESS, {
             roomId,
             status: "processing",
-            progress: progressPercent,
+            progress: scaledPercent,
             speed,
             etaSeconds,
             stage: stage || (decision.action === "REMUX" ? "Remuxing container..." : decision.action === "AUDIO_TRANSCODE_VIDEO_COPY" ? "Converting audio (copying video)..." : "Re-encoding video..."),

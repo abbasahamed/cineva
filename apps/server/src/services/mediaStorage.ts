@@ -64,7 +64,7 @@ export interface MediaStorage {
   getMultipartPartUrl(storageKey: string, uploadId: string, partNumber: number): Promise<string>;
   completeMultipartUpload(storageKey: string, uploadId: string, parts: CompletedPart[], mimeType?: string): Promise<SavedMediaResult>;
   abortMultipartUpload(storageKey: string, uploadId: string): Promise<void>;
-  downloadToFile(storageKey: string, destinationPath: string): Promise<void>;
+  downloadToFile(storageKey: string, destinationPath: string, onProgress?: (downloadedBytes: number, totalBytes: number) => void): Promise<void>;
   listUploadedParts(storageKey: string, uploadId: string): Promise<number[]>;
   savePart?(uploadId: string, partNumber: number, data: Buffer | Readable): Promise<{ etag: string }>;
 }
@@ -340,9 +340,13 @@ export class LocalMediaStorage implements MediaStorage {
     await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
 
-  async downloadToFile(storageKey: string, destinationPath: string): Promise<void> {
+  async downloadToFile(storageKey: string, destinationPath: string, onProgress?: (downloadedBytes: number, totalBytes: number) => void): Promise<void> {
     const srcPath = this.getSafeFilePath(storageKey);
+    const stat = await fs.promises.stat(srcPath);
     await fs.promises.copyFile(srcPath, destinationPath);
+    if (onProgress) {
+      onProgress(stat.size, stat.size);
+    }
   }
 
   async listUploadedParts(_storageKey: string, uploadId: string): Promise<number[]> {
@@ -694,7 +698,7 @@ export class S3MediaStorage implements MediaStorage {
     }
   }
 
-  async downloadToFile(storageKey: string, destinationPath: string): Promise<void> {
+  async downloadToFile(storageKey: string, destinationPath: string, onProgress?: (downloadedBytes: number, totalBytes: number) => void): Promise<void> {
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: storageKey,
@@ -702,6 +706,21 @@ export class S3MediaStorage implements MediaStorage {
     const s3Response = await this.client.send(command);
     if (!s3Response.Body || !(s3Response.Body instanceof Readable)) {
       throw new Error(`Failed to stream object from S3 storage: ${storageKey}`);
+    }
+
+    const totalBytes = s3Response.ContentLength || 0;
+    let downloadedBytes = 0;
+    let lastProgressTime = 0;
+
+    if (onProgress && totalBytes > 0) {
+      s3Response.Body.on("data", (chunk: Buffer) => {
+        downloadedBytes += chunk.length;
+        const now = Date.now();
+        if (now - lastProgressTime > 800 || downloadedBytes === totalBytes) {
+          lastProgressTime = now;
+          onProgress(downloadedBytes, totalBytes);
+        }
+      });
     }
 
     const out = fs.createWriteStream(destinationPath);
