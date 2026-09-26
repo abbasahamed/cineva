@@ -527,4 +527,44 @@ router.post("/record-direct-upload", async (req: Request, res: Response) => {
   }
 });
 
+
+// POST /api/media/process-existing (Enqueue processing for an existing storage object)
+router.post("/process-existing", async (req: Request, res: Response) => {
+  try {
+    const { roomId, sessionId, storageKey, filename, size, title } = req.body;
+
+    if (!roomId || !sessionId || !storageKey || !filename) {
+      res.status(400).json({ error: "Missing required parameters (roomId, sessionId, storageKey, filename)" });
+      return;
+    }
+
+    const isHost = await roomManager.isHost(roomId, sessionId);
+    if (!isHost) {
+      res.status(403).json({ error: "Only the host is authorized to process media" });
+      return;
+    }
+
+    const safeName = sanitizeFileName(filename);
+    const safeTitle = title || safeName.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
+    const numSize = typeof size === "number" ? size : (parseInt(size, 10) || 0);
+
+    await mediaJobQueue.enqueueMediaProcessing(
+      roomId,
+      { storageKey, size: numSize },
+      safeName,
+      safeTitle
+    );
+
+    res.json({
+      status: "processing",
+      roomId,
+      storageKey,
+      filename: safeName,
+    });
+  } catch (err: any) {
+    console.error("Process existing media error:", err.message);
+    res.status(500).json({ error: "Failed to process existing media" });
+  }
+});
+
 export default router;

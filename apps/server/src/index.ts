@@ -235,11 +235,17 @@ app.get('/api/system/diagnostics', async (_req: Request, res: Response) => {
     };
   }
 
+  let existingStorageObjects: any[] = [];
+  if (typeof (mediaStorage as any).listExistingObjects === "function") {
+    existingStorageObjects = await (mediaStorage as any).listExistingObjects("media/", 15);
+  }
+
   res.json({
     status: "ok",
     ffmpeg: ffmpegInfo,
     ffprobe: ffprobeInfo,
     pipelineSelfTest,
+    existingStorageObjects,
     disk: diskInfo,
     storageDriver: CONFIG.STORAGE_DRIVER,
     nodeEnv: CONFIG.NODE_ENV,

@@ -12,6 +12,7 @@ import {
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
   ListPartsCommand,
+  ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Readable, Transform } from "stream";
@@ -67,6 +68,7 @@ export interface MediaStorage {
   downloadToFile(storageKey: string, destinationPath: string, onProgress?: (downloadedBytes: number, totalBytes: number) => void): Promise<void>;
   listUploadedParts(storageKey: string, uploadId: string): Promise<number[]>;
   savePart?(uploadId: string, partNumber: number, data: Buffer | Readable): Promise<{ etag: string }>;
+  listExistingObjects?(prefix?: string, maxKeys?: number): Promise<Array<{ key: string; size: number; lastModified?: Date }>>;
 }
 
 /**
@@ -347,6 +349,10 @@ export class LocalMediaStorage implements MediaStorage {
     if (onProgress) {
       onProgress(stat.size, stat.size);
     }
+  }
+
+  async listExistingObjects(_prefix?: string, _maxKeys?: number): Promise<Array<{ key: string; size: number; lastModified?: Date }>> {
+    return [];
   }
 
   async listUploadedParts(_storageKey: string, uploadId: string): Promise<number[]> {
@@ -738,6 +744,25 @@ export class S3MediaStorage implements MediaStorage {
       if (onProgress) onProgress(byteArray.length, byteArray.length);
     } else {
       throw new Error(`Unsupported body type from S3 storage for: ${storageKey}`);
+    }
+  }
+
+  async listExistingObjects(prefix?: string, maxKeys: number = 10): Promise<Array<{ key: string; size: number; lastModified?: Date }>> {
+    try {
+      const res = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: prefix,
+          MaxKeys: maxKeys,
+        })
+      );
+      return (res.Contents || []).map((c) => ({
+        key: c.Key || "",
+        size: c.Size || 0,
+        lastModified: c.LastModified,
+      }));
+    } catch {
+      return [];
     }
   }
 
