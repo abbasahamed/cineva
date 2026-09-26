@@ -39,16 +39,16 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0c16]/75 backdrop-blur-2xl border border-white/[0.1] rounded-3xl overflow-hidden shadow-2xl">
+    <div className="flex flex-col h-full bg-[#070912]/80 backdrop-blur-xl border border-white/[0.08] rounded-2xl overflow-hidden shadow-2xl">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-white/[0.07] flex items-center justify-between bg-white/[0.02]">
+      <div className="px-3.5 py-2.5 border-b border-white/[0.06] flex items-center justify-between bg-white/[0.015]">
         <div className="flex items-center gap-2">
           <span className="text-sm">💬</span>
           <span className="font-semibold text-[11px] tracking-wider uppercase text-slate-200">
             Cinema Chat
           </span>
         </div>
-        <span className="text-[10px] font-mono text-slate-400 px-2.5 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06]">
+        <span className="text-[10px] font-mono text-slate-400 px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06]">
           {messages.length} msgs
         </span>
       </div>
@@ -67,7 +67,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
             if (msg.isSystem) {
               return (
                 <div key={msg.id} className="flex justify-center my-1.5">
-                  <span className="text-[10px] text-surface-muted bg-white/[0.04] px-2.5 py-0.5 rounded-full border border-white/[0.06] backdrop-blur-xs">
+                  <span className="text-[10px] text-brand-300/80 bg-brand-500/5 px-2.5 py-0.5 rounded-full border border-brand-500/15 backdrop-blur-xs font-mono">
                     {msg.message}
                   </span>
                 </div>
@@ -101,10 +101,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                   </div>
 
                   <div
-                    className={`px-3.5 py-2 rounded-2xl text-xs leading-relaxed break-words shadow-sm ${
+                    className={`px-3.5 py-2 rounded-2xl text-xs leading-relaxed break-words shadow-xs ${
                       isMe
                         ? 'bg-gradient-to-r from-brand-600 to-indigo-600 text-white rounded-tr-xs border border-white/20 shadow-brand-600/20'
-                        : 'bg-white/[0.05] text-slate-200 border border-white/[0.08] backdrop-blur-sm rounded-tl-xs'
+                        : 'bg-white/[0.04] text-slate-200 border border-white/[0.07] rounded-tl-xs'
                     }`}
                   >
                     {msg.message}
@@ -118,7 +118,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       </div>
 
       {/* Message Input Footer with Shift+Enter handling */}
-      <div className="p-2.5 border-t border-white/[0.07] bg-white/[0.02] backdrop-blur-md flex items-end gap-2">
+      <div className="p-2.5 border-t border-white/[0.06] bg-white/[0.015] flex items-end gap-2">
         <textarea
           rows={1}
           value={inputText}
@@ -131,7 +131,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         <button
           onClick={handleSend}
           disabled={!inputText.trim()}
-          className="p-2.5 rounded-xl glass-btn-primary disabled:opacity-30 text-white transition-all shadow-sm shrink-0 active:scale-95"
+          className="p-2.5 rounded-xl glass-btn-primary hover:shadow-[0_0_16px_rgba(99,102,241,0.35)] disabled:opacity-30 text-white transition-all shadow-sm shrink-0 active:scale-95 cursor-pointer"
           title="Send (Enter)"
         >
           <Send className="w-3.5 h-3.5" />

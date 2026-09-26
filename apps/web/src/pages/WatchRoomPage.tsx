@@ -12,7 +12,7 @@ import { DebugPanel } from '../components/DebugPanel.js';
 import { useToast } from '../components/Toast.js';
 import { MessageSquare, Users, AlertCircle, ArrowLeft, RefreshCw, UploadCloud, Video, VideoOff, Mic, MicOff } from 'lucide-react';
 import { CinematicBackground } from '../components/CinematicBackground.js';
-import { VideoProvider, useVideoControls, VideoCallsPanel } from '../features/video/index.js';
+import { VideoProvider, useVideoControls, VideoCallsPanel, WebRTCDebugPanel } from '../features/video/index.js';
 
 function formatMediaInfo(media: { title: string; size?: number | string } | null | undefined) {
   if (!media) return { displayTitle: 'Private Screening', size: null, rawTitle: '' };
@@ -169,36 +169,54 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
     handleUpdateTitle,
     handleKickParticipant,
     handleEndRoom,
+    handleLeaveRoom,
+    handleMediaRetry,
     handleUserGestureStart,
   } = useSyncWatch({ roomCode, displayName, sessionId });
 
   const currentParticipant = participants.find((p) => p.sessionId === sessionId);
   const mediaInfo = formatMediaInfo(room?.media);
 
+  // Auto-toast & automatic redirect when room is cancelled/ended
+  useEffect(() => {
+    if (connectionStatus === 'ended') {
+      showToast(
+        errorMessage || 'Room cancelled: The host has left the room. This screening has ended. Returning to Home...',
+        'error'
+      );
+      const timer = setTimeout(() => {
+        navigate('/', { replace: true });
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [connectionStatus, errorMessage, navigate, showToast]);
+
   // Handle Room Ended or Fatal Error
   if (connectionStatus === 'ended' || (connectionStatus === 'error' && errorMessage)) {
     return (
       <div className="min-h-screen bg-[#040507] flex flex-col items-center justify-center p-6 text-center relative overflow-hidden">
         <CinematicBackground variant="subtle" />
-        <div className="relative z-10 flex flex-col items-center max-w-sm">
+        <div className="relative z-10 flex flex-col items-center max-w-sm animate-fadeIn">
           <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/25 flex items-center justify-center mb-5 text-rose-400 shadow-glass-sm">
-            <AlertCircle className="w-7 h-7" />
+            <AlertCircle className="w-7 h-7 animate-pulse" />
           </div>
-          <h2 className="text-xl font-extrabold text-white mb-2">Screening Ended</h2>
-          <p className="text-slate-400 text-xs mb-6 leading-relaxed">
-            {errorMessage || 'This private cinema screening is no longer active.'}
+          <h2 className="text-xl font-extrabold text-white mb-2">Room Cancelled</h2>
+          <p className="text-slate-400 text-xs mb-4 leading-relaxed">
+            {errorMessage || 'The host has left the room. This screening has ended.'}
           </p>
-          <button
-            onClick={() => navigate('/')}
-            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl glass-btn-primary text-white text-xs font-semibold transition-all active:scale-95 shadow-md"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Return to Home</span>
-          </button>
+          <div className="text-brand-400 text-xs font-semibold flex items-center gap-2">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            <span>Returning to Home...</span>
+          </div>
         </div>
       </div>
     );
   }
+
+  const debugNoMovie = searchParams.get('debugNoMovie') === '1';
+  const debugNoBackground = searchParams.get('debugNoBackground') === '1';
+  const debugNoSidebar = searchParams.get('debugNoSidebar') === '1';
+  const debugPlainRoom = searchParams.get('debugPlainRoom') === '1';
 
   return (
     <VideoProvider
@@ -207,8 +225,8 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
       currentDisplayName={displayName}
     >
       <div className="min-h-screen h-screen flex flex-col bg-[#020306] text-slate-100 overflow-hidden select-none relative">
-        {/* Subtle Cinema Atmosphere Background (faint distant stars & deep space ambient) */}
-        <CinematicBackground variant="cinema" />
+        {/* Subtle Cinema Atmosphere Background */}
+        {!debugNoBackground && !debugPlainRoom && <CinematicBackground variant="cinema" />}
 
         {/* Top Cinema Navbar */}
         <Navbar
@@ -218,7 +236,10 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
           isHost={isHost}
           onOpenShare={() => setIsShareOpen(true)}
           onOpenSettings={() => setIsSettingsOpen(true)}
-          onLeaveRoom={() => navigate('/')}
+          onLeaveRoom={() => {
+            handleLeaveRoom();
+            navigate('/', { replace: true });
+          }}
           activeSidebarTab={activeTab}
           onToggleSidebarTab={(tab) => {
             setActiveTab(tab);
@@ -239,26 +260,29 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
             <div className="w-full flex flex-col justify-center relative my-auto">
               {/* Screen-Light Ambient Backlight Glow emitting into surrounding theater */}
               <div
-                className="absolute -inset-6 sm:-inset-12 rounded-3xl bg-gradient-to-tr from-brand-600/25 via-indigo-600/20 to-purple-600/15 blur-[70px] sm:blur-[110px] opacity-45 sm:opacity-55 pointer-events-none -z-10 transition-opacity duration-1000"
+                className="absolute -inset-8 sm:-inset-16 rounded-3xl bg-gradient-to-tr from-brand-600/20 via-indigo-600/15 to-purple-600/10 blur-[80px] sm:blur-[120px] opacity-40 sm:opacity-50 pointer-events-none -z-10 transition-opacity duration-1000"
                 aria-hidden="true"
               />
 
               {/* Cinema Video Screen */}
-              <VideoPlayer
-                videoRef={videoRef}
-                media={room?.media}
-                playback={playback}
-                isHost={isHost}
-                canControl={canControl}
-                needsUserGesture={needsUserGesture}
-                onPlay={handlePlay}
-                onPause={handlePause}
-                onSeek={handleSeek}
-                onLocalScrubPreview={handleLocalScrubPreview}
-                onPlaybackRate={handlePlaybackRate}
-                onUserGestureStart={handleUserGestureStart}
-                onOpenUpload={() => setIsUploadOpen(true)}
-              />
+              {!debugNoMovie && (
+                <VideoPlayer
+                  videoRef={videoRef}
+                  media={room?.media}
+                  playback={playback}
+                  isHost={isHost}
+                  canControl={canControl}
+                  needsUserGesture={needsUserGesture}
+                  onPlay={handlePlay}
+                  onPause={handlePause}
+                  onSeek={handleSeek}
+                  onLocalScrubPreview={handleLocalScrubPreview}
+                  onPlaybackRate={handlePlaybackRate}
+                  onUserGestureStart={handleUserGestureStart}
+                  onOpenUpload={() => setIsUploadOpen(true)}
+                  onMediaRetry={handleMediaRetry}
+                />
+              )}
 
               {/* Cinematic Movie Title & Metadata Header Area */}
               <div className="mt-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-2 sm:px-3">
@@ -321,8 +345,8 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
           </div>
 
           {/* Right Sidebar: Stacked VIDEO CALLS + CHAT (~30% width) */}
-          {isCompanionOpen && (
-            <div className="w-full lg:w-[350px] xl:w-[380px] 2xl:w-[420px] flex flex-col shrink-0 h-full min-h-0 animate-fadeIn">
+          {isCompanionOpen && !debugNoSidebar && (
+            <div className="w-full lg:w-[350px] xl:w-[380px] 2xl:w-[420px] flex flex-col shrink-0 h-full min-h-0">
               {/* Upper Section: VIDEO CALLS */}
               <VideoCallsPanel />
 
@@ -420,6 +444,8 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
             videoRef={videoRef as React.RefObject<HTMLVideoElement>}
           />
         )}
+        {/* WebRTC Diagnostics Panel (?debugWebRTC=1) */}
+        <WebRTCDebugPanel />
       </div>
     </VideoProvider>
   );

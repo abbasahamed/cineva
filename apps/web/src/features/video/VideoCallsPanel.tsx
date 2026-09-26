@@ -20,10 +20,13 @@ export const VideoCallsPanel: React.FC = () => {
 
   return (
     <div
-      className="w-full bg-[#070913]/95 border border-white/[0.08] rounded-2xl p-3 shadow-xl flex flex-col shrink-0 mb-3 select-none"
+      className="w-full bg-[#080a13]/90 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-3 flex flex-col shrink-0 mb-3 select-none shadow-xl"
       role="region"
       aria-label="Video calls panel"
-      style={{ contain: 'layout paint' }}
+      style={{
+        contain: 'layout paint',
+        isolation: 'isolate',
+      }}
     >
       {/* Header bar: Title + Quick Device Controls */}
       <div className="flex items-center justify-between pb-2.5 border-b border-white/[0.06] mb-2.5">
@@ -46,7 +49,7 @@ export const VideoCallsPanel: React.FC = () => {
           {/* Mic Toggle Button */}
           <button
             onClick={toggleMute}
-            className={`p-1.5 rounded-lg border text-xs font-medium transition-all active:scale-95 ${
+            className={`p-1.5 rounded-lg border text-xs font-medium transition-all active:scale-95 cursor-pointer ${
               isMuted
                 ? 'bg-rose-500/15 hover:bg-rose-500/25 border-rose-500/30 text-rose-300'
                 : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08] text-emerald-400 hover:text-emerald-300'
@@ -61,9 +64,9 @@ export const VideoCallsPanel: React.FC = () => {
           <button
             onClick={toggleCamera}
             disabled={isConnecting}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-all active:scale-95 ${
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-all active:scale-95 cursor-pointer ${
               isCameraOn
-                ? 'bg-brand-500/20 hover:bg-brand-500/30 border-brand-500/40 text-brand-300 shadow-glass-glow'
+                ? 'bg-brand-500/25 hover:bg-brand-500/35 border-brand-500/40 text-brand-300 shadow-[0_0_12px_rgba(99,102,241,0.25)]'
                 : isConnecting
                 ? 'bg-brand-500/10 border-brand-500/20 text-brand-300 animate-pulse cursor-wait'
                 : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08] text-slate-300 hover:text-white'
@@ -92,7 +95,7 @@ export const VideoCallsPanel: React.FC = () => {
           </div>
           <button
             onClick={dismissError}
-            className="text-[10px] text-slate-400 hover:text-white shrink-0 ml-1 underline"
+            className="text-[10px] text-slate-400 hover:text-white shrink-0 ml-1 underline cursor-pointer"
           >
             Dismiss
           </button>
@@ -103,11 +106,11 @@ export const VideoCallsPanel: React.FC = () => {
       {totalCameras === 0 ? (
         // Empty State: No cameras on
         <div className="py-5 px-3 rounded-xl bg-white/[0.015] border border-dashed border-white/[0.06] text-center flex flex-col items-center justify-center">
-          <div className="w-8 h-8 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center text-slate-500 mb-2">
+          <div className="w-8 h-8 rounded-xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center text-brand-400 mb-2 shadow-xs">
             <VideoOff className="w-4 h-4" />
           </div>
-          <p className="text-xs font-medium text-slate-300 mb-0.5">No cameras on</p>
-          <p className="text-[10px] text-slate-500 max-w-[190px] leading-normal">
+          <p className="text-xs font-semibold text-slate-200 mb-0.5">No cameras on</p>
+          <p className="text-[10px] text-slate-400 max-w-[190px] leading-normal">
             Turn on your camera to see your friends here.
           </p>
         </div>
@@ -127,6 +130,7 @@ export const VideoCallsPanel: React.FC = () => {
             <VideoTile
               participantId={currentParticipantId}
               displayName={currentDisplayName}
+              stream={getStream(currentParticipantId || '', true)}
               isLocal={true}
               isMuted={isMuted}
               isCameraOff={false}
@@ -140,6 +144,7 @@ export const VideoCallsPanel: React.FC = () => {
               key={peer.participantId}
               participantId={peer.participantId}
               displayName={peer.displayName}
+              stream={peer.stream || getStream(peer.participantId, false)}
               isLocal={false}
               isMuted={peer.isMuted}
               isCameraOff={peer.isCameraOff}

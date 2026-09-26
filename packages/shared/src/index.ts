@@ -156,6 +156,7 @@ export const SOCKET_EVENTS = {
   ROOM_UPDATE_TITLE: 'room:updateTitle',
   ROOM_KICK_PARTICIPANT: 'room:kickParticipant',
   ROOM_END: 'room:end',
+  MEDIA_RETRY: 'media:retry',
   CHAT_SEND: 'chat:send',
   PING: 'sync:ping',
 
@@ -163,6 +164,7 @@ export const SOCKET_EVENTS = {
   ROOM_STATE: 'room:state',
   ROOM_NOT_FOUND: 'room:notFound',
   ROOM_ENDED: 'room:ended',
+  ROOM_CANCELLED: 'room:cancelled',
   PARTICIPANT_JOINED: 'participant:joined',
   PARTICIPANT_LEFT: 'participant:left',
   PARTICIPANT_KICKED: 'participant:kicked',

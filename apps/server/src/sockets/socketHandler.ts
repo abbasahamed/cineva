@@ -20,6 +20,7 @@ import {
 } from '@syncwatch/shared';
 import { CONFIG } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { mediaJobQueue } from '../services/media/mediaJobQueue.js';
 
 interface SocketData {
   roomId?: string;
@@ -462,6 +463,45 @@ export function setupSocketHandlers(io: SocketIOServer) {
       });
     });
 
+    socket.on(SOCKET_EVENTS.LEAVE_ROOM, async () => {
+      if (!socketData.roomId || !socketData.sessionId) return;
+      const roomId = socketData.roomId;
+      const sessionId = socketData.sessionId;
+
+      const isHost = await roomManager.isHost(roomId, sessionId).catch(() => false);
+      if (isHost) {
+        const timerKey = `${roomId}:${sessionId}`;
+        if (disconnectTimers.has(timerKey)) {
+          clearTimeout(disconnectTimers.get(timerKey)!);
+          disconnectTimers.delete(timerKey);
+        }
+        roomVideoParticipants.delete(roomId);
+        await roomManager.endRoom(roomId);
+        logger.roomEnded(roomId);
+        io.to(roomId).emit(SOCKET_EVENTS.ROOM_CANCELLED, {
+          message: 'The host has left the room. This screening has ended.',
+        });
+      } else {
+        await roomManager.setParticipantOnline(roomId, sessionId, false);
+        const participants = await roomManager.getParticipants(roomId);
+        socket.to(roomId).emit(SOCKET_EVENTS.PARTICIPANT_LEFT, {
+          sessionId,
+          participants,
+        });
+        if (socketData.displayName) {
+          const sysMsg = await roomManager.saveChatMessage(
+            roomId,
+            'system',
+            'System',
+            `${socketData.displayName} left the room.`,
+            true
+          );
+          io.to(roomId).emit(SOCKET_EVENTS.CHAT_MESSAGE, sysMsg);
+        }
+        socket.leave(roomId);
+      }
+    });
+
     socket.on(SOCKET_EVENTS.ROOM_END, async () => {
       if (!socketData.roomId || !socketData.sessionId) return;
       const isHost = await roomManager.isHost(socketData.roomId, socketData.sessionId);
@@ -470,10 +510,71 @@ export function setupSocketHandlers(io: SocketIOServer) {
         return;
       }
 
+      const timerKey = `${socketData.roomId}:${socketData.sessionId}`;
+      if (disconnectTimers.has(timerKey)) {
+        clearTimeout(disconnectTimers.get(timerKey)!);
+        disconnectTimers.delete(timerKey);
+      }
+
       roomVideoParticipants.delete(socketData.roomId);
       await roomManager.endRoom(socketData.roomId);
       logger.roomEnded(socketData.roomId);
+      io.to(socketData.roomId).emit(SOCKET_EVENTS.ROOM_CANCELLED, {
+        message: 'The host has left the room. This screening has ended.',
+      });
       io.to(socketData.roomId).emit(SOCKET_EVENTS.ROOM_ENDED, { message: 'The host has ended this watch room.' });
+    });
+
+    // Media Retry: host requests re-processing of current failed media
+    socket.on(SOCKET_EVENTS.MEDIA_RETRY, async () => {
+      if (!socketData.roomId || !socketData.sessionId) return;
+      const isHost = await roomManager.isHost(socketData.roomId, socketData.sessionId);
+      if (!isHost) {
+        socket.emit(SOCKET_EVENTS.ERROR, { message: 'Only the host can retry media processing.' });
+        return;
+      }
+
+      try {
+        const room = await roomManager.getRoomById(socketData.roomId);
+        if (!room || !room.media) {
+          socket.emit(SOCKET_EVENTS.ERROR, { message: 'No media to retry.' });
+          return;
+        }
+
+        const media = room.media;
+        if (media.status !== 'failed') {
+          socket.emit(SOCKET_EVENTS.ERROR, { message: 'Media is not in a failed state.' });
+          return;
+        }
+
+        // Re-enqueue using the originalStorageKey (the file saved before FFmpeg processing)
+        const sourceKey = (media as any).originalStorageKey || media.storageKey;
+        if (!sourceKey) {
+          socket.emit(SOCKET_EVENTS.ERROR, { message: 'No source file available to retry.' });
+          return;
+        }
+
+        const { mediaStorage } = await import('../services/mediaStorage.js');
+        const sourcePath = mediaStorage.getLocalPath(sourceKey);
+        if (!sourcePath) {
+          socket.emit(SOCKET_EVENTS.ERROR, { message: 'Source file not available for retry.' });
+          return;
+        }
+
+        const fs = await import('fs');
+        if (!fs.existsSync(sourcePath)) {
+          socket.emit(SOCKET_EVENTS.ERROR, { message: 'Source file not found on disk.' });
+          return;
+        }
+
+        // Extract original filename from the source storage key (removes 'source_' prefix)
+        const filename = media.filename.replace(/^source_/, '');
+        await mediaJobQueue.enqueueMediaProcessing(socketData.roomId, sourcePath, filename, media.title);
+        logger.info('MEDIA_RETRY_ENQUEUED', { roomId: socketData.roomId, filename });
+      } catch (err: any) {
+        logger.error('MEDIA_RETRY_ERROR', { roomId: socketData.roomId, error: err.message });
+        socket.emit(SOCKET_EVENTS.ERROR, { message: 'Failed to retry media processing.' });
+      }
     });
 
     // 5. Chat Messaging
@@ -652,6 +753,11 @@ export function setupSocketHandlers(io: SocketIOServer) {
       const target = roomSockets?.get(targetParticipantId) || roomVideos?.get(targetParticipantId);
       if (!target) return;
 
+      logger.info('ICE_CANDIDATE_FORWARDED', {
+        senderParticipantId: socketData.participantId,
+        targetParticipantId,
+      });
+
       io.to(target.socketId).emit(SOCKET_EVENTS.VIDEO_ICE_CANDIDATE, {
         fromParticipantId: socketData.participantId,
         candidate,
@@ -685,6 +791,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
       const sessionId = socketData.sessionId;
       const displayName = socketData.displayName;
       const participantId = socketData.participantId;
+      const isHostSocket = socketData.isHost === true;
       const timerKey = `${roomId}:${sessionId}`;
 
       // Clean up video call immediately upon socket disconnect (no need to wait grace period for WebRTC P2P)
@@ -719,6 +826,20 @@ export function setupSocketHandlers(io: SocketIOServer) {
             true
           );
           io.to(roomId).emit(SOCKET_EVENTS.CHAT_MESSAGE, sysMsg);
+        }
+
+        // If the disconnected participant was the host, cancel the room for all guests
+        if (isHostSocket) {
+          // Verify authoritatively via DB (not just in-memory socketData)
+          const isStillHost = await roomManager.isHost(roomId, sessionId).catch(() => false);
+          if (isStillHost) {
+            roomVideoParticipants.delete(roomId);
+            await roomManager.endRoom(roomId);
+            io.to(roomId).emit(SOCKET_EVENTS.ROOM_CANCELLED, {
+              message: 'The host has left the room. This screening has ended.',
+            });
+            logger.info('ROOM_CANCELLED_HOST_DISCONNECT', { roomId, displayName });
+          }
         }
 
         logger.participantDisconnected(roomId, displayName);

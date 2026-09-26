@@ -31,6 +31,8 @@ export interface VideoPeerDisplayState {
   isMuted: boolean;
   isCameraOff: boolean;
   connectionState?: RTCPeerConnectionState;
+  stream?: MediaStream | null;
+  peerDebugId?: string;
 }
 
 export interface VideoCallControls {

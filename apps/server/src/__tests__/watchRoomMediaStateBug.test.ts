@@ -27,14 +27,15 @@ describe('Watch Room Media State Propagation Regression Test Suite', () => {
 
     if (!server.listening) {
       await new Promise<void>((resolve) => {
-        server.listen(4058, () => resolve());
+        server.listen(0, '127.0.0.1', () => resolve());
       });
       didStartServer = true;
-      serverUrl = 'http://localhost:4058';
+      const addr = server.address() as { port: number };
+      serverUrl = `http://127.0.0.1:${addr.port}`;
     } else {
       const addr = server.address();
       const port = addr && typeof addr === 'object' ? addr.port : 4000;
-      serverUrl = `http://localhost:${port}`;
+      serverUrl = `http://127.0.0.1:${port}`;
     }
 
     // Create room with NO media initially

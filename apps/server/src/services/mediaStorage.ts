@@ -35,6 +35,8 @@ export interface MediaStorage {
   deleteFile(storageKey: string): Promise<void>;
   streamFile(storageKey: string, req: Request, res: Response): Promise<void> | void;
   getUrl(storageKey: string): string;
+  /** Returns the absolute local filesystem path for a storage key, or null if not applicable (e.g. S3). */
+  getLocalPath(storageKey: string): string | null;
   ensureDemoMedia(): SavedMediaResult;
   getSignedUploadUrl?(roomId: string, originalName: string, mimeType: string): Promise<SignedUploadResult>;
 }
@@ -110,6 +112,14 @@ export class LocalMediaStorage implements MediaStorage {
 
   getUrl(storageKey: string): string {
     return `/media/${encodeURIComponent(storageKey)}`;
+  }
+
+  getLocalPath(storageKey: string): string | null {
+    try {
+      return this.getSafeFilePath(storageKey);
+    } catch {
+      return null;
+    }
   }
 
   streamFile(storageKey: string, req: Request, res: Response): void {
@@ -288,6 +298,11 @@ export class S3MediaStorage implements MediaStorage {
     }
     // Proxied streaming route to keep bucket private and support range requests
     return `/media/${encodeURIComponent(storageKey)}`;
+  }
+
+  getLocalPath(_storageKey: string): string | null {
+    // S3 files are not stored on the local filesystem
+    return null;
   }
 
   async streamFile(storageKey: string, req: Request, res: Response): Promise<void> {

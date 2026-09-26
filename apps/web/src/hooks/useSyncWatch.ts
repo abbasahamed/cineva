@@ -45,6 +45,7 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
   const canControlRef = useRef<boolean>(canControl);
   const isSeekingLocallyRef = useRef<boolean>(false);
   const lastLocalSeekRef = useRef<{ targetTime: number; timestamp: number } | null>(null);
+  const isTerminatedRef = useRef<boolean>(false);
 
   latestPlaybackRef.current = playback;
   isHostRef.current = isHost;
@@ -213,13 +214,39 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
     };
 
     const onRoomUpdated = (data: { room: RoomInfo }) => {
-      setRoom(data.room);
+      if (isTerminatedRef.current) return;
+      setRoom((prev) => {
+        const next = data.room;
+        if (!prev) return next;
+
+        // Guard: don't overwrite a more advanced media state with a stale one.
+        // If prev media is 'ready' or 'processing' and the incoming media is absent or 'failed',
+        // keep the existing media state to prevent race-condition downgrades.
+        const prevStatus = prev.media?.status;
+        const nextMedia = next.media;
+        if (nextMedia == null && prev.media != null) {
+          // Incoming room:updated has no media info — preserve existing media
+          return { ...next, media: prev.media };
+        }
+        if (
+          prevStatus === 'ready' &&
+          nextMedia != null &&
+          nextMedia.status === 'failed' &&
+          prev.media?.id === nextMedia.id
+        ) {
+          // A room:updated carrying a failed status for the SAME media record that we already
+          // know is ready — this is a stale event. Preserve ready state.
+          return { ...next, media: prev.media };
+        }
+        return next;
+      });
       const hostStatus = (data.room?.hostSessionId ? data.room.hostSessionId === sessionId : false) || isHostRef.current;
       setIsHost(hostStatus);
       setCanControl(hostStatus || (data.room?.settings?.allowGuestControl ?? false));
     };
 
     const onRoomEnded = (data: { message: string }) => {
+      isTerminatedRef.current = true;
       setConnectionStatus('ended');
       setErrorMessage(data.message || 'The host has ended this watch room.');
       if (videoRef.current) {
@@ -227,7 +254,17 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
       }
     };
 
+    const onRoomCancelled = (data: { message: string }) => {
+      isTerminatedRef.current = true;
+      setConnectionStatus('ended');
+      setErrorMessage(data.message || 'The host has left the room. This screening has ended.');
+      if (videoRef.current) {
+        videoRef.current.pause();
+      }
+    };
+
     const onRoomNotFound = (data: { message: string }) => {
+      isTerminatedRef.current = true;
       setConnectionStatus('error');
       setErrorMessage(data.message || 'Room not found.');
     };
@@ -354,6 +391,7 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
     socket.on(SOCKET_EVENTS.PARTICIPANT_KICKED, onParticipantKicked);
     socket.on('room:updated', onRoomUpdated);
     socket.on(SOCKET_EVENTS.ROOM_ENDED, onRoomEnded);
+    socket.on(SOCKET_EVENTS.ROOM_CANCELLED, onRoomCancelled);
     socket.on(SOCKET_EVENTS.ROOM_NOT_FOUND, onRoomNotFound);
     socket.on(SOCKET_EVENTS.CHAT_MESSAGE, onChatMessage);
     socket.on(SOCKET_EVENTS.CHAT_HISTORY, onChatHistory);
@@ -378,6 +416,7 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
       socket.off(SOCKET_EVENTS.PARTICIPANT_KICKED, onParticipantKicked);
       socket.off('room:updated', onRoomUpdated);
       socket.off(SOCKET_EVENTS.ROOM_ENDED, onRoomEnded);
+      socket.off(SOCKET_EVENTS.ROOM_CANCELLED, onRoomCancelled);
       socket.off(SOCKET_EVENTS.ROOM_NOT_FOUND, onRoomNotFound);
       socket.off(SOCKET_EVENTS.CHAT_MESSAGE, onChatMessage);
       socket.off(SOCKET_EVENTS.CHAT_HISTORY, onChatHistory);
@@ -516,7 +555,24 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
   }, []);
 
   const handleEndRoom = useCallback(() => {
+    isTerminatedRef.current = true;
     socketService.emitEndRoom();
+    setConnectionStatus('ended');
+  }, []);
+
+  const handleLeaveRoom = useCallback(() => {
+    isTerminatedRef.current = true;
+    if (isHostRef.current) {
+      socketService.emitEndRoom();
+    } else {
+      socketService.emitLeaveRoom();
+    }
+    socketService.disconnect();
+    setConnectionStatus('ended');
+  }, []);
+
+  const handleMediaRetry = useCallback(() => {
+    socketService.emitMediaRetry();
   }, []);
 
   const handleUserGestureStart = useCallback(() => {
@@ -551,6 +607,8 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
     handleUpdateTitle,
     handleKickParticipant,
     handleEndRoom,
+    handleLeaveRoom,
+    handleMediaRetry,
     handleUserGestureStart,
   };
 }

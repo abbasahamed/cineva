@@ -136,6 +136,14 @@ export class SocketService {
     this.socket?.emit(SOCKET_EVENTS.ROOM_END);
   }
 
+  public emitLeaveRoom() {
+    this.socket?.emit(SOCKET_EVENTS.LEAVE_ROOM);
+  }
+
+  public emitMediaRetry() {
+    this.socket?.emit(SOCKET_EVENTS.MEDIA_RETRY);
+  }
+
   // WebRTC Video Calling Signaling Emitters
   public emitVideoJoin() {
     this.socket?.emit(SOCKET_EVENTS.VIDEO_JOIN);

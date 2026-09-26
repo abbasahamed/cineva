@@ -34,6 +34,7 @@ interface VideoPlayerProps {
   onPlaybackRate: (rate: number) => void;
   onUserGestureStart: () => void;
   onOpenUpload: () => void;
+  onMediaRetry?: () => void;
 }
 
 export function formatTime(seconds: number): string {
@@ -64,6 +65,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onPlaybackRate,
   onUserGestureStart,
   onOpenUpload,
+  onMediaRetry,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
@@ -350,7 +352,39 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   };
 
-  const togglePiP = async () => {
+  const [isPiP, setIsPiP] = useState(false);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video) {
+      (video as any).autoPictureInPicture = false;
+      video.setAttribute('autopictureinpicture', 'false');
+    }
+
+    const handleEnterPiP = () => {
+      setIsPiP(true);
+    };
+
+    const handleLeavePiP = () => {
+      setIsPiP(false);
+    };
+
+    video.addEventListener('enterpictureinpicture', handleEnterPiP);
+    video.addEventListener('leavepictureinpicture', handleLeavePiP);
+
+    return () => {
+      video.removeEventListener('enterpictureinpicture', handleEnterPiP);
+      video.removeEventListener('leavepictureinpicture', handleLeavePiP);
+    };
+  }, [media?.url]);
+
+  const togglePiP = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     const video = videoRef.current;
     if (!video) return;
     try {
@@ -382,6 +416,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           ref={videoRef}
           src={media.url}
           playsInline
+          disablePictureInPicture={false}
           className="w-full h-full object-contain cursor-pointer relative z-0"
           onClick={togglePlayPause}
           onError={() => {
@@ -430,7 +465,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           {isHost && (
             <button
               onClick={onOpenUpload}
-              className="inline-flex items-center gap-2.5 px-7 py-3 rounded-2xl glass-btn-primary text-white font-semibold text-xs sm:text-sm shadow-xl transition-all active:scale-95 hover:scale-[1.02]"
+              className="inline-flex items-center gap-2.5 px-7 py-3 rounded-2xl glass-btn-primary hover:shadow-[0_0_24px_rgba(99,102,241,0.4)] text-white font-semibold text-xs sm:text-sm shadow-xl transition-all active:scale-95 hover:scale-[1.02] cursor-pointer"
             >
               <UploadCloud className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
               <span>Add video</span>
@@ -561,16 +596,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </p>
           {isHost && (
             <div className="flex items-center gap-3">
+              {onMediaRetry && (
+                <button
+                  onClick={onMediaRetry}
+                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white font-medium text-xs transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Retry</span>
+                </button>
+              )}
               <button
                 onClick={onOpenUpload}
-                className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white font-medium text-xs transition-all active:scale-95 flex items-center gap-2"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Retry</span>
-              </button>
-              <button
-                onClick={onOpenUpload}
-                className="px-5 py-2 rounded-xl glass-btn-primary text-white font-semibold text-xs shadow-md transition-all active:scale-95 flex items-center gap-2"
+                className="px-5 py-2 rounded-xl glass-btn-primary hover:shadow-[0_0_20px_rgba(99,102,241,0.4)] text-white font-semibold text-xs shadow-md transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
               >
                 <UploadCloud className="w-4 h-4" />
                 <span>Change Video</span>
@@ -751,9 +788,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
                 {/* Picture in Picture */}
                 <button
-                  onClick={togglePiP}
-                  className="p-1.5 sm:p-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.06] text-slate-300 hover:text-white transition-all hidden sm:block"
-                  title="Picture-in-Picture"
+                  onClick={(e) => togglePiP(e)}
+                  className={`p-1.5 sm:p-2 rounded-xl border transition-all hidden sm:block ${
+                    isPiP
+                      ? 'bg-brand-500/20 text-brand-300 border-brand-500/40 shadow-glass-glow'
+                      : 'bg-white/[0.05] hover:bg-white/[0.1] border-white/[0.06] text-slate-300 hover:text-white'
+                  }`}
+                  title={isPiP ? 'Exit Picture-in-Picture' : 'Picture-in-Picture'}
+                  aria-label={isPiP ? 'Exit Picture-in-Picture' : 'Picture-in-Picture'}
                 >
                   <PictureInPicture className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </button>

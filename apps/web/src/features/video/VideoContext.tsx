@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { socketService } from '../../services/socket.js';
 import {
+  SOCKET_EVENTS,
   VideoParticipant,
   RelayedVideoOfferPayload,
   RelayedVideoAnswerPayload,
@@ -16,12 +17,14 @@ interface VideoContextValue {
   isConnecting: boolean;
   permissionError: string | null;
   cameraPeers: VideoPeerDisplayState[];
+  allPeers: VideoPeerDisplayState[];
   currentParticipantId?: string;
   currentDisplayName?: string;
   toggleCamera: () => Promise<void>;
   toggleMute: () => Promise<void>;
   dismissError: () => void;
   getStream: (participantId: string, isLocal?: boolean) => MediaStream | null;
+  getPeerDiagnostics: (participantId: string) => any;
 }
 
 const VideoContext = createContext<VideoContextValue | null>(null);
@@ -44,24 +47,40 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
 
-  // Map of participantId -> VideoPeerDisplayState (only primitive metadata, NOT streams)
+  // Map of participantId -> VideoPeerDisplayState (including active streams and debug info)
   const [remotePeers, setRemotePeers] = useState<Map<string, VideoPeerDisplayState>>(new Map());
 
   const managerRef = useRef<VideoCallManager | null>(null);
 
   // Helper to get or create manager singleton
   const getOrCreateManager = useCallback(() => {
-    if (managerRef.current) return managerRef.current;
+    if (managerRef.current) {
+      if (currentParticipantId) {
+        managerRef.current.setLocalParticipantId(currentParticipantId);
+      }
+      return managerRef.current;
+    }
 
     const mgr = new VideoCallManager({
-      onRemoteStream: (participantId, _stream) => {
+      onRemoteStream: (participantId, stream) => {
+        console.log('[VideoContext DIAG] onRemoteStream received', {
+          participantId,
+          streamId: stream.id,
+          videoTracks: stream.getVideoTracks().length,
+          audioTracks: stream.getAudioTracks().length,
+        });
         setRemotePeers((prev) => {
           const existing = prev.get(participantId);
-          if (!existing) return prev;
           const next = new Map(prev);
           next.set(participantId, {
-            ...existing,
+            participantId,
+            displayName: existing?.displayName || 'Friend',
+            isLocal: false,
+            isMuted: existing?.isMuted ?? false,
+            isCameraOff: false,
             connectionState: 'connected',
+            stream,
+            peerDebugId: `PC-${currentParticipantId || 'anon'}-${participantId}`,
           });
           return next;
         });
@@ -75,6 +94,10 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
         });
       },
       onConnectionStateChange: (participantId, connectionState) => {
+        console.log('[VideoContext DIAG] onConnectionStateChange', {
+          participantId,
+          connectionState,
+        });
         setRemotePeers((prev) => {
           const existing = prev.get(participantId);
           if (!existing) return prev;
@@ -89,11 +112,11 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
       onError: (err) => {
         console.warn('WebRTC warning:', err);
       },
-    });
+    }, currentParticipantId || '');
 
     managerRef.current = mgr;
     return mgr;
-  }, []);
+  }, [currentParticipantId]);
 
   const getStream = useCallback((participantId: string, isLocal?: boolean): MediaStream | null => {
     return managerRef.current ? managerRef.current.getStream(participantId, isLocal) : null;
@@ -173,58 +196,69 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
 
     // 1. Initial participants who already have camera on in this room
     const handleParticipants = async (data: { participants: VideoParticipant[] }) => {
+      console.log('[VideoContext DIAG] handleParticipants received', {
+        count: data.participants.length,
+        participants: data.participants.map((p) => ({ id: p.participantId, isCameraOff: p.isCameraOff })),
+      });
       setRemotePeers((prev) => {
         const next = new Map(prev);
         for (const p of data.participants) {
           if (p.participantId !== currentParticipantId) {
+            const existing = prev.get(p.participantId);
+            const stream = existing?.stream || mgr.getStream(p.participantId) || null;
             next.set(p.participantId, {
               participantId: p.participantId,
               displayName: p.displayName,
               isLocal: false,
               isMuted: p.isMuted,
               isCameraOff: p.isCameraOff,
-              connectionState: 'connecting',
+              connectionState: existing?.connectionState || (stream ? 'connected' : 'connecting'),
+              stream,
+              peerDebugId: `PC-${currentParticipantId || 'anon'}-${p.participantId}`,
             });
           }
         }
         return next;
       });
 
-      // If we also have our camera on, initiate connection
-      if (isCameraOn) {
-        for (const p of data.participants) {
-          if (p.participantId !== currentParticipantId) {
-            await mgr.initiateConnectionToPeer(p.participantId);
-          }
+      // Connect to peers so we can send/receive media (one-way or two-way)
+      for (const p of data.participants) {
+        if (p.participantId !== currentParticipantId) {
+          await mgr.initiateConnectionToPeer(p.participantId);
         }
       }
     };
 
     // 2. A remote peer in the room turned their camera ON
     const handlePeerJoined = async (data: { participant: VideoParticipant }) => {
+      console.log('[VideoContext DIAG] handlePeerJoined received', {
+        id: data.participant.participantId,
+        displayName: data.participant.displayName,
+        isCameraOff: data.participant.isCameraOff,
+      });
       if (data.participant.participantId === currentParticipantId) return;
 
       setRemotePeers((prev) => {
         const next = new Map(prev);
+        const existing = prev.get(data.participant.participantId);
+        const stream = existing?.stream || mgr.getStream(data.participant.participantId) || null;
         next.set(data.participant.participantId, {
           participantId: data.participant.participantId,
           displayName: data.participant.displayName,
           isLocal: false,
           isMuted: data.participant.isMuted,
           isCameraOff: data.participant.isCameraOff,
-          connectionState: 'connecting',
+          connectionState: existing?.connectionState || (stream ? 'connected' : 'connecting'),
+          stream,
+          peerDebugId: `PC-${currentParticipantId || 'anon'}-${data.participant.participantId}`,
         });
         return next;
       });
-
-      // If we have camera active, initiate offer
-      if (isCameraOn) {
-        await mgr.initiateConnectionToPeer(data.participant.participantId);
-      }
     };
 
     // 3. A remote peer turned off media or left
     const handlePeerLeft = (data: { participantId: string }) => {
+      console.log('[VideoContext DIAG] handlePeerLeft received', data.participantId);
       mgr.closePeerConnection(data.participantId);
       setRemotePeers((prev) => {
         if (!prev.has(data.participantId)) return prev;
@@ -236,14 +270,21 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
 
     // 4. Remote peer updated camera / mic state
     const handlePeerState = (data: RelayedVideoStatePayload) => {
+      console.log('[VideoContext DIAG] handlePeerState received', data);
       setRemotePeers((prev) => {
         const existing = prev.get(data.participantId);
         if (!existing) return prev;
         const next = new Map(prev);
+        const stream = existing.stream || mgr.getStream(data.participantId) || null;
+        const hasLiveVideo = !!(stream && stream.getVideoTracks().some((t) => t.readyState === 'live'));
+        const nextCameraOff = typeof data.isCameraOff === 'boolean'
+          ? data.isCameraOff
+          : existing.isCameraOff;
         next.set(data.participantId, {
           ...existing,
           isMuted: typeof data.isMuted === 'boolean' ? data.isMuted : existing.isMuted,
-          isCameraOff: typeof data.isCameraOff === 'boolean' ? data.isCameraOff : existing.isCameraOff,
+          isCameraOff: nextCameraOff,
+          stream,
         });
         return next;
       });
@@ -251,16 +292,20 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
 
     // 5. Inbound SDP Offer
     const handleOffer = async (data: RelayedVideoOfferPayload) => {
+      console.log('[VideoContext DIAG] handleOffer received from', data.fromParticipantId);
       setRemotePeers((prev) => {
         const next = new Map(prev);
         const existing = next.get(data.fromParticipantId);
+        const stream = existing?.stream || mgr.getStream(data.fromParticipantId) || null;
         next.set(data.fromParticipantId, {
           participantId: data.fromParticipantId,
           displayName: data.fromDisplayName || existing?.displayName || 'Friend',
           isLocal: false,
           isMuted: existing?.isMuted ?? false,
           isCameraOff: existing?.isCameraOff ?? false,
-          connectionState: 'connecting',
+          connectionState: existing?.connectionState || (stream ? 'connected' : 'connecting'),
+          stream,
+          peerDebugId: `PC-${currentParticipantId || 'anon'}-${data.fromParticipantId}`,
         });
         return next;
       });
@@ -270,6 +315,7 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
 
     // 6. Inbound SDP Answer
     const handleAnswer = async (data: RelayedVideoAnswerPayload) => {
+      console.log('[VideoContext DIAG] handleAnswer received from', data.fromParticipantId);
       await mgr.handleIncomingAnswer(data.fromParticipantId, data.sdp);
     };
 
@@ -278,24 +324,39 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
       await mgr.handleIncomingIceCandidate(data.fromParticipantId, data.candidate);
     };
 
-    socket.on('video:participants', handleParticipants);
-    socket.on('video:peer-joined', handlePeerJoined);
-    socket.on('video:peer-left', handlePeerLeft);
-    socket.on('video:peer-state', handlePeerState);
-    socket.on('video:offer', handleOffer);
-    socket.on('video:answer', handleAnswer);
-    socket.on('video:ice-candidate', handleIceCandidate);
+    socket.on(SOCKET_EVENTS.VIDEO_PARTICIPANTS, handleParticipants);
+    socket.on(SOCKET_EVENTS.VIDEO_PEER_JOINED, handlePeerJoined);
+    socket.on(SOCKET_EVENTS.VIDEO_PEER_LEFT, handlePeerLeft);
+    socket.on(SOCKET_EVENTS.VIDEO_PEER_STATE, handlePeerState);
+    socket.on(SOCKET_EVENTS.VIDEO_OFFER, handleOffer);
+    socket.on(SOCKET_EVENTS.VIDEO_ANSWER, handleAnswer);
+    socket.on(SOCKET_EVENTS.VIDEO_ICE_CANDIDATE, handleIceCandidate);
 
     return () => {
-      socket.off('video:participants', handleParticipants);
-      socket.off('video:peer-joined', handlePeerJoined);
-      socket.off('video:peer-left', handlePeerLeft);
-      socket.off('video:peer-state', handlePeerState);
-      socket.off('video:offer', handleOffer);
-      socket.off('video:answer', handleAnswer);
-      socket.off('video:ice-candidate', handleIceCandidate);
+      socket.off(SOCKET_EVENTS.VIDEO_PARTICIPANTS, handleParticipants);
+      socket.off(SOCKET_EVENTS.VIDEO_PEER_JOINED, handlePeerJoined);
+      socket.off(SOCKET_EVENTS.VIDEO_PEER_LEFT, handlePeerLeft);
+      socket.off(SOCKET_EVENTS.VIDEO_PEER_STATE, handlePeerState);
+      socket.off(SOCKET_EVENTS.VIDEO_OFFER, handleOffer);
+      socket.off(SOCKET_EVENTS.VIDEO_ANSWER, handleAnswer);
+      socket.off(SOCKET_EVENTS.VIDEO_ICE_CANDIDATE, handleIceCandidate);
     };
   }, [currentParticipantId, isCameraOn, getOrCreateManager]);
+
+  // Development React state diagnostic observer (item 8 in requirements)
+  useEffect(() => {
+    for (const [id, peer] of remotePeers.entries()) {
+      console.log('[VideoContext DIAG] remotePeers state entry:', {
+        participantId: id,
+        displayName: peer.displayName,
+        isCameraOff: peer.isCameraOff,
+        connectionState: peer.connectionState,
+        hasStream: Boolean(peer.stream),
+        streamId: peer.stream?.id,
+        videoTrackCount: peer.stream?.getVideoTracks().length || 0,
+      });
+    }
+  }, [remotePeers]);
 
   // Clean up all hardware tracks on unmount (e.g. leaving watch room)
   useEffect(() => {
@@ -308,8 +369,20 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
     };
   }, []);
 
-  // Filter peers to only those whose camera is currently ON
-  const cameraPeers = Array.from(remotePeers.values()).filter((p) => !p.isCameraOff);
+  // Filter peers to only those whose camera is currently ON or who have a live incoming stream
+  const cameraPeers = Array.from(remotePeers.values()).filter((p) => {
+    if (!p.isCameraOff) return true;
+    const s = p.stream || (managerRef.current ? managerRef.current.getStream(p.participantId) : null);
+    if (s && s.getVideoTracks().some((t) => t.readyState === 'live')) {
+      return true;
+    }
+    return false;
+  });
+  const allPeers = Array.from(remotePeers.values());
+
+  const getPeerDiagnostics = useCallback((participantId: string) => {
+    return managerRef.current ? managerRef.current.getPeerDiagnostics(participantId) : null;
+  }, []);
 
   const contextValue: VideoContextValue = {
     isCameraOn,
@@ -317,12 +390,14 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
     isConnecting,
     permissionError,
     cameraPeers,
+    allPeers,
     currentParticipantId,
     currentDisplayName,
     toggleCamera,
     toggleMute,
     dismissError,
     getStream,
+    getPeerDiagnostics,
   };
 
   return <VideoContext.Provider value={contextValue}>{children}</VideoContext.Provider>;
@@ -353,8 +428,10 @@ export function useVideoPeers() {
     isCameraOn: ctx.isCameraOn,
     isMuted: ctx.isMuted,
     cameraPeers: ctx.cameraPeers,
+    allPeers: ctx.allPeers,
     currentDisplayName: ctx.currentDisplayName || 'You',
     currentParticipantId: ctx.currentParticipantId || '',
     getStream: ctx.getStream,
+    getPeerDiagnostics: ctx.getPeerDiagnostics,
   };
 }

@@ -6,3 +6,4 @@ export * from './VideoTile.js';
 export * from './VideoCallsPanel.js';
 export * from './VideoCallPanel.js';
 export * from './useVideoCall.js';
+export * from './WebRTCDebugPanel.js';

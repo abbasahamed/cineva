@@ -52,7 +52,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn"
     >
-      <div className="relative w-full max-w-md bg-[#0e1017]/85 backdrop-blur-2xl border border-white/[0.12] rounded-3xl shadow-glass-elevated p-6 sm:p-7 overflow-hidden glass-reflection animate-scaleUp">
+      <div className="relative w-full max-w-md bg-[#0a0c16]/90 backdrop-blur-2xl border border-white/[0.12] rounded-3xl shadow-glass-elevated p-6 sm:p-7 overflow-hidden glass-reflection animate-scaleUp">
+        {/* Subtle top ambient highlight accent */}
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-brand-400/35 to-transparent pointer-events-none" />
+
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-white/[0.08] mb-5">
           <div className="flex items-center gap-3">

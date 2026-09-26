@@ -1,7 +1,10 @@
+import fs from 'fs';
+import path from 'path';
 import { prisma } from '../db.js';
 import { generateRoomCode, generateSessionId } from '../utils/idGenerator.js';
 import { syncEngine } from './syncEngine.js';
 import { mediaStorage } from './mediaStorage.js';
+import { mediaJobQueue } from './media/mediaJobQueue.js';
 import {
   CreateRoomInput,
   JoinRoomInput,
@@ -109,7 +112,19 @@ export class RoomManager {
     storageKey: string;
     duration?: number;
   }) {
-    // Delete existing media record if any
+    // Clean old storage files for existing media record if any
+    const existingMedia = await prisma.media.findMany({ where: { roomId } });
+    for (const m of existingMedia) {
+      if (m.storageKey && !m.storageKey.startsWith('pending_') && m.storageKey !== mediaData.storageKey) {
+        await mediaStorage.deleteFile(m.storageKey).catch(() => {});
+      }
+      if (m.originalStorageKey && m.originalStorageKey !== mediaData.storageKey) {
+        await mediaStorage.deleteFile(m.originalStorageKey).catch(() => {});
+      }
+      if (m.playbackStorageKey && m.playbackStorageKey !== mediaData.storageKey) {
+        await mediaStorage.deleteFile(m.playbackStorageKey).catch(() => {});
+      }
+    }
     await prisma.media.deleteMany({ where: { roomId } });
 
     const bigSize = typeof mediaData.size === 'bigint'
@@ -382,7 +397,78 @@ export class RoomManager {
   }
 
   /**
-   * Ends a room.
+   * Automatically cleans up all media files and database records associated with a room.
+   * Strictly scoped to the specified roomId. Idempotent and safe against missing files.
+   */
+  async cleanupRoomMedia(roomId: string): Promise<void> {
+    logger.info(`[MediaCleanup] Starting cleanup for room ${roomId}`);
+
+    try {
+      // 1. Cancel any active or queued media jobs for this room
+      await mediaJobQueue.cancelJobsForRoom(roomId);
+
+      // 2. Fetch all media records associated ONLY with this room
+      const mediaList = await prisma.media.findMany({
+        where: { roomId },
+      });
+
+      // 3. Collect and deduplicate all storage keys for this room's media
+      const storageKeys = new Set<string>();
+      for (const media of mediaList) {
+        if (media.storageKey && !media.storageKey.startsWith('pending_')) {
+          storageKeys.add(media.storageKey);
+        }
+        if (media.originalStorageKey && !media.originalStorageKey.startsWith('pending_')) {
+          storageKeys.add(media.originalStorageKey);
+        }
+        if (media.playbackStorageKey && !media.playbackStorageKey.startsWith('pending_')) {
+          storageKeys.add(media.playbackStorageKey);
+        }
+      }
+
+      // 4. Delete physical/object storage files using storage abstraction
+      for (const key of storageKeys) {
+        try {
+          await mediaStorage.deleteFile(key);
+          logger.info(`[MediaCleanup] Deleted storage key ${key}`);
+        } catch (err: any) {
+          logger.error(`[MediaCleanup] Error deleting storage key ${key}: ${err.message}`);
+        }
+      }
+
+      // 5. If local storage, safely remove the room's dedicated upload directory if empty or containing leftover files
+      const safeRoomId = roomId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const roomDirPath = mediaStorage.getLocalPath(safeRoomId);
+      if (roomDirPath && fs.existsSync(roomDirPath)) {
+        try {
+          const files = await fs.promises.readdir(roomDirPath);
+          for (const file of files) {
+            const filePath = path.join(roomDirPath, file);
+            await fs.promises.unlink(filePath).catch(() => {});
+          }
+          await fs.promises.rmdir(roomDirPath).catch(() => {});
+          logger.info(`[MediaCleanup] Cleaned room directory ${safeRoomId}`);
+        } catch (err: any) {
+          logger.error(`[MediaCleanup] Error removing room directory ${safeRoomId}: ${err.message}`);
+        }
+      }
+
+      // 6. Delete Media records from Database
+      if (mediaList.length > 0) {
+        await prisma.media.deleteMany({
+          where: { roomId },
+        });
+        logger.info(`[MediaCleanup] Deleted ${mediaList.length} media DB records for room ${roomId}`);
+      }
+
+      logger.info(`[MediaCleanup] Cleanup completed for room ${roomId}`);
+    } catch (err: any) {
+      logger.error(`[MediaCleanup] Failed to clean up media for room ${roomId}: ${err.message}`);
+    }
+  }
+
+  /**
+   * Ends a room and automatically cleans up all associated media files and jobs.
    */
   async endRoom(roomId: string) {
     await prisma.room.update({
@@ -390,6 +476,7 @@ export class RoomManager {
       data: { status: 'ended' },
     });
     syncEngine.removeRoom(roomId);
+    await this.cleanupRoomMedia(roomId);
   }
 
   /**

@@ -130,6 +130,8 @@ export class TranscodingService {
         'copy',
         '-c:a',
         'aac',
+        '-ac',
+        '2',
         '-b:a',
         '192k',
         '-movflags',

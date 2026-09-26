@@ -19,6 +19,16 @@ interface Star {
   color: string;
 }
 
+interface Particle {
+  x: number;
+  y: number;
+  radius: number;
+  alpha: number;
+  speedX: number;
+  speedY: number;
+  color: string;
+}
+
 export const CinematicBackground: React.FC<CinematicBackgroundProps> = ({
   variant = 'home',
   withStars = true,
@@ -42,34 +52,33 @@ export const CinematicBackground: React.FC<CinematicBackgroundProps> = ({
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const isMobile = width < 768;
 
-    // Adjust density and opacity based on variant (with 30% density & speed boost)
+    // Density based on variant and device
     const isBlurred = variant === 'blurred';
     const isSubtle = variant === 'subtle';
     const isCinema = variant === 'cinema';
 
-    const rawBaseCount = isBlurred
-      ? (isMobile ? 30 : 65)
+    const baseCount = isBlurred
+      ? (isMobile ? 40 : 85)
       : isCinema
-      ? (isMobile ? 20 : 45)
+      ? (isMobile ? 30 : 65)
       : isSubtle
-      ? (isMobile ? 35 : 80)
-      : isMobile ? 60 : 150;
-    const baseCount = Math.round(rawBaseCount * 1.3); // 30% star capacity increase
+      ? (isMobile ? 50 : 110)
+      : isMobile ? 150 : 340; // Rich depth star capacity on dark canvas
 
-    const rawSpeedFactor = isBlurred ? 0.45 : isCinema ? 0.35 : isSubtle ? 0.6 : 1.0;
-    const speedFactor = rawSpeedFactor * 1.3 * 1.5; // Increased by 1.5x (current speed x 1.5)
-
-    const alphaMultiplier = isBlurred ? 0.55 : isCinema ? 0.45 : isSubtle ? 0.7 : 1.0;
+    // Very slow, calm cinematic movement
+    const speedFactor = (isBlurred ? 0.25 : isCinema ? 0.2 : isSubtle ? 0.3 : 0.35);
+    const alphaMultiplier = isBlurred ? 0.6 : isCinema ? 0.45 : isSubtle ? 0.7 : 1.05;
 
     const stars: Star[] = [];
     const starColors = isBlurred
       ? ['#ffffff', '#e2e8f0', '#c084fc', '#a5b4fc']
-      : ['#ffffff', '#f1f5f9', '#e2e8f0', '#c084fc', '#818cf8', '#a5b4fc'];
+      : ['#ffffff', '#f1f5f9', '#e2e8f0', '#c084fc', '#818cf8', '#a5b4fc', '#cbd5e1', '#d8b4fe'];
 
+    // Multi-layer depth distribution: z=1 (distant, 60%), z=2 (mid, 28%), z=3 (foreground, 12%)
     for (let i = 0; i < baseCount; i++) {
-      const z = Math.random() < 0.65 ? 1 : Math.random() < 0.9 ? 2 : 3;
+      const z = Math.random() < 0.60 ? 1 : Math.random() < 0.88 ? 2 : 3;
       const baseAlpha =
-        (z === 1 ? 0.2 + Math.random() * 0.2 : z === 2 ? 0.4 + Math.random() * 0.25 : 0.65 + Math.random() * 0.25) *
+        (z === 1 ? 0.16 + Math.random() * 0.20 : z === 2 ? 0.32 + Math.random() * 0.22 : 0.52 + Math.random() * 0.26) *
         alphaMultiplier;
 
       stars.push({
@@ -77,12 +86,34 @@ export const CinematicBackground: React.FC<CinematicBackgroundProps> = ({
         y: Math.random() * height,
         z,
         radius:
-          (z === 1 ? 0.5 + Math.random() * 0.35 : z === 2 ? 0.9 + Math.random() * 0.45 : 1.4 + Math.random() * 0.6) *
-          (isBlurred ? 1.2 : 1.0),
+          (z === 1 ? 0.45 + Math.random() * 0.35 : z === 2 ? 0.75 + Math.random() * 0.35 : 1.2 + Math.random() * 0.45) *
+          (isBlurred ? 1.1 : 1.0),
         alpha: baseAlpha,
         baseAlpha,
-        twinkleSpeed: (Math.random() * 0.018 + 0.004) * (Math.random() < 0.5 ? 1 : -1) * 1.3 * 1.5,
+        twinkleSpeed: (Math.random() * 0.009 + 0.003) * (Math.random() < 0.5 ? 1 : -1),
         color: starColors[Math.floor(Math.random() * starColors.length)],
+      });
+    }
+
+    // Atmospheric subtle purple-tinted particles (floating motes)
+    const particleCount = isMobile ? 16 : 30;
+    const particles: Particle[] = [];
+    const particleColors = [
+      'rgba(168, 85, 247, 0.07)',
+      'rgba(139, 92, 246, 0.06)',
+      'rgba(99, 102, 241, 0.06)',
+      'rgba(129, 140, 248, 0.05)',
+    ];
+
+    for (let i = 0; i < particleCount; i++) {
+      particles.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        radius: 1.5 + Math.random() * 1.8,
+        alpha: 0.04 + Math.random() * 0.06,
+        speedX: (Math.random() - 0.5) * 0.07,
+        speedY: (Math.random() - 0.5) * 0.07,
+        color: particleColors[Math.floor(Math.random() * particleColors.length)],
       });
     }
 
@@ -94,27 +125,48 @@ export const CinematicBackground: React.FC<CinematicBackgroundProps> = ({
 
     window.addEventListener('resize', handleResize);
 
-    const centerX = () => width * 0.5;
-    const centerY = () => height * 0.5;
-
     const render = () => {
       ctx.clearRect(0, 0, width, height);
 
-      const cx = centerX();
-      const cy = centerY();
+      const cx = width * 0.5;
+      const cy = height * 0.5;
 
+      // Render & drift atmospheric motes
+      if (!isBlurred) {
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i];
+          if (!prefersReducedMotion) {
+            p.x += p.speedX;
+            p.y += p.speedY;
+
+            if (p.x < 0) p.x = width;
+            if (p.x > width) p.x = 0;
+            if (p.y < 0) p.y = height;
+            if (p.y > height) p.y = 0;
+          }
+
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+          ctx.fillStyle = p.color;
+          ctx.fill();
+        }
+      }
+
+      // Render stars with clean center attenuation
       for (let i = 0; i < stars.length; i++) {
         const star = stars[i];
 
         if (!prefersReducedMotion) {
-          const dx = (star.x - cx) * 0.00012 * star.z * speedFactor;
-          const dy = ((star.y - cy) * 0.00012 * star.z + 0.06 * star.z) * speedFactor;
+          // Extremely slow, graceful outward and upward drift
+          const dx = (star.x - cx) * 0.00004 * star.z * speedFactor;
+          const dy = ((star.y - cy) * 0.00004 * star.z + 0.025 * star.z) * speedFactor;
 
           star.x += dx;
           star.y += dy;
 
+          // Occasional gentle twinkle
           star.alpha += star.twinkleSpeed;
-          if (star.alpha > Math.min(1.0, star.baseAlpha + 0.25) || star.alpha < Math.max(0.05, star.baseAlpha - 0.2)) {
+          if (star.alpha > Math.min(0.95, star.baseAlpha + 0.22) || star.alpha < Math.max(0.05, star.baseAlpha - 0.18)) {
             star.twinkleSpeed = -star.twinkleSpeed;
           }
 
@@ -124,17 +176,26 @@ export const CinematicBackground: React.FC<CinematicBackgroundProps> = ({
           if (star.y > height) star.y = 0;
         }
 
+        // Center attenuation
+        const normDx = Math.abs(star.x - cx) / (width * 0.5);
+        const normDy = Math.abs(star.y - cy) / (height * 0.5);
+        const distFromCenter = Math.min(1.0, Math.hypot(normDx, normDy));
+        const centerFactor = 0.55 + 0.45 * distFromCenter;
+
+        const finalAlpha = Math.max(0.04, Math.min(0.95, star.alpha * centerFactor));
+
         ctx.beginPath();
         ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
         ctx.fillStyle = star.color;
-        ctx.globalAlpha = Math.max(0.04, Math.min(1.0, star.alpha));
+        ctx.globalAlpha = finalAlpha;
         ctx.fill();
 
-        if (star.z === 3 && !isBlurred) {
+        // Subtle soft bloom for foreground stars
+        if (star.z === 3 && !isBlurred && finalAlpha > 0.35) {
           ctx.beginPath();
-          ctx.arc(star.x, star.y, star.radius * 2.0, 0, Math.PI * 2);
+          ctx.arc(star.x, star.y, star.radius * 1.9, 0, Math.PI * 2);
           ctx.fillStyle = star.color;
-          ctx.globalAlpha = Math.max(0.01, star.alpha * 0.12);
+          ctx.globalAlpha = finalAlpha * 0.16;
           ctx.fill();
         }
       }
@@ -162,11 +223,8 @@ export const CinematicBackground: React.FC<CinematicBackgroundProps> = ({
         className={`fixed inset-0 pointer-events-none overflow-hidden select-none z-0 ${className}`}
         aria-hidden="true"
       >
-        {/* Scaled and Blurred Atmosphere Container to eliminate edge blur artifacts */}
-        <div
-          className="absolute inset-[-8%] w-[116%] h-[116%] pointer-events-none transform scale-110 blur-[45px] sm:blur-[55px] will-change-transform"
-          style={{ transform: 'scale(1.12)' }}
-        >
+        {/* Atmosphere Container */}
+        <div className="absolute inset-0 pointer-events-none">
           {/* Base space fill */}
           <div className="absolute inset-0 bg-[#040508]" />
 
@@ -174,37 +232,29 @@ export const CinematicBackground: React.FC<CinematicBackgroundProps> = ({
           {withStars && (
             <canvas
               ref={canvasRef}
-              className="absolute inset-0 w-full h-full opacity-60 pointer-events-none"
+              className="absolute inset-0 w-full h-full opacity-55 pointer-events-none"
             />
           )}
 
-          {/* Top-Center / Left Ambient Purple Cloud (Enhanced Glow) */}
+          {/* Top-Center / Left Ambient Purple Radial Glow */}
           <div
-            className="absolute top-[5%] left-[18%] w-[750px] h-[580px] rounded-full opacity-80"
+            className="absolute top-[-5%] left-[20%] w-[750px] h-[550px] rounded-full opacity-70 blur-[100px] pointer-events-none"
             style={{
-              background: 'radial-gradient(circle, rgba(99, 102, 241, 0.30) 0%, rgba(139, 92, 246, 0.19) 40%, rgba(168, 85, 247, 0.07) 70%, transparent 85%)',
+              background: 'radial-gradient(ellipse at center, rgba(99, 102, 241, 0.25) 0%, rgba(139, 92, 246, 0.12) 45%, transparent 75%)',
             }}
           />
 
-          {/* Bottom-Right Indigo Nebula (Enhanced Glow) */}
+          {/* Bottom-Right Indigo Nebula Glow */}
           <div
-            className="absolute bottom-[10%] right-[12%] w-[700px] h-[520px] rounded-full opacity-75"
+            className="absolute bottom-[-5%] right-[15%] w-[700px] h-[500px] rounded-full opacity-60 blur-[90px] pointer-events-none"
             style={{
-              background: 'radial-gradient(circle, rgba(79, 70, 229, 0.28) 0%, rgba(67, 56, 202, 0.17) 45%, transparent 75%)',
-            }}
-          />
-
-          {/* Subtle Deep Violet Center-Refraction */}
-          <div
-            className="absolute top-[45%] left-[38%] w-[520px] h-[400px] rounded-full opacity-60"
-            style={{
-              background: 'radial-gradient(circle, rgba(168, 85, 247, 0.19) 0%, transparent 70%)',
+              background: 'radial-gradient(ellipse at center, rgba(79, 70, 229, 0.22) 0%, rgba(67, 56, 202, 0.10) 50%, transparent 75%)',
             }}
           />
         </div>
 
         {/* Dark atmospheric overlay ensuring optimal form contrast */}
-        <div className="absolute inset-0 bg-[#05060a]/60 sm:bg-[#05060a]/65 backdrop-blur-[2px] pointer-events-none" />
+        <div className="absolute inset-0 bg-[#040508]/65 backdrop-blur-[2px] pointer-events-none" />
       </div>
     );
   }
@@ -215,21 +265,21 @@ export const CinematicBackground: React.FC<CinematicBackgroundProps> = ({
         className={`fixed inset-0 pointer-events-none overflow-hidden select-none z-0 ${className}`}
         aria-hidden="true"
       >
-        <div className="absolute inset-0 bg-[#040507]" />
+        <div className="absolute inset-0 bg-[#030407]" />
         {/* Very faint distant stars */}
-        {withStars && <canvas ref={canvasRef} className="absolute inset-0 w-full h-full opacity-40" />}
-        {/* Screen Ambient Light source (centered behind cinema screen - Enhanced Glow) */}
+        {withStars && <canvas ref={canvasRef} className="absolute inset-0 w-full h-full opacity-35" />}
+        {/* Screen Ambient Light source (centered behind cinema screen) */}
         <div
-          className="absolute top-[30%] left-1/2 -translate-x-1/2 w-[1020px] h-[620px] rounded-full opacity-70 pointer-events-none blur-[140px]"
+          className="absolute top-[28%] left-1/2 -translate-x-1/2 w-[1000px] h-[580px] rounded-full opacity-55 pointer-events-none blur-[120px]"
           style={{
-            background: 'radial-gradient(ellipse, rgba(99, 102, 241, 0.17) 0%, rgba(139, 92, 246, 0.09) 40%, rgba(79, 70, 229, 0.03) 70%, transparent 85%)',
+            background: 'radial-gradient(ellipse at center, rgba(99, 102, 241, 0.14) 0%, rgba(139, 92, 246, 0.07) 40%, rgba(79, 70, 229, 0.02) 70%, transparent 85%)',
           }}
         />
         {/* Theater Ambient Vignette */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
-            background: 'radial-gradient(ellipse at 50% 50%, transparent 40%, rgba(3, 4, 7, 0.75) 100%)',
+            background: 'radial-gradient(ellipse at 50% 50%, transparent 45%, rgba(2, 3, 6, 0.82) 100%)',
           }}
         />
       </div>
@@ -243,27 +293,52 @@ export const CinematicBackground: React.FC<CinematicBackgroundProps> = ({
         aria-hidden="true"
       >
         <div className="absolute inset-0 bg-[#040508]" />
-        {withStars && <canvas ref={canvasRef} className="absolute inset-0 w-full h-full opacity-70" />}
-        <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[650px] h-[420px] bg-brand-500/[0.09] rounded-full blur-[130px]" />
-        <div className="absolute bottom-0 right-0 w-[480px] h-[360px] bg-indigo-600/[0.06] rounded-full blur-[120px]" />
+        {withStars && <canvas ref={canvasRef} className="absolute inset-0 w-full h-full opacity-55" />}
+        <div
+          className="absolute -top-32 left-1/2 -translate-x-1/2 w-[700px] h-[450px] rounded-full opacity-45 blur-[110px] pointer-events-none"
+          style={{
+            background: 'radial-gradient(ellipse at center, rgba(99, 102, 241, 0.18) 0%, rgba(139, 92, 246, 0.07) 50%, transparent 75%)',
+          }}
+        />
+        <div
+          className="absolute bottom-0 right-0 w-[500px] h-[380px] rounded-full opacity-35 blur-[100px] pointer-events-none"
+          style={{
+            background: 'radial-gradient(ellipse at center, rgba(79, 70, 229, 0.15) 0%, transparent 70%)',
+          }}
+        />
       </div>
     );
   }
 
-  // Default 'home' variant: Enhanced Crisp Cinematic Atmosphere (with 70% reduced Gaussian blur for sharp detail)
+  // Default 'home' variant: Deep black canvas with subtle, restrained purplish ambient lighting
   return (
     <div
       className={`fixed inset-0 pointer-events-none overflow-hidden select-none z-0 ${className}`}
       aria-hidden="true"
     >
-      <div className="absolute inset-0 bg-[#040508]" />
+      <div className="absolute inset-0 bg-[#020306]" />
       {withStars && <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />}
-      {/* Primary Top-Center Ambient Glow (42px blur: 70% reduction from 140px) */}
-      <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[880px] h-[560px] bg-brand-500/[0.16] rounded-full blur-[42px]" />
-      {/* Mid/Bottom-Right Indigo Glow (39px blur: 70% reduction from 130px) */}
-      <div className="absolute top-[38%] right-[-5%] w-[650px] h-[520px] bg-indigo-600/[0.10] rounded-full blur-[39px]" />
-      {/* Subtle Bottom-Left Violet Accent (39px blur: 70% reduction from 130px) */}
-      <div className="absolute bottom-[-10%] left-[-5%] w-[550px] h-[480px] bg-purple-600/[0.07] rounded-full blur-[39px]" />
+      {/* Primary Top-Center Ambient Purple Glow behind Hero Header */}
+      <div
+        className="absolute -top-32 left-1/2 -translate-x-1/2 w-[1050px] h-[600px] rounded-full opacity-75 blur-[100px] pointer-events-none"
+        style={{
+          background: 'radial-gradient(ellipse at center, rgba(129, 140, 248, 0.24) 0%, rgba(139, 92, 246, 0.12) 35%, rgba(79, 70, 229, 0.04) 60%, transparent 75%)',
+        }}
+      />
+      {/* Mid/Bottom-Right Subtle Indigo Accent */}
+      <div
+        className="absolute top-[32%] right-[-6%] w-[680px] h-[500px] rounded-full opacity-40 blur-[110px] pointer-events-none"
+        style={{
+          background: 'radial-gradient(ellipse at center, rgba(147, 51, 234, 0.10) 0%, rgba(99, 102, 241, 0.04) 45%, transparent 70%)',
+        }}
+      />
+      {/* Bottom-Left Deep Violet Ambient Accent */}
+      <div
+        className="absolute bottom-[-10%] left-[-6%] w-[600px] h-[450px] rounded-full opacity-30 blur-[110px] pointer-events-none"
+        style={{
+          background: 'radial-gradient(ellipse at center, rgba(79, 70, 229, 0.08) 0%, transparent 70%)',
+        }}
+      />
     </div>
   );
 };

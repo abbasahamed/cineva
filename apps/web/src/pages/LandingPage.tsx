@@ -77,7 +77,7 @@ export const LandingPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#05060a] text-slate-100 flex flex-col selection:bg-indigo-600 selection:text-white relative overflow-x-hidden font-sans">
+    <div className="min-h-screen bg-[#030407] text-slate-100 flex flex-col selection:bg-indigo-600 selection:text-white relative overflow-x-hidden font-sans">
       {/* Shared Cinematic Background (Home Variant: Sharp Starfield & Deep Atmosphere) */}
       <CinematicBackground variant="home" />
 
@@ -225,7 +225,15 @@ export const LandingPage: React.FC = () => {
         {/* ======================================================================= */}
         {/* HERO SECTION (Preserved exact design & atmosphere)                     */}
         {/* ======================================================================= */}
-        <section className="max-w-5xl mx-auto px-5 sm:px-8 pt-16 sm:pt-24 pb-12 text-center flex flex-col items-center">
+        <section className="max-w-5xl mx-auto px-5 sm:px-8 pt-16 sm:pt-24 pb-12 text-center flex flex-col items-center relative">
+          {/* Enhanced Ambient Purple Radial Glow behind Hero Title */}
+          <div
+            className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[850px] h-[450px] rounded-full pointer-events-none -z-10 blur-[95px]"
+            style={{
+              background: 'radial-gradient(ellipse at center, rgba(129, 140, 248, 0.32) 0%, rgba(139, 92, 246, 0.18) 35%, rgba(99, 102, 241, 0.08) 60%, transparent 75%)',
+            }}
+          />
+
           {/* Pill Badge */}
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.1] text-brand-300 text-xs font-medium mb-8 backdrop-blur-md shadow-xs">
             <span className="relative flex h-2 w-2">
@@ -236,9 +244,9 @@ export const LandingPage: React.FC = () => {
           </div>
 
           {/* Headline */}
-          <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-white mb-6 leading-[1.08]">
+          <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-white mb-6 leading-[1.08] drop-shadow-sm">
             Watch together.<br />
-            <span className="bg-gradient-to-r from-brand-300 via-indigo-300 to-brand-500 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-brand-300 via-indigo-200 to-brand-400 bg-clip-text text-transparent cinematic-text-glow">
               Stay in sync.
             </span>
           </h1>
@@ -252,7 +260,7 @@ export const LandingPage: React.FC = () => {
           <div className="flex flex-col sm:flex-row items-center gap-3.5 w-full max-w-md justify-center mb-6">
             <button
               onClick={() => navigate('/create')}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-7 py-3.5 rounded-2xl glass-btn-primary text-white font-semibold text-sm shadow-xl active:scale-98 transition-all cursor-pointer"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-7 py-3.5 rounded-2xl glass-btn-primary hover:shadow-[0_0_24px_rgba(99,102,241,0.4)] text-white font-semibold text-sm shadow-xl active:scale-98 transition-all cursor-pointer"
             >
               <span>Create a Watch Room</span>
               <ArrowRight className="w-4 h-4" />
@@ -260,7 +268,7 @@ export const LandingPage: React.FC = () => {
 
             <button
               onClick={() => navigate('/join')}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-7 py-3.5 rounded-2xl glass-btn-secondary text-slate-200 font-semibold text-sm shadow-md active:scale-98 transition-all cursor-pointer"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-7 py-3.5 rounded-2xl glass-btn-secondary hover:border-white/20 text-slate-200 font-semibold text-sm shadow-md active:scale-98 transition-all cursor-pointer"
             >
               <span>Join a Room</span>
             </button>

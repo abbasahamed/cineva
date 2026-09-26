@@ -35,11 +35,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   const onlineCount = participants.filter((p) => p.isOnline).length;
 
   return (
-    <header className="h-14 sm:h-16 px-3.5 sm:px-6 flex items-center justify-between z-30 shrink-0 border-b border-white/[0.08] bg-[#020306]/85 backdrop-blur-2xl transition-all">
+    <header className="h-14 sm:h-16 px-3.5 sm:px-6 flex items-center justify-between z-30 shrink-0 border-b border-white/[0.07] bg-[#030408]/80 backdrop-blur-xl transition-all">
       {/* Left: Brand Logo & Room Name */}
       <div className="flex items-center gap-3 min-w-0">
         <a href="/" className="flex items-center gap-2.5 group shrink-0" title="Cineva Home">
-          <div className="w-8 h-8 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-lg shadow-brand-500/25 border border-white/20 group-hover:scale-105 group-hover:shadow-brand-500/40 transition-all">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-md shadow-brand-500/20 border border-white/20 group-hover:scale-105 group-hover:shadow-brand-500/40 transition-all">
             <Film className="w-4 h-4 text-white drop-shadow-sm" />
           </div>
           <span className="font-extrabold text-sm sm:text-base tracking-wider text-white hidden sm:inline">
@@ -99,7 +99,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Share / Invite Button */}
           <button
             onClick={onOpenShare}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.09] border border-white/[0.08] hover:border-white/[0.18] text-xs font-medium text-slate-200 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xs"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] hover:border-white/[0.16] text-xs font-medium text-slate-200 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xs cursor-pointer"
             title="Invite Friends to Screening"
           >
             <Share2 className="w-3.5 h-3.5 text-brand-400" />
@@ -112,8 +112,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               if (onToggleSidebarTab) onToggleSidebarTab('chat');
               if (!isCompanionOpen && onToggleCompanion) onToggleCompanion();
             }}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xs ${isCompanionOpen && activeSidebarTab === 'chat'
-                ? 'bg-brand-500/20 border-brand-500/40 text-brand-300 shadow-glass-glow'
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xs cursor-pointer ${isCompanionOpen && activeSidebarTab === 'chat'
+                ? 'bg-brand-500/20 border-brand-500/40 text-brand-300 shadow-[0_0_12px_rgba(99,102,241,0.2)]'
                 : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08] text-slate-300'
               }`}
             title="Cinema Chat"
@@ -128,8 +128,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               if (onToggleSidebarTab) onToggleSidebarTab('participants');
               if (!isCompanionOpen && onToggleCompanion) onToggleCompanion();
             }}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xs ${isCompanionOpen && activeSidebarTab === 'participants'
-                ? 'bg-brand-500/20 border-brand-500/40 text-brand-300 shadow-glass-glow'
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xs cursor-pointer ${isCompanionOpen && activeSidebarTab === 'participants'
+                ? 'bg-brand-500/20 border-brand-500/40 text-brand-300 shadow-[0_0_12px_rgba(99,102,241,0.2)]'
                 : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08] text-slate-300'
               }`}
             title="Audience"
@@ -141,7 +141,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Room Settings */}
           <button
             onClick={onOpenSettings}
-            className="p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] hover:border-white/[0.18] text-slate-300 hover:text-white transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xs"
+            className="p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] hover:border-white/[0.16] text-slate-300 hover:text-white transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xs cursor-pointer"
             title="Screening Settings"
           >
             <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -150,7 +150,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Leave Room */}
           <button
             onClick={onLeaveRoom}
-            className="p-2 rounded-xl bg-white/[0.04] hover:bg-rose-500/15 border border-white/[0.08] hover:border-rose-500/30 text-slate-400 hover:text-rose-300 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xs"
+            className="p-2 rounded-xl bg-white/[0.04] hover:bg-rose-500/15 border border-white/[0.08] hover:border-rose-500/30 text-slate-400 hover:text-rose-300 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xs cursor-pointer"
             title="Exit Screening"
           >
             <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />

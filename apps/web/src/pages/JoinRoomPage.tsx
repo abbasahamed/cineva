@@ -86,10 +86,16 @@ export const JoinRoomPage: React.FC = () => {
           <span>Back to Home</span>
         </button>
 
+        {/* Ambient Glow behind Panel */}
+        <div
+          className="absolute -inset-2 rounded-3xl bg-brand-500/[0.12] blur-2xl -z-10 pointer-events-none"
+          aria-hidden="true"
+        />
+
         {/* Liquid Glass Card */}
-        <div className="glass-card rounded-3xl p-6 sm:p-9 shadow-glass-elevated border border-white/[0.14] bg-[#0c0e18]/80 backdrop-blur-2xl relative overflow-hidden glass-reflection">
+        <div className="glass-card rounded-3xl p-6 sm:p-9 shadow-glass-elevated border border-white/[0.12] bg-[#0a0c16]/85 backdrop-blur-2xl relative overflow-hidden glass-reflection">
           {/* Subtle top ambient highlight accent */}
-          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-brand-400/40 to-transparent pointer-events-none" />
+          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-brand-400/35 to-transparent pointer-events-none" />
 
           {/* Header */}
           <div className="mb-7">
@@ -158,7 +164,7 @@ export const JoinRoomPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full py-3.5 rounded-2xl glass-btn-primary text-white font-semibold text-sm shadow-xl transition-all active:scale-98 disabled:opacity-50"
+                className="w-full py-3.5 rounded-2xl glass-btn-primary hover:shadow-[0_0_24px_rgba(99,102,241,0.4)] text-white font-semibold text-sm shadow-xl transition-all active:scale-98 disabled:opacity-50 cursor-pointer"
               >
                 {isSubmitting ? 'Connecting...' : 'Join Room'}
               </button>

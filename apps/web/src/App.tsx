@@ -5,6 +5,10 @@ import { LandingPage } from './pages/LandingPage.js';
 import { CreateRoomPage } from './pages/CreateRoomPage.js';
 import { JoinRoomPage } from './pages/JoinRoomPage.js';
 import { WatchRoomPage } from './pages/WatchRoomPage.js';
+import { DiagnosticsPage } from './pages/DiagnosticsPage.js';
+import { CameraStressPage } from './pages/CameraStressPage.js';
+import { WebRTCCameraPage } from './pages/WebRTCCameraPage.js';
+import { MovieCameraPage } from './pages/MovieCameraPage.js';
 
 export function App() {
   return (
@@ -18,6 +22,15 @@ export function App() {
               <Route path="/join" element={<JoinRoomPage />} />
               <Route path="/join/:roomCode" element={<JoinRoomPage />} />
               <Route path="/room/:roomCode" element={<WatchRoomPage />} />
+              {/* Developer diagnostics routes (accessible only in development) */}
+              {import.meta.env.DEV && (
+                <>
+                  <Route path="/diagnostics" element={<DiagnosticsPage />} />
+                  <Route path="/diagnostics/camera-stress" element={<CameraStressPage />} />
+                  <Route path="/diagnostics/webrtc-camera" element={<WebRTCCameraPage />} />
+                  <Route path="/diagnostics/movie-camera" element={<MovieCameraPage />} />
+                </>
+              )}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </BrowserRouter>

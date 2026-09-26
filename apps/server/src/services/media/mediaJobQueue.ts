@@ -37,9 +37,39 @@ export class MediaJobQueue {
   private queue: MediaJob[] = [];
   private activeJobsCount = 0;
   private maxConcurrentTranscodes = 1;
+  private activeJobMap = new Map<string, MediaJob>();
+  private cancelledRoomIds = new Set<string>();
 
   constructor(maxConcurrent = 1) {
     this.maxConcurrentTranscodes = maxConcurrent;
+  }
+
+  /**
+   * Cancels all queued and active media processing jobs for a specific room.
+   * Ensures late-completing jobs cannot publish MEDIA_READY or register media.
+   */
+  async cancelJobsForRoom(roomId: string): Promise<void> {
+    this.cancelledRoomIds.add(roomId);
+
+    // 1. Remove and cleanup all queued jobs for this room
+    for (let i = this.queue.length - 1; i >= 0; i--) {
+      if (this.queue[i].roomId === roomId) {
+        const [cancelledJob] = this.queue.splice(i, 1);
+        if (cancelledJob) {
+          tempFileLifecycle.unregisterActiveFile(cancelledJob.localSourcePath);
+          tempFileLifecycle.safeDeleteFile(cancelledJob.localSourcePath, true);
+          tempFileLifecycle.safeDeleteFile(`${cancelledJob.localSourcePath}_storage.tmp`, true);
+          logger.info('[MediaJobQueue] Cancelled queued job for room', { jobId: cancelledJob.id, roomId });
+        }
+      }
+    }
+
+    // 2. Kill FFmpeg if currently processing for this room
+    const activeJob = this.activeJobMap.get(roomId);
+    if (activeJob) {
+      transcodingService.cancelJob(activeJob.id);
+      logger.info('[MediaJobQueue] Cancelled active transcoding job for room', { jobId: activeJob.id, roomId });
+    }
   }
 
   /**
@@ -126,6 +156,12 @@ export class MediaJobQueue {
     return isTranscodingCancelled;
   }
 
+  private async isRoomActive(roomId: string): Promise<boolean> {
+    if (this.cancelledRoomIds.has(roomId)) return false;
+    const room = await prisma.room.findUnique({ where: { id: roomId } });
+    return !!room && room.status === 'active';
+  }
+
   private async processNext() {
     if (this.activeJobsCount >= this.maxConcurrentTranscodes || this.queue.length === 0) {
       return;
@@ -149,6 +185,8 @@ export class MediaJobQueue {
     const { roomId, localSourcePath, filename, title } = job;
     logger.info('Starting media processing job', { jobId: job.id, roomId, filename });
 
+    this.activeJobMap.set(roomId, job);
+
     let tempConvertedPath: string | null = null;
     let sourceStorageInput: string | null = null;
 
@@ -156,31 +194,40 @@ export class MediaJobQueue {
     tempFileLifecycle.registerActiveFile(localSourcePath);
 
     try {
-      // Disk space pre-check
+      // Pre-execution check: abort if room is no longer active / cancelled
+      if (!(await this.isRoomActive(roomId))) {
+        logger.info('[MediaJobQueue] Aborting job start for cancelled room', { jobId: job.id, roomId });
+        return;
+      }
+
+      // 1. Analyze media using ffprobe first to know action and size
+      const analysis = await analyzeMediaFile(localSourcePath);
+      const decision = evaluateMediaCompatibility(analysis, filename);
+      const safeTitle = title || filename.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+
       const tempDir = path.join(CONFIG.MEDIA_STORAGE_PATH, 'temp');
       if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir, { recursive: true });
       }
 
       const inputStat = fs.existsSync(localSourcePath) ? fs.statSync(localSourcePath) : null;
-      const inputSizeBytes = inputStat ? inputStat.size : 0;
-      const requiredBytes = inputSizeBytes * 2 + 500 * 1024 * 1024;
+      const inputSizeBytes = inputStat ? inputStat.size : (analysis.sizeBytes || 0);
 
+      // Realistic required output space: 1.2x input size + 200MB buffer for transcoded output
+      const requiredBytes = Math.ceil(inputSizeBytes * 1.2) + 200 * 1024 * 1024;
       const diskCheck = tempFileLifecycle.checkDiskSpace(tempDir, requiredBytes);
       if (!diskCheck.hasEnoughSpace) {
         throw new Error('Not enough temporary storage to prepare this video.');
       }
 
-      // 1. Analyze media using ffprobe
-      const analysis = await analyzeMediaFile(localSourcePath);
-
-      // 2. Evaluate compatibility
-      const decision = evaluateMediaCompatibility(analysis, filename);
-
-      const safeTitle = title || filename.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
-
       if (decision.action === 'DIRECT_PLAY') {
         logger.info('Media eligible for DIRECT_PLAY', { roomId, filename, reason: decision.reason });
+
+        // Check if room is still active before saving
+        if (!(await this.isRoomActive(roomId))) {
+          logger.info('[MediaJobQueue] Aborting DIRECT_PLAY save for cancelled room', { jobId: job.id, roomId });
+          return;
+        }
 
         // Save original file to media storage
         const savedMedia = await mediaStorage.saveFile(
@@ -248,23 +295,16 @@ export class MediaJobQueue {
       // 3. REMUX or TRANSCODE required
       logger.info(`Media requires ${decision.action}`, { roomId, filename, reason: decision.reason });
 
-      // Create a temporary copy for mediaStorage.saveFile so localSourcePath is preserved for FFmpeg
-      sourceStorageInput = `${localSourcePath}_storage.tmp`;
-      tempFileLifecycle.registerActiveFile(sourceStorageInput);
-      await fs.promises.copyFile(localSourcePath, sourceStorageInput);
-
-      // Save original source file to media storage first
+      // Save original source file to media storage
       const savedOriginal = await mediaStorage.saveFile(
         roomId,
         `source_${filename}`,
-        sourceStorageInput,
+        localSourcePath,
         decision.targetMimeType
       );
 
-      // Unregister and clean up sourceStorageInput once saved in storage
-      tempFileLifecycle.unregisterActiveFile(sourceStorageInput);
-      tempFileLifecycle.safeDeleteFile(sourceStorageInput, true);
-      sourceStorageInput = null;
+      // Local source path is now in media storage
+      const actualSourcePath = mediaStorage.getLocalPath(savedOriginal.storageKey) || localSourcePath;
 
       // Create / update media record in PROCESSING state
       await prisma.media.upsert({
@@ -334,7 +374,7 @@ export class MediaJobQueue {
       });
 
       const result = await transcodingService.processVideo(job.id, {
-        inputPath: localSourcePath,
+        inputPath: actualSourcePath,
         outputPath: tempConvertedPath,
         mode: (decision.action as 'REMUX' | 'TRANSCODE' | 'AUDIO_TRANSCODE_VIDEO_COPY'),
         audioStreamIndex: decision.selectedAudioStreamIndex,
@@ -366,6 +406,15 @@ export class MediaJobQueue {
         outputSizeBytes: result.outputSize,
         processingSpeedRatio: (analysis.duration / Math.max(0.001, result.executionTimeMs / 1000)).toFixed(2) + 'x',
       });
+
+      // Check if room is still active before registering playback output
+      if (!(await this.isRoomActive(roomId))) {
+        logger.info('[MediaJobQueue] Room was cancelled during transcoding. Cleaning output and suppressing MEDIA_READY.', { jobId: job.id, roomId });
+        if (result.outputPath) {
+          tempFileLifecycle.safeDeleteFile(result.outputPath, true);
+        }
+        return;
+      }
 
       // 5. Post-processing validation step per Section 17
       const verifiedAnalysis = await validatePlaybackFile(result.outputPath);
@@ -424,22 +473,25 @@ export class MediaJobQueue {
         ? 'Not enough temporary storage to prepare this video.'
         : 'Video processing failed. Please try a different video format or file.';
 
-      await prisma.media.update({
-        where: { roomId },
-        data: {
-          status: 'failed',
-          transcodeProgress: 0,
-          transcodeError: userFacingError,
-        },
-      }).catch(() => { });
+      if (await this.isRoomActive(roomId)) {
+        await prisma.media.update({
+          where: { roomId },
+          data: {
+            status: 'failed',
+            transcodeProgress: 0,
+            transcodeError: userFacingError,
+          },
+        }).catch(() => { });
 
-      broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_FAILED, {
-        roomId,
-        status: 'failed',
-        progress: 0,
-        error: userFacingError,
-      });
+        broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_FAILED, {
+          roomId,
+          status: 'failed',
+          progress: 0,
+          error: userFacingError,
+        });
+      }
     } finally {
+      this.activeJobMap.delete(roomId);
       // Always unregister and clean up temporary local files
       if (tempConvertedPath) {
         tempFileLifecycle.unregisterActiveFile(tempConvertedPath);
