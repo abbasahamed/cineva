@@ -176,10 +176,88 @@ export const SOCKET_EVENTS = {
   MEDIA_PROGRESS: 'media:progress',
   MEDIA_READY: 'media:ready',
   MEDIA_FAILED: 'media:failed',
+
+  // WebRTC Video Calling Signaling Events
+  VIDEO_JOIN: 'video:join',
+  VIDEO_LEAVE: 'video:leave',
+  VIDEO_OFFER: 'video:offer',
+  VIDEO_ANSWER: 'video:answer',
+  VIDEO_ICE_CANDIDATE: 'video:iceCandidate',
+  VIDEO_STATE_UPDATE: 'video:stateUpdate',
+  VIDEO_PARTICIPANTS: 'video:participants',
+  VIDEO_PEER_JOINED: 'video:peerJoined',
+  VIDEO_PEER_LEFT: 'video:peerLeft',
+  VIDEO_PEER_STATE: 'video:peerState',
 } as const;
 
 // ==========================================
-// 5. Validation Schemas (Zod)
+// 5. WebRTC Video Calling Types
+// ==========================================
+
+export interface VideoParticipant {
+  participantId: string;
+  displayName: string;
+  isMuted: boolean;
+  isCameraOff: boolean;
+  joinedAt: number;
+}
+
+export interface RTCSessionDescriptionInitLike {
+  type: 'offer' | 'answer' | 'pranswer' | 'rollback';
+  sdp: string;
+}
+
+export interface RTCIceCandidateInitLike {
+  candidate: string;
+  sdpMid?: string | null;
+  sdpMLineIndex?: number | null;
+  usernameFragment?: string | null;
+}
+
+export interface VideoOfferPayload {
+  targetParticipantId: string;
+  sdp: RTCSessionDescriptionInitLike;
+}
+
+export interface VideoAnswerPayload {
+  targetParticipantId: string;
+  sdp: RTCSessionDescriptionInitLike;
+}
+
+export interface VideoIceCandidatePayload {
+  targetParticipantId: string;
+  candidate: RTCIceCandidateInitLike;
+}
+
+export interface VideoStateUpdatePayload {
+  isMuted?: boolean;
+  isCameraOff?: boolean;
+}
+
+export interface RelayedVideoOfferPayload {
+  fromParticipantId: string;
+  fromDisplayName: string;
+  sdp: RTCSessionDescriptionInitLike;
+}
+
+export interface RelayedVideoAnswerPayload {
+  fromParticipantId: string;
+  sdp: RTCSessionDescriptionInitLike;
+}
+
+export interface RelayedVideoIceCandidatePayload {
+  fromParticipantId: string;
+  candidate: RTCIceCandidateInitLike;
+}
+
+export interface RelayedVideoStatePayload {
+  participantId: string;
+  isMuted?: boolean;
+  isCameraOff?: boolean;
+}
+
+// ==========================================
+// 6. Validation Schemas (Zod)
 // ==========================================
 
 export const CreateRoomSchema = z.object({
@@ -215,6 +293,37 @@ export const RatePayloadSchema = z.object({
 
 export const UpdateMediaTitleSchema = z.object({
   title: z.string().trim().min(1).max(100),
+});
+
+export const VideoOfferSchema = z.object({
+  targetParticipantId: z.string().min(1, 'Target participant is required').max(100),
+  sdp: z.object({
+    type: z.enum(['offer', 'answer', 'pranswer', 'rollback']),
+    sdp: z.string().min(1, 'SDP is required').max(300000, 'SDP payload too large'),
+  }),
+});
+
+export const VideoAnswerSchema = z.object({
+  targetParticipantId: z.string().min(1, 'Target participant is required').max(100),
+  sdp: z.object({
+    type: z.enum(['offer', 'answer', 'pranswer', 'rollback']),
+    sdp: z.string().min(1, 'SDP is required').max(300000, 'SDP payload too large'),
+  }),
+});
+
+export const VideoIceCandidateSchema = z.object({
+  targetParticipantId: z.string().min(1, 'Target participant is required').max(100),
+  candidate: z.object({
+    candidate: z.string().max(4000, 'Candidate string too large'),
+    sdpMid: z.string().nullable().optional(),
+    sdpMLineIndex: z.number().nullable().optional(),
+    usernameFragment: z.string().nullable().optional(),
+  }),
+});
+
+export const VideoStateUpdateSchema = z.object({
+  isMuted: z.boolean().optional(),
+  isCameraOff: z.boolean().optional(),
 });
 
 // ==========================================

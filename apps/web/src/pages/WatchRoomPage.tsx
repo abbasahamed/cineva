@@ -10,8 +10,9 @@ import { SettingsModal } from '../components/SettingsModal.js';
 import { ShareModal } from '../components/ShareModal.js';
 import { DebugPanel } from '../components/DebugPanel.js';
 import { useToast } from '../components/Toast.js';
-import { MessageSquare, Users, AlertCircle, ArrowLeft, RefreshCw, UploadCloud, Film } from 'lucide-react';
+import { MessageSquare, Users, AlertCircle, ArrowLeft, RefreshCw, UploadCloud, Film, Video } from 'lucide-react';
 import { CinematicBackground } from '../components/CinematicBackground.js';
+import { useVideoCall, VideoCallPanel } from '../features/video/index.js';
 
 function formatMediaInfo(media: { title: string; size?: number | string } | null | undefined) {
   if (!media) return { displayTitle: 'Private Screening', size: null, rawTitle: '' };
@@ -121,6 +122,12 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
   const currentParticipant = participants.find((p) => p.sessionId === sessionId);
   const mediaInfo = formatMediaInfo(room?.media);
 
+  const videoCall = useVideoCall({
+    roomCode,
+    currentParticipantId: currentParticipant?.id,
+    currentDisplayName: displayName,
+  });
+
   // Handle Room Ended or Fatal Error
   if (connectionStatus === 'ended' || (connectionStatus === 'error' && errorMessage)) {
     return (
@@ -174,9 +181,9 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
       {/* Main Theater Viewport */}
       <main className="flex-1 flex flex-col xl:flex-row overflow-hidden p-3 sm:p-5 lg:p-6 gap-4 sm:gap-6 min-h-0 relative z-10 justify-center items-center">
         {/* Dominant Cinema Stage */}
-        <div className={`flex-1 flex flex-col justify-center items-center min-w-0 min-h-0 h-full w-full transition-all duration-300 ${isCompanionOpen ? 'max-w-5xl 2xl:max-w-6xl' : 'max-w-6xl 2xl:max-w-7xl'
+        <div className={`flex-1 flex flex-col justify-start items-center min-w-0 min-h-0 h-full w-full overflow-y-auto no-scrollbar transition-all duration-300 ${isCompanionOpen ? 'max-w-5xl 2xl:max-w-6xl' : 'max-w-6xl 2xl:max-w-7xl'
           }`}>
-          <div className="w-full flex flex-col justify-center relative">
+          <div className="w-full flex flex-col justify-center relative my-auto">
             {/* Screen-Light Ambient Backlight Glow emitting into surrounding theater */}
             <div
               className="absolute -inset-6 sm:-inset-12 rounded-3xl bg-gradient-to-tr from-brand-600/25 via-indigo-600/20 to-purple-600/15 blur-[70px] sm:blur-[110px] opacity-45 sm:opacity-55 pointer-events-none -z-10 transition-opacity duration-1000"
@@ -226,8 +233,8 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
                 </div>
               </div>
 
-              {/* Right: Actions & Companion Dock Trigger */}
-              <div className="flex items-center gap-2.5 shrink-0">
+              {/* Right: Actions, Video Call & Companion Dock Trigger */}
+              <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
                 {isHost && room?.media && (
                   <button
                     onClick={() => setIsUploadOpen(true)}
@@ -239,13 +246,44 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
                   </button>
                 )}
 
+                {/* Video Call Trigger Button */}
+                <button
+                  onClick={() => {
+                    if (videoCall.isCallActive) {
+                      videoCall.leaveCall();
+                    } else {
+                      videoCall.startCall();
+                    }
+                  }}
+                  disabled={videoCall.isConnecting}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border text-xs font-semibold transition-all active:scale-95 ${
+                    videoCall.isCallActive
+                      ? 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-500/40 text-emerald-300 shadow-glass-glow'
+                      : videoCall.isConnecting
+                      ? 'bg-brand-500/20 border-brand-500/30 text-brand-300 animate-pulse cursor-wait'
+                      : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08] text-slate-300 hover:text-white'
+                  }`}
+                  title={videoCall.isCallActive ? 'Leave video call' : 'Start video call'}
+                  aria-label={videoCall.isCallActive ? 'Leave video call' : 'Start video call'}
+                >
+                  <Video className={`w-3.5 h-3.5 ${videoCall.isCallActive ? 'text-emerald-400' : 'text-brand-400'}`} />
+                  <span>
+                    {videoCall.isCallActive
+                      ? 'In Call'
+                      : videoCall.isConnecting
+                      ? 'Starting...'
+                      : 'Start Video'}
+                  </span>
+                </button>
+
                 {/* Companion Expand/Collapse Quick Toggle on Desktop */}
                 <button
                   onClick={() => setIsCompanionOpen(!isCompanionOpen)}
-                  className={`hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all ${isCompanionOpen
+                  className={`hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all ${
+                    isCompanionOpen
                       ? 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08] text-slate-300'
                       : 'bg-brand-500/20 hover:bg-brand-500/30 border-brand-500/40 text-brand-300 shadow-glass-glow'
-                    }`}
+                  }`}
                   title={isCompanionOpen ? 'Hide companion panel' : 'Show companion panel'}
                 >
                   <MessageSquare className="w-3.5 h-3.5 text-brand-400" />
@@ -253,6 +291,11 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
                 </button>
               </div>
             </div>
+
+            {/* Video Call Active Panel */}
+            {(videoCall.isCallActive || videoCall.permissionError || videoCall.status === 'requesting-permissions') && (
+              <VideoCallPanel controls={videoCall} currentDisplayName={displayName} />
+            )}
           </div>
         </div>
 

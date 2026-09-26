@@ -12,6 +12,11 @@ import {
   ClockSyncPing,
   formatTime,
   PlaybackActivityType,
+  VideoOfferSchema,
+  VideoAnswerSchema,
+  VideoIceCandidateSchema,
+  VideoStateUpdateSchema,
+  VideoParticipant,
 } from '@syncwatch/shared';
 import { CONFIG } from '../config.js';
 import { logger } from '../utils/logger.js';
@@ -39,6 +44,44 @@ export function setupSocketHandlers(io: SocketIOServer) {
   const playbackActivityRateLimit = new Map<string, { count: number; resetTime: number }>();
   const disconnectTimers = new Map<string, NodeJS.Timeout>();
   const pendingSeeks = new Map<string, PendingSeek>();
+
+  interface ActiveVideoParticipant {
+    socketId: string;
+    participantId: string;
+    displayName: string;
+    isMuted: boolean;
+    isCameraOff: boolean;
+    joinedAt: number;
+  }
+
+  // Room active video participants: roomId -> (participantId -> ActiveVideoParticipant)
+  const roomVideoParticipants = new Map<string, Map<string, ActiveVideoParticipant>>();
+  const videoSignalingRateLimit = new Map<string, { count: number; resetTime: number }>();
+
+  const isVideoSignalingAllowed = (socketId: string): boolean => {
+    const now = Date.now();
+    const record = videoSignalingRateLimit.get(socketId) || { count: 0, resetTime: now + 5000 };
+    if (now > record.resetTime) {
+      record.count = 0;
+      record.resetTime = now + 5000;
+    }
+    record.count += 1;
+    videoSignalingRateLimit.set(socketId, record);
+    return record.count <= 100;
+  };
+
+  const cleanVideoParticipant = (roomId: string, participantId: string) => {
+    const roomVideos = roomVideoParticipants.get(roomId);
+    if (!roomVideos) return;
+    if (roomVideos.has(participantId)) {
+      roomVideos.delete(participantId);
+      io.to(roomId).emit(SOCKET_EVENTS.VIDEO_PEER_LEFT, { participantId });
+      logger.info('VIDEO_CALL_PARTICIPANT_LEFT', { roomId, participantId });
+    }
+    if (roomVideos.size === 0) {
+      roomVideoParticipants.delete(roomId);
+    }
+  };
 
   const isPlaybackActivityAllowed = (socketId: string): boolean => {
     const now = Date.now();
@@ -377,6 +420,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
       }
 
       await roomManager.kickParticipant(socketData.roomId, payload.participantId);
+      cleanVideoParticipant(socketData.roomId, payload.participantId);
       const participants = await roomManager.getParticipants(socketData.roomId);
 
       io.to(socketData.roomId).emit(SOCKET_EVENTS.PARTICIPANT_KICKED, {
@@ -393,6 +437,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
         return;
       }
 
+      roomVideoParticipants.delete(socketData.roomId);
       await roomManager.endRoom(socketData.roomId);
       logger.roomEnded(socketData.roomId);
       io.to(socketData.roomId).emit(SOCKET_EVENTS.ROOM_ENDED, { message: 'The host has ended this watch room.' });
@@ -436,14 +481,181 @@ export function setupSocketHandlers(io: SocketIOServer) {
       io.to(socketData.roomId).emit(SOCKET_EVENTS.CHAT_MESSAGE, chatMessage);
     });
 
-    // 6. Disconnect Handling with Grace Period
+    // 6. WebRTC Video Calling Signaling Handlers
+    socket.on(SOCKET_EVENTS.VIDEO_JOIN, async () => {
+      if (!socketData.roomId || !socketData.participantId || !socketData.displayName) {
+        socket.emit(SOCKET_EVENTS.ERROR, { message: 'Must be in a room to join video call.' });
+        return;
+      }
+
+      const roomId = socketData.roomId;
+      const participantId = socketData.participantId;
+      const displayName = socketData.displayName;
+
+      let roomVideos = roomVideoParticipants.get(roomId);
+      if (!roomVideos) {
+        roomVideos = new Map();
+        roomVideoParticipants.set(roomId, roomVideos);
+      }
+
+      // Collect existing participants currently in video call (excluding self)
+      const existingList: VideoParticipant[] = [];
+      for (const p of roomVideos.values()) {
+        if (p.participantId !== participantId) {
+          existingList.push({
+            participantId: p.participantId,
+            displayName: p.displayName,
+            isMuted: p.isMuted,
+            isCameraOff: p.isCameraOff,
+            joinedAt: p.joinedAt,
+          });
+        }
+      }
+
+      const newParticipant: ActiveVideoParticipant = {
+        socketId: socket.id,
+        participantId,
+        displayName,
+        isMuted: false,
+        isCameraOff: false,
+        joinedAt: Date.now(),
+      };
+      roomVideos.set(participantId, newParticipant);
+
+      // Send existing participants in call to joining user
+      socket.emit(SOCKET_EVENTS.VIDEO_PARTICIPANTS, { participants: existingList });
+
+      // Broadcast to other users in room that a peer joined video call
+      socket.to(roomId).emit(SOCKET_EVENTS.VIDEO_PEER_JOINED, {
+        participant: {
+          participantId: newParticipant.participantId,
+          displayName: newParticipant.displayName,
+          isMuted: newParticipant.isMuted,
+          isCameraOff: newParticipant.isCameraOff,
+          joinedAt: newParticipant.joinedAt,
+        },
+      });
+
+      logger.info('VIDEO_CALL_PARTICIPANT_JOINED', { roomId, participantId, displayName });
+    });
+
+    socket.on(SOCKET_EVENTS.VIDEO_LEAVE, () => {
+      if (!socketData.roomId || !socketData.participantId) return;
+      cleanVideoParticipant(socketData.roomId, socketData.participantId);
+    });
+
+    socket.on(SOCKET_EVENTS.VIDEO_OFFER, (payload: unknown) => {
+      if (!socketData.roomId || !socketData.participantId || !socketData.displayName) return;
+      if (!isVideoSignalingAllowed(socket.id)) {
+        socket.emit(SOCKET_EVENTS.ERROR, { message: 'Video signaling rate limit exceeded. Please wait.' });
+        return;
+      }
+
+      const parsed = VideoOfferSchema.safeParse(payload);
+      if (!parsed.success) {
+        socket.emit(SOCKET_EVENTS.ERROR, { message: parsed.error.errors[0].message });
+        return;
+      }
+
+      const { targetParticipantId, sdp } = parsed.data;
+      if (targetParticipantId === socketData.participantId) return; // Prevent self-signaling
+
+      const roomVideos = roomVideoParticipants.get(socketData.roomId);
+      const target = roomVideos?.get(targetParticipantId);
+      if (!target) return;
+
+      // Authoritative identity: sender cannot forge fromParticipantId
+      io.to(target.socketId).emit(SOCKET_EVENTS.VIDEO_OFFER, {
+        fromParticipantId: socketData.participantId,
+        fromDisplayName: socketData.displayName,
+        sdp,
+      });
+    });
+
+    socket.on(SOCKET_EVENTS.VIDEO_ANSWER, (payload: unknown) => {
+      if (!socketData.roomId || !socketData.participantId) return;
+      if (!isVideoSignalingAllowed(socket.id)) {
+        socket.emit(SOCKET_EVENTS.ERROR, { message: 'Video signaling rate limit exceeded. Please wait.' });
+        return;
+      }
+
+      const parsed = VideoAnswerSchema.safeParse(payload);
+      if (!parsed.success) {
+        socket.emit(SOCKET_EVENTS.ERROR, { message: parsed.error.errors[0].message });
+        return;
+      }
+
+      const { targetParticipantId, sdp } = parsed.data;
+      if (targetParticipantId === socketData.participantId) return;
+
+      const roomVideos = roomVideoParticipants.get(socketData.roomId);
+      const target = roomVideos?.get(targetParticipantId);
+      if (!target) return;
+
+      io.to(target.socketId).emit(SOCKET_EVENTS.VIDEO_ANSWER, {
+        fromParticipantId: socketData.participantId,
+        sdp,
+      });
+    });
+
+    socket.on(SOCKET_EVENTS.VIDEO_ICE_CANDIDATE, (payload: unknown) => {
+      if (!socketData.roomId || !socketData.participantId) return;
+      if (!isVideoSignalingAllowed(socket.id)) {
+        return;
+      }
+
+      const parsed = VideoIceCandidateSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+
+      const { targetParticipantId, candidate } = parsed.data;
+      if (targetParticipantId === socketData.participantId) return;
+
+      const roomVideos = roomVideoParticipants.get(socketData.roomId);
+      const target = roomVideos?.get(targetParticipantId);
+      if (!target) return;
+
+      io.to(target.socketId).emit(SOCKET_EVENTS.VIDEO_ICE_CANDIDATE, {
+        fromParticipantId: socketData.participantId,
+        candidate,
+      });
+    });
+
+    socket.on(SOCKET_EVENTS.VIDEO_STATE_UPDATE, (payload: unknown) => {
+      if (!socketData.roomId || !socketData.participantId) return;
+      const parsed = VideoStateUpdateSchema.safeParse(payload);
+      if (!parsed.success) return;
+
+      const roomVideos = roomVideoParticipants.get(socketData.roomId);
+      const current = roomVideos?.get(socketData.participantId);
+      if (current) {
+        if (typeof parsed.data.isMuted === 'boolean') current.isMuted = parsed.data.isMuted;
+        if (typeof parsed.data.isCameraOff === 'boolean') current.isCameraOff = parsed.data.isCameraOff;
+
+        socket.to(socketData.roomId).emit(SOCKET_EVENTS.VIDEO_PEER_STATE, {
+          participantId: socketData.participantId,
+          isMuted: current.isMuted,
+          isCameraOff: current.isCameraOff,
+        });
+      }
+    });
+
+    // 7. Disconnect Handling with Grace Period
     socket.on('disconnect', () => {
       if (!socketData.roomId || !socketData.sessionId) return;
 
       const roomId = socketData.roomId;
       const sessionId = socketData.sessionId;
       const displayName = socketData.displayName;
+      const participantId = socketData.participantId;
       const timerKey = `${roomId}:${sessionId}`;
+
+      // Clean up video call immediately upon socket disconnect (no need to wait grace period for WebRTC P2P)
+      if (participantId) {
+        cleanVideoParticipant(roomId, participantId);
+      }
+      videoSignalingRateLimit.delete(socket.id);
 
       // Set grace-period timer before marking offline
       const timer = setTimeout(async () => {

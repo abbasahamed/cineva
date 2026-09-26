@@ -136,6 +136,31 @@ export class SocketService {
     this.socket?.emit(SOCKET_EVENTS.ROOM_END);
   }
 
+  // WebRTC Video Calling Signaling Emitters
+  public emitVideoJoin() {
+    this.socket?.emit(SOCKET_EVENTS.VIDEO_JOIN);
+  }
+
+  public emitVideoLeave() {
+    this.socket?.emit(SOCKET_EVENTS.VIDEO_LEAVE);
+  }
+
+  public emitVideoOffer(payload: { targetParticipantId: string; sdp: { type: 'offer' | 'answer' | 'pranswer' | 'rollback'; sdp: string } }) {
+    this.socket?.emit(SOCKET_EVENTS.VIDEO_OFFER, payload);
+  }
+
+  public emitVideoAnswer(payload: { targetParticipantId: string; sdp: { type: 'offer' | 'answer' | 'pranswer' | 'rollback'; sdp: string } }) {
+    this.socket?.emit(SOCKET_EVENTS.VIDEO_ANSWER, payload);
+  }
+
+  public emitVideoIceCandidate(payload: { targetParticipantId: string; candidate: { candidate: string; sdpMid?: string | null; sdpMLineIndex?: number | null; usernameFragment?: string | null } }) {
+    this.socket?.emit(SOCKET_EVENTS.VIDEO_ICE_CANDIDATE, payload);
+  }
+
+  public emitVideoStateUpdate(payload: { isMuted?: boolean; isCameraOff?: boolean }) {
+    this.socket?.emit(SOCKET_EVENTS.VIDEO_STATE_UPDATE, payload);
+  }
+
   public disconnect() {
     this.stopClockSync();
     if (this.socket) {
