@@ -609,6 +609,17 @@ export class S3MediaStorage implements MediaStorage {
     };
   }
 
+  async getSignedDownloadUrl(storageKey: string): Promise<string> {
+    return getSignedUrl(
+      this.client,
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: storageKey,
+      }),
+      { expiresIn: 3600 }
+    );
+  }
+
   async getMultipartPartUrl(storageKey: string, uploadId: string, partNumber: number): Promise<string> {
     return getSignedUrl(
       this.client,

@@ -567,4 +567,24 @@ router.post("/process-existing", async (req: Request, res: Response) => {
   }
 });
 
+
+// POST /api/media/presigned-get-url (POC presigned GET URL for B2 objects)
+router.post("/presigned-get-url", async (req: Request, res: Response) => {
+  try {
+    const { storageKey } = req.body;
+    if (!storageKey) {
+      res.status(400).json({ error: "storageKey is required" });
+      return;
+    }
+    if (mediaStorage instanceof S3MediaStorage && (mediaStorage as any).getSignedDownloadUrl) {
+      const url = await (mediaStorage as any).getSignedDownloadUrl(storageKey);
+      res.json({ presignedGetUrl: url, storageKey });
+    } else {
+      res.status(501).json({ error: "S3 storage driver required" });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
