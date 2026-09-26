@@ -548,9 +548,13 @@ export class MediaJobQueue {
 
       transcodingService.cancelJob(job.id);
 
+      const cleanMsg = (err.message || "")
+        .replace(/\/Users\/[^\s]+/g, "[path]")
+        .replace(/\/app\/[^\s]+/g, "[path]")
+        .replace(/[A-Za-z0-9_-]{24,}/g, "[REDACTED]");
       const userFacingError = (err.message && err.message.includes("Not enough temporary storage"))
         ? "Not enough temporary storage to prepare this video."
-        : "Video processing failed. Please try a different video format or file.";
+        : `Video processing failed (${cleanMsg.substring(0, 120)})`;
 
       if (await this.isRoomActive(roomId)) {
         await prisma.media.update({
