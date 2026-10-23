@@ -48,3 +48,29 @@
     - `npm run build`: 0 errors.
     - `npm test`: 172 passed across 18 test suites (server 126, web 46).
   - **What's next**: Section 2 — Media pipeline v2: HLS packaging with multi-audio, subtitle extraction, and test fixtures.
+- **Section 2 Milestones Completed (HLS Multi-Audio & Subtitle Packager + Fixtures)**:
+  - **What changed**:
+    - Created `scripts/make-fixtures.mjs` generating all 4 required test fixtures:
+      - `fixtures/1_h264_aac.mp4`: H.264 + LC-AAC baseline
+      - `fixtures/2_multi_track.mkv`: 7 streams — H.264 video, 3 audio tracks (English 440 Hz, Hindi 880 Hz, Telugu 1320 Hz), 2 text subtitle tracks (English [CC], Español), 1 image-based PGS subtitle track (Français)
+      - `fixtures/3_hevc.mkv`: HEVC video + AAC audio
+      - `fixtures/4_corrupted.mp4`: Corrupted header fixture
+    - Verified FFmpeg 9.0.1 on Apple Silicon M4: confirmed `h264_videotoolbox` hardware acceleration is active and operational.
+    - Updated `@cineva/shared` with `TrackManifest`, `VideoTrackInfo`, `AudioTrackInfo`, `SubtitleTrackInfo`, and updated `MediaInfo`.
+    - Enhanced `mediaAnalyzer.ts` to capture stream tags (`language`, `title`), `channelLayout`, and disposition flags (`isDefault`, `isForced`).
+    - Created `trackManifest.ts`:
+      - Resolves ISO 639-1 / 639-2 codes to clean display names via native `Intl.DisplayNames`.
+      - Identifies supported text subtitles (`subrip`, `srt`, `ass`, `ssa`, `mov_text`, `webvtt`) vs unsupported image/bitmap subtitles (`hdmv_pgs_subtitle`, `pgs`, `dvd_subtitle`, `vobsub`, `dvb_subtitle`) with explicit user-facing explanation.
+    - Created `hlsPackager.ts`:
+      - Extracts every supported text subtitle track into standalone `.vtt` WebVTT files using FFmpeg.
+      - Packages video and all audio renditions into fMP4 HLS (`stream_%v.m3u8`, `init_*.mp4`, `stream_*.m4s`).
+      - Rewrites/formats `master.m3u8` to include human-readable audio rendition names, `#EXT-X-MEDIA:TYPE=AUDIO`, companion subtitle playlists (`sub_*.m3u8`), `#EXT-X-MEDIA:TYPE=SUBTITLES`, and links them to `#EXT-X-STREAM-INF`.
+      - Supports early playback startup notification when initial segments are ready.
+    - Added unit test suite `apps/server/src/__tests__/hlsMultiTrack.test.ts`.
+  - **What was verified**:
+    - Ran `npx tsx scripts/test-hls-packager.mjs` against `fixtures/2_multi_track.mkv`: packaged 7 streams in 110ms on M4; generated all fMP4 segments, WebVTT files, and formatted master playlist.
+    - Ran `npx vitest run src/__tests__/hlsMultiTrack.test.ts`: 4/4 tests passed.
+    - `npm run typecheck`: 0 errors across `@cineva/shared`, `@cineva/server`, `@cineva/web`.
+    - `npm test`: 176 passed (130 server, 46 web).
+  - **What's next**: Show Track Manifest JSON and Master Playlist to the user for review, then wire media storage/job queue and the frontend HLS player.
+

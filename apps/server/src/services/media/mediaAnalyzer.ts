@@ -14,8 +14,13 @@ export interface MediaStreamInfo {
   pixFmt?: string;
   bitrate?: number;
   channels?: number;
+  channelLayout?: string;
   sampleRate?: number;
   profile?: string;
+  language?: string;
+  title?: string;
+  isDefault?: boolean;
+  isForced?: boolean;
 }
 
 export interface MediaAnalysis {
@@ -61,18 +66,32 @@ export async function analyzeMediaFile(filePath: string): Promise<MediaAnalysis>
   const format = parsed.format || {};
   const rawStreams: any[] = parsed.streams || [];
 
-  const streams: MediaStreamInfo[] = rawStreams.map((s) => ({
-    index: s.index,
-    codecName: (s.codec_name || '').toLowerCase(),
-    codecType: s.codec_type === 'video' ? 'video' : s.codec_type === 'audio' ? 'audio' : s.codec_type === 'subtitle' ? 'subtitle' : 'other',
-    width: typeof s.width === 'number' ? s.width : undefined,
-    height: typeof s.height === 'number' ? s.height : undefined,
-    pixFmt: s.pix_fmt || undefined,
-    bitrate: s.bit_rate ? parseInt(s.bit_rate, 10) : undefined,
-    channels: s.channels ? parseInt(s.channels, 10) : undefined,
-    sampleRate: s.sample_rate ? parseInt(s.sample_rate, 10) : undefined,
-    profile: s.profile || undefined,
-  }));
+  const streams: MediaStreamInfo[] = rawStreams.map((s) => {
+    const tags = s.tags || {};
+    const disposition = s.disposition || {};
+    const language = (tags.language || tags.LANGUAGE || '').toLowerCase().trim();
+    const title = tags.title || tags.TITLE || undefined;
+    const isDefault = disposition.default === 1;
+    const isForced = disposition.forced === 1;
+
+    return {
+      index: s.index,
+      codecName: (s.codec_name || '').toLowerCase(),
+      codecType: s.codec_type === 'video' ? 'video' : s.codec_type === 'audio' ? 'audio' : s.codec_type === 'subtitle' ? 'subtitle' : 'other',
+      width: typeof s.width === 'number' ? s.width : undefined,
+      height: typeof s.height === 'number' ? s.height : undefined,
+      pixFmt: s.pix_fmt || undefined,
+      bitrate: s.bit_rate ? parseInt(s.bit_rate, 10) : undefined,
+      channels: s.channels ? parseInt(s.channels, 10) : undefined,
+      channelLayout: s.channel_layout || undefined,
+      sampleRate: s.sample_rate ? parseInt(s.sample_rate, 10) : undefined,
+      profile: s.profile || undefined,
+      language: language || undefined,
+      title,
+      isDefault,
+      isForced,
+    };
+  });
 
   const videoStream = streams.find((s) => s.codecType === 'video');
   const audioStream = streams.find((s) => s.codecType === 'audio');

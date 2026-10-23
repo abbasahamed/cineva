@@ -53,6 +53,52 @@ export interface ParticipantInfo {
 
 export type MediaStatus = 'ready' | 'processing' | 'failed';
 
+export interface VideoTrackInfo {
+  index: number;
+  codec: string;
+  width?: number;
+  height?: number;
+  bitrate?: number;
+  profile?: string;
+}
+
+export interface AudioTrackInfo {
+  index: number;
+  streamIndex: number;
+  language: string;
+  title: string;
+  codec: string;
+  channels: number;
+  channelLayout?: string;
+  bitrate?: number;
+  isDefault: boolean;
+}
+
+export interface SubtitleTrackInfo {
+  index: number;
+  streamIndex: number;
+  language: string;
+  title: string;
+  codec: string;
+  isForced: boolean;
+  isDefault: boolean;
+  supported: boolean;
+  unsupportedReason?: string;
+  url?: string;
+}
+
+export interface TrackManifest {
+  formatName: string;
+  duration: number;
+  sizeBytes: number;
+  videoTracks: VideoTrackInfo[];
+  audioTracks: AudioTrackInfo[];
+  subtitleTracks: SubtitleTrackInfo[];
+  hlsMasterUrl?: string;
+  mp4FallbackUrl?: string;
+  isHls: boolean;
+}
+
 export interface MediaInfo {
   id: string;
   roomId: string;
@@ -72,6 +118,10 @@ export interface MediaInfo {
   speed?: string;
   etaSeconds?: number;
   stage?: string;
+  trackManifest?: TrackManifest;
+  hlsMasterUrl?: string;
+  mp4FallbackUrl?: string;
+  isHls?: boolean;
   createdAt: string;
 }
 
