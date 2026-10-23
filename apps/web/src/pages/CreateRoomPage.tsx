@@ -318,7 +318,12 @@ export const CreateRoomPage: React.FC = () => {
       <main className="app-shell">
         {/* Back to Home navigation */}
         <Link to="/" className="top-nav lg" onPointerMove={handlePointerMove}>
-          <svg viewBox="0 0 24 24">
+          <svg
+            viewBox="0 0 24 24"
+            width={18}
+            height={18}
+            style={{ width: 18, height: 18, stroke: 'currentColor', fill: 'none', strokeWidth: 2, flexShrink: 0 }}
+          >
             <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <span>Back to Home</span>
@@ -440,7 +445,12 @@ export const CreateRoomPage: React.FC = () => {
                       handleSelectFile(null, true);
                     }}
                   >
-                    <svg viewBox="0 0 24 24">
+                    <svg
+                      viewBox="0 0 24 24"
+                      width={14}
+                      height={14}
+                      style={{ width: 14, height: 14, stroke: 'currentColor', fill: 'none', strokeWidth: 2, flexShrink: 0 }}
+                    >
                       <polygon points="5 3 19 12 5 21 5 3" />
                     </svg>
                     <span>Or use sample HD demo video</span>

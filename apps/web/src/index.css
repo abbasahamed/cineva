@@ -2864,11 +2864,20 @@ footer .wrap {
   font-size: 14.5px;
   font-weight: 500;
   color: var(--t2);
+  white-space: nowrap;
   transition: transform 0.2s var(--ease), color 0.2s;
 }
 .top-nav:hover {
   color: #fff;
   transform: translateX(-3px);
+}
+.top-nav svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  flex-shrink: 0;
 }
 .badge {
   display: inline-flex;
@@ -2881,6 +2890,15 @@ footer .wrap {
   font-weight: 550;
   color: var(--t2);
   margin-bottom: 18px;
+  white-space: nowrap;
+}
+.badge svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  flex-shrink: 0;
 }
 .badge .dot {
   width: 7px;
@@ -2955,6 +2973,14 @@ footer .wrap {
   margin-bottom: 14px;
   color: #fff;
 }
+.upload-icon svg {
+  width: 24px;
+  height: 24px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  fill: none;
+  flex-shrink: 0;
+}
 .dropzone-title {
   font-size: 15px;
   font-weight: 550;
@@ -2979,7 +3005,20 @@ footer .wrap {
   align-items: center;
   gap: 7px;
   cursor: pointer;
+  white-space: nowrap;
   transition: all 0.2s;
+}
+.sample-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.sample-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  flex-shrink: 0;
 }
 .loaded-chip {
   display: none;
@@ -3034,6 +3073,8 @@ footer .wrap {
 }
 .code-cell {
   flex: 1;
+  min-width: 0;
+  width: 0;
   height: 58px;
   border-radius: 14px;
   text-align: center;

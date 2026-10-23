@@ -257,3 +257,26 @@ Per instructions, the watch room page UI is kept intact and will be redesigned i
       - **Axe-core Accessibility**: 0 violations on Landing, 0 violations on Create, 0 violations on Join.
       - **Scroll Performance**: Average 60 FPS, 0 dropped frames.
       - **End-to-End Real Flow**: Host created room `8F6PRS` -> entered watch room -> guest joined via code -> both host and guest successfully in synced theater.
+- **Step 9: Alignment & Room Exit Lifecycle Fixes Completed**:
+  - **What changed**:
+    - **Visual & Alignment Fixes**:
+      - Fixed navigation pill distortion: Added `.top-nav svg` rule in `apps/web/src/index.css` (`width: 18px; height: 18px; stroke: currentColor; stroke-width: 2; fill: none; flex-shrink: 0;`) and `.top-nav { white-space: nowrap; }`.
+      - Fixed oversized black polygon in sample video button: Added `.sample-btn svg` rule (`width: 14px; height: 14px; stroke: currentColor; stroke-width: 2; fill: none; flex-shrink: 0;`) and `.sample-btn:hover`.
+      - Added explicit inline SVG attributes and styles on `<Link to="/" className="top-nav lg">` and `#sampleBtn` in `CreateRoomPage.tsx` and `JoinRoomPage.tsx` for defense-in-depth against Tailwind preflight CSS resets.
+      - Fixed 6-digit room code input overflow on `JoinRoomPage.tsx`: added `min-width: 0; width: 0;` to `.code-cell` in `index.css` so inputs flex gracefully without exceeding card bounds.
+    - **Room Exit & Server Capacity Fixes**:
+      - Reaped 3 stale orphaned test rooms from `dev.db` that were holding server capacity.
+      - Implemented automatic stale room reaping (`pruneStaleRooms()`) in `RoomManager`:
+        - Reaps rooms older than expiration.
+        - Identifies active rooms with 0 participants or where all participants/host have not been seen in > 15 seconds (`lastSeenAt < Date.now() - 15000`).
+        - Automatically calls `pruneStaleRooms()` before evaluating `MAX_CONCURRENT_ROOMS` in `createRoom()`, guaranteeing ghost rooms never block new room creation.
+      - Fixed room exit flow in `useSyncWatch.ts` and `WatchRoomPage.tsx`:
+        - When a host exits or leaves a room (`handleLeaveRoom` or `handleEndRoom`), `abortRoom(room.id, sessionId)` is dispatched via HTTP API and `socketService.emitEndRoom()` is sent with a 50ms flush before disconnect.
+        - Added `beforeunload` and `pagehide` listeners sending `sendAbortBeacon(room.id, sessionId)` so if the host navigates away or closes the tab, the room is immediately deleted and capacity is freed.
+      - Protected shared demo media (`demo/sample_video.mp4`) in `cleanupRoomMedia()` so shared sample assets are never deleted during room cleanup.
+  - **What was verified**:
+    - `npm run typecheck`: **0 errors** across `@cineva/shared`, `@cineva/server`, and `@cineva/web`.
+    - `npm test`: **188 / 188 tests passed** (130 server tests across 16 suites, 58 web tests across 5 suites).
+    - Executed real Chrome browser automation:
+      - Captured verified screenshots of Create and Join pages confirming pixel-perfect alignment of "Back to Home", "Or use sample HD demo video", and the 6 code cells.
+      - Verified full E2E flow in Chrome: Create room -> Enter theater -> Leave room -> Returned to home -> Database confirmed 0 active rooms remaining.

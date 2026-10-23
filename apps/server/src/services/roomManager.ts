@@ -19,9 +19,87 @@ import { logger } from '../utils/logger.js';
 
 export class RoomManager {
   /**
+   * Automatically cleans up orphaned or stale rooms (e.g. past expiry, or rooms where
+   * all participants or the host have disconnected/been offline for > 15s).
+   */
+  async pruneStaleRooms(): Promise<number> {
+    try {
+      const now = new Date();
+      const offlineThreshold = new Date(Date.now() - 15000);
+
+      // 1. Expired active rooms
+      const expiredRooms = await prisma.room.findMany({
+        where: {
+          status: 'active',
+          expiresAt: { lte: now },
+        },
+        select: { id: true },
+      });
+
+      // 2. Active rooms with 0 participants or where all participants are offline
+      const activeRooms = await prisma.room.findMany({
+        where: {
+          status: 'active',
+        },
+        include: {
+          participants: true,
+        },
+      });
+
+      const roomsToEnd = new Set<string>();
+      for (const r of expiredRooms) {
+        roomsToEnd.add(r.id);
+      }
+
+      for (const r of activeRooms) {
+        if (!r.participants || r.participants.length === 0) {
+          roomsToEnd.add(r.id);
+          continue;
+        }
+
+        // Check if ANY participant in the room has been seen in the last 15s AND has isOnline true
+        const anyActive = r.participants.some(
+          (p) => p.isOnline && new Date(p.lastSeenAt).getTime() >= Date.now() - 15000
+        );
+
+        if (!anyActive) {
+          roomsToEnd.add(r.id);
+          continue;
+        }
+
+        // Check if host specifically is active
+        const host = r.participants.find((p) => p.isHost || p.sessionId === r.hostSessionId);
+        const isHostActive = host && host.isOnline && new Date(host.lastSeenAt).getTime() >= Date.now() - 15000;
+        if (!isHostActive) {
+          roomsToEnd.add(r.id);
+        }
+      }
+
+      let count = 0;
+      for (const roomId of roomsToEnd) {
+        try {
+          await this.endRoom(roomId);
+          count++;
+          logger.info(`[PruneStaleRooms] Reaped stale room ${roomId}`);
+        } catch (e: any) {
+          logger.warn(`[PruneStaleRooms] Error reaping room ${roomId}: ${e.message}`);
+        }
+      }
+
+      return count;
+    } catch (err: any) {
+      logger.warn(`[PruneStaleRooms] Failed to prune stale rooms: ${err.message}`);
+      return 0;
+    }
+  }
+
+  /**
    * Creates a new watch room.
    */
   async createRoom(input: CreateRoomInput, hostSessionId?: string): Promise<{ room: RoomInfo; hostSessionId: string; hostParticipantId: string }> {
+    // Automatically prune any stale/orphaned rooms before checking capacity
+    await this.pruneStaleRooms().catch(() => {});
+
     const activeRoomsCount = await prisma.room.count({
       where: {
         status: 'active',
@@ -428,22 +506,23 @@ export class RoomManager {
         where: { roomId },
       });
 
-      // 3. Collect and deduplicate all storage keys for this room's media
+      // 3. Collect and deduplicate all storage keys for this room's media (never delete shared demo media)
       const storageKeys = new Set<string>();
       for (const media of mediaList) {
-        if (media.storageKey && !media.storageKey.startsWith('pending_')) {
+        if (media.storageKey && !media.storageKey.startsWith('pending_') && !media.storageKey.startsWith('demo')) {
           storageKeys.add(media.storageKey);
         }
-        if (media.originalStorageKey && !media.originalStorageKey.startsWith('pending_')) {
+        if (media.originalStorageKey && !media.originalStorageKey.startsWith('pending_') && !media.originalStorageKey.startsWith('demo')) {
           storageKeys.add(media.originalStorageKey);
         }
-        if (media.playbackStorageKey && !media.playbackStorageKey.startsWith('pending_')) {
+        if (media.playbackStorageKey && !media.playbackStorageKey.startsWith('pending_') && !media.playbackStorageKey.startsWith('demo')) {
           storageKeys.add(media.playbackStorageKey);
         }
       }
 
       // 4. Delete physical/object storage files using storage abstraction
       for (const key of storageKeys) {
+        if (key.startsWith('demo')) continue;
         try {
           await mediaStorage.deleteFile(key);
           logger.info(`[MediaCleanup] Deleted storage key ${key}`);

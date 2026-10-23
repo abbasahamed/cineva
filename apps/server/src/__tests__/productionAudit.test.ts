@@ -3,6 +3,7 @@ import request from 'supertest';
 import { io as ClientSocket, Socket as ClientSocketType } from 'socket.io-client';
 import { app, server } from '../index.js';
 import { prisma } from '../db.js';
+import { mediaStorage } from '../services/mediaStorage.js';
 import { SOCKET_EVENTS } from '@cineva/shared';
 
 describe('Phase 7 Production Audit & Security Test Suite', () => {
@@ -16,6 +17,7 @@ describe('Phase 7 Production Audit & Security Test Suite', () => {
 
   beforeAll(async () => {
     await prisma.$connect();
+    mediaStorage.ensureDemoMedia();
     // Ensure HTTP / WebSocket server is actively listening
     if (!server.listening) {
       await new Promise<void>((resolve) => {

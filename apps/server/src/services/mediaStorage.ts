@@ -222,11 +222,12 @@ export class LocalMediaStorage implements MediaStorage {
     const storageKey = path.join("demo", "sample_video.mp4");
     const demoPath = path.join(this.baseDir, storageKey);
 
-    if (!fs.existsSync(demoPath)) {
-      const dummySample = Buffer.from(
-        "AAAAHGZ0eXBtcDQyAAAAAG1wNDJpc29tYXZjMQAAAAhmcmVlAAAGpm1kYXQAAAAAAA...",
+    if (!fs.existsSync(demoPath) || fs.statSync(demoPath).size < 200) {
+      const dummyHeader = Buffer.from(
+        "AAAAHGZ0eXBtcDQyAAAAAG1wNDJpc29tYXZjMQAAAAhmcmVlAAAGpm1kYXQAAAAAAA",
         "base64"
       );
+      const dummySample = Buffer.concat([dummyHeader, Buffer.alloc(2048)]);
       fs.writeFileSync(demoPath, dummySample);
     }
 

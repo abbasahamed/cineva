@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { socketService } from '../services/socket.js';
+import { abortRoom, sendAbortBeacon } from '../services/api.js';
 import { srtToVtt } from '../utils/subtitleUtils.js';
 import {
   PlaybackState,
@@ -643,20 +644,43 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
 
   const handleEndRoom = useCallback(() => {
     isTerminatedRef.current = true;
+    if (room?.id && sessionId) {
+      abortRoom(room.id, sessionId).catch(() => {});
+    }
     socketService.emitEndRoom();
     setConnectionStatus('ended');
-  }, []);
+  }, [room?.id, sessionId]);
 
   const handleLeaveRoom = useCallback(() => {
     isTerminatedRef.current = true;
     if (isHostRef.current) {
+      if (room?.id && sessionId) {
+        abortRoom(room.id, sessionId).catch(() => {});
+      }
       socketService.emitEndRoom();
     } else {
       socketService.emitLeaveRoom();
     }
-    socketService.disconnect();
+    setTimeout(() => {
+      socketService.disconnect();
+    }, 50);
     setConnectionStatus('ended');
-  }, []);
+  }, [room?.id, sessionId]);
+
+  // When the host navigates away, closes the tab, or unloads the window, send abort beacon immediately
+  useEffect(() => {
+    const handleUnload = () => {
+      if (isHostRef.current && room?.id && sessionId) {
+        sendAbortBeacon(room.id, sessionId);
+      }
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    window.addEventListener('pagehide', handleUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      window.removeEventListener('pagehide', handleUnload);
+    };
+  }, [room?.id, sessionId]);
 
   const handleMediaRetry = useCallback(() => {
     socketService.emitMediaRetry();
