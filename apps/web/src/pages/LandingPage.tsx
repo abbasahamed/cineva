@@ -225,7 +225,7 @@ export const LandingPage: React.FC = () => {
         {/* ======================================================================= */}
         {/* HERO SECTION (Preserved exact design & atmosphere)                     */}
         {/* ======================================================================= */}
-        <section className="max-w-5xl mx-auto px-5 sm:px-8 pt-16 sm:pt-24 pb-12 text-center flex flex-col items-center relative">
+        <section className="max-w-5xl mx-auto px-4 sm:px-8 pt-10 sm:pt-24 pb-8 sm:pb-12 text-center flex flex-col items-center relative">
           {/* Enhanced Ambient Purple Radial Glow behind Hero Title */}
           <div
             className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[850px] h-[450px] rounded-full pointer-events-none -z-10 blur-[95px]"
@@ -235,7 +235,7 @@ export const LandingPage: React.FC = () => {
           />
 
           {/* Pill Badge */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.1] text-brand-300 text-xs font-medium mb-8 backdrop-blur-md shadow-xs">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full bg-white/[0.04] border border-white/[0.1] text-brand-300 text-[11px] sm:text-xs font-medium mb-5 sm:mb-8 backdrop-blur-md shadow-xs">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-60"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-500"></span>
@@ -244,7 +244,7 @@ export const LandingPage: React.FC = () => {
           </div>
 
           {/* Headline */}
-          <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-white mb-6 leading-[1.08] drop-shadow-sm">
+          <h1 className="text-3xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-white mb-4 sm:mb-6 leading-[1.12] sm:leading-[1.08] drop-shadow-sm">
             Watch together.<br />
             <span className="bg-gradient-to-r from-brand-300 via-indigo-200 to-brand-400 bg-clip-text text-transparent cinematic-text-glow">
               Stay in sync.
@@ -252,15 +252,15 @@ export const LandingPage: React.FC = () => {
           </h1>
 
           {/* Supporting Text */}
-          <p className="text-surface-muted text-base sm:text-lg max-w-xl mb-10 leading-relaxed font-normal">
+          <p className="text-surface-muted text-sm sm:text-base md:text-lg max-w-xl mb-6 sm:mb-10 leading-relaxed font-normal px-2 sm:px-0">
             Create a private room, invite your friends, and watch authorized videos together with sub-second synchronization.
           </p>
 
           {/* Main Action Buttons */}
-          <div className="flex flex-col sm:flex-row items-center gap-3.5 w-full max-w-md justify-center mb-6">
+          <div className="flex flex-col sm:flex-row items-center gap-2.5 sm:gap-3.5 w-full max-w-sm sm:max-w-md justify-center mb-4 sm:mb-6 px-2 sm:px-0">
             <button
               onClick={() => navigate('/create')}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-7 py-3.5 rounded-2xl glass-btn-primary hover:shadow-[0_0_24px_rgba(99,102,241,0.4)] text-white font-semibold text-sm shadow-xl active:scale-98 transition-all cursor-pointer"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 sm:px-7 sm:py-3.5 rounded-xl sm:rounded-2xl glass-btn-primary hover:shadow-[0_0_24px_rgba(99,102,241,0.4)] text-white font-semibold text-xs sm:text-sm shadow-xl active:scale-98 transition-all cursor-pointer"
             >
               <span>Create a Watch Room</span>
               <ArrowRight className="w-4 h-4" />
@@ -268,20 +268,20 @@ export const LandingPage: React.FC = () => {
 
             <button
               onClick={() => navigate('/join')}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-7 py-3.5 rounded-2xl glass-btn-secondary hover:border-white/20 text-slate-200 font-semibold text-sm shadow-md active:scale-98 transition-all cursor-pointer"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 sm:px-7 sm:py-3.5 rounded-xl sm:rounded-2xl glass-btn-secondary hover:border-white/20 text-slate-200 font-semibold text-xs sm:text-sm shadow-md active:scale-98 transition-all cursor-pointer"
             >
               <span>Join a Room</span>
             </button>
           </div>
 
           {/* Instant Demo Room trigger */}
-          <div className="mb-8">
+          <div className="mb-5 sm:mb-8">
             <button
               onClick={handleDemoRoom}
               disabled={isCreatingDemo}
-              className="inline-flex items-center gap-2 text-xs text-brand-300 hover:text-brand-200 font-medium transition-colors p-1.5 rounded-xl hover:bg-white/[0.04] cursor-pointer"
+              className="inline-flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-brand-300 hover:text-brand-200 font-medium transition-colors p-1.5 rounded-xl hover:bg-white/[0.04] cursor-pointer"
             >
-              <Tv className="w-3.5 h-3.5 text-brand-400" />
+              <Tv className="w-3.5 h-3.5 text-brand-400 shrink-0" />
               <span>{isCreatingDemo ? 'Launching Demo Room...' : 'Or start an instant demo room with sample media →'}</span>
             </button>
           </div>
@@ -289,16 +289,16 @@ export const LandingPage: React.FC = () => {
           {/* ===================================================================== */}
           {/* 3. PRODUCT PROOF / CAPABILITY STRIP                                    */}
           {/* ===================================================================== */}
-          <div className="w-full max-w-4xl mt-4 mb-8 glass-card rounded-2xl p-4 sm:p-5 border border-white/[0.08] shadow-glass-sm">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 text-left">
+          <div className="w-full max-w-4xl mt-1 sm:mt-4 mb-4 sm:mb-8 glass-card rounded-xl sm:rounded-2xl p-3 sm:p-5 border border-white/[0.08] shadow-glass-sm">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6 text-left">
               {/* Item 1 */}
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center text-brand-400 shrink-0 mt-0.5">
-                  <Zap className="w-4 h-4" />
+              <div className="flex items-start gap-2.5 sm:gap-3">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center text-brand-400 shrink-0 mt-0.5">
+                  <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-semibold text-white">Real-time sync</h4>
-                  <p className="text-[11px] text-surface-muted leading-tight mt-0.5">Everyone watches together</p>
+                  <h4 className="text-[11px] sm:text-xs font-semibold text-white">Real-time sync</h4>
+                  <p className="text-[10px] sm:text-[11px] text-surface-muted leading-tight mt-0.5">Everyone watches together</p>
                 </div>
               </div>
 
@@ -341,13 +341,13 @@ export const LandingPage: React.FC = () => {
         {/* ======================================================================= */}
         {/* 4 & 5. HOW IT WORKS                                                     */}
         {/* ======================================================================= */}
-        <section id="how-it-works" className="py-20 border-t border-white/[0.07] bg-white/[0.01] relative">
-          <div className="max-w-5xl mx-auto px-5 sm:px-8">
-            <div className="text-center max-w-xl mx-auto mb-16">
-              <span className="text-xs font-semibold text-brand-400 uppercase tracking-widest mb-2 block">
+        <section id="how-it-works" className="py-12 sm:py-20 border-t border-white/[0.07] bg-white/[0.01] relative">
+          <div className="max-w-5xl mx-auto px-4 sm:px-8">
+            <div className="text-center max-w-xl mx-auto mb-10 sm:mb-16">
+              <span className="text-[10px] sm:text-xs font-semibold text-brand-400 uppercase tracking-widest mb-1.5 sm:mb-2 block">
                 HOW CINEVA WORKS
               </span>
-              <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+              <h2 className="text-xl sm:text-4xl font-extrabold text-white tracking-tight">
                 From upload to movie night in three simple steps
               </h2>
             </div>
@@ -364,10 +364,10 @@ export const LandingPage: React.FC = () => {
               />
 
               {/* Step 1 */}
-              <div className="p-7 rounded-3xl glass-card border border-white/[0.09] relative z-10 flex flex-col justify-between group hover:border-brand-500/40 transition-all">
+              <div className="p-5 sm:p-7 rounded-2xl sm:rounded-3xl glass-card border border-white/[0.09] relative z-10 flex flex-col justify-between group hover:border-brand-500/40 transition-all">
                 <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-3xl font-extrabold font-mono text-brand-400/90 drop-shadow-sm">
+                  <div className="flex items-center justify-between mb-3 sm:mb-4">
+                    <span className="text-2xl sm:text-3xl font-extrabold font-mono text-brand-400/90 drop-shadow-sm">
                       01
                     </span>
                     <div className="w-10 h-10 rounded-2xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center text-brand-300">
@@ -388,10 +388,10 @@ export const LandingPage: React.FC = () => {
               </div>
 
               {/* Step 2 */}
-              <div className="p-7 rounded-3xl glass-card border border-white/[0.09] relative z-10 flex flex-col justify-between group hover:border-brand-500/40 transition-all">
+              <div className="p-5 sm:p-7 rounded-2xl sm:rounded-3xl glass-card border border-white/[0.09] relative z-10 flex flex-col justify-between group hover:border-brand-500/40 transition-all">
                 <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-3xl font-extrabold font-mono text-brand-400/90 drop-shadow-sm">
+                  <div className="flex items-center justify-between mb-3 sm:mb-4">
+                    <span className="text-2xl sm:text-3xl font-extrabold font-mono text-brand-400/90 drop-shadow-sm">
                       02
                     </span>
                     <div className="w-10 h-10 rounded-2xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center text-brand-300">
@@ -412,10 +412,10 @@ export const LandingPage: React.FC = () => {
               </div>
 
               {/* Step 3 */}
-              <div className="p-7 rounded-3xl glass-card border border-white/[0.09] relative z-10 flex flex-col justify-between group hover:border-brand-500/40 transition-all">
+              <div className="p-5 sm:p-7 rounded-2xl sm:rounded-3xl glass-card border border-white/[0.09] relative z-10 flex flex-col justify-between group hover:border-brand-500/40 transition-all">
                 <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-3xl font-extrabold font-mono text-brand-400/90 drop-shadow-sm">
+                  <div className="flex items-center justify-between mb-3 sm:mb-4">
+                    <span className="text-2xl sm:text-3xl font-extrabold font-mono text-brand-400/90 drop-shadow-sm">
                       03
                     </span>
                     <div className="w-10 h-10 rounded-2xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center text-brand-300">

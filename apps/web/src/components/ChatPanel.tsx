@@ -8,6 +8,14 @@ interface ChatPanelProps {
   onSendMessage: (text: string) => void;
 }
 
+// Detect if a message is strictly composed of emojis
+const isOnlyEmoji = (text: string): boolean => {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  const emojiRegex = /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji_Modifier_Base}|\p{Emoji_Component}|\uFE0F|\u200D|\s)+$/u;
+  return emojiRegex.test(trimmed) && /\p{Extended_Pictographic}/u.test(trimmed);
+};
+
 export const ChatPanel: React.FC<ChatPanelProps> = ({
   messages,
   currentParticipantId,
@@ -39,7 +47,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#070912]/80 backdrop-blur-xl border border-white/[0.08] rounded-2xl overflow-hidden shadow-2xl">
+    <div className="flex flex-col h-full bg-black/90 backdrop-blur-xl border border-white/[0.08] rounded-2xl overflow-hidden shadow-2xl">
       {/* Header */}
       <div className="px-3.5 py-2.5 border-b border-white/[0.06] flex items-center justify-between bg-white/[0.015]">
         <div className="flex items-center gap-2">
@@ -100,15 +108,20 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                     <span className="text-[9px] text-slate-500 font-mono">{timeStr}</span>
                   </div>
 
-                  <div
-                    className={`px-3.5 py-2 rounded-2xl text-xs leading-relaxed break-words shadow-xs ${
-                      isMe
-                        ? 'bg-gradient-to-r from-brand-600 to-indigo-600 text-white rounded-tr-xs border border-white/20 shadow-brand-600/20'
-                        : 'bg-white/[0.04] text-slate-200 border border-white/[0.07] rounded-tl-xs'
-                    }`}
-                  >
-                    {msg.message}
-                  </div>
+                  {isOnlyEmoji(msg.message) ? (
+                    <div className="text-3xl sm:text-4xl py-0.5 px-1 select-text leading-tight drop-shadow-sm transition-transform hover:scale-105">
+                      {msg.message}
+                    </div>
+                  ) : (
+                    <div
+                      className={`px-3.5 py-2 rounded-2xl text-xs leading-relaxed break-words shadow-xs ${isMe
+                          ? 'bg-gradient-to-r from-brand-600 to-brand-700 text-white rounded-tr-xs border border-white/20 shadow-brand-600/20'
+                          : 'bg-white/[0.04] text-slate-200 border border-white/[0.07] rounded-tl-xs'
+                        }`}
+                    >
+                      {msg.message}
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -131,7 +144,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         <button
           onClick={handleSend}
           disabled={!inputText.trim()}
-          className="p-2.5 rounded-xl glass-btn-primary hover:shadow-[0_0_16px_rgba(99,102,241,0.35)] disabled:opacity-30 text-white transition-all shadow-sm shrink-0 active:scale-95 cursor-pointer"
+          className="p-2.5 rounded-xl glass-btn-primary hover:shadow-[0_0_16px_rgba(var(--brand-rgb),0.35)] disabled:opacity-30 text-white transition-all shadow-sm shrink-0 active:scale-95 cursor-pointer"
           title="Send (Enter)"
         >
           <Send className="w-3.5 h-3.5" />

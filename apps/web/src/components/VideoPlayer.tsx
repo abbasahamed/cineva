@@ -9,7 +9,7 @@ import {
   Maximize,
   Minimize,
   SlidersHorizontal,
-  UploadCloud,
+  HardDrive,
   Lock,
   Tv,
   PictureInPicture,
@@ -17,6 +17,10 @@ import {
   Loader2,
   RefreshCw,
   Film,
+  Subtitles,
+  Check,
+  Upload,
+  Crop,
 } from 'lucide-react';
 import { PlaybackState, MediaInfo } from '@syncwatch/shared';
 
@@ -35,6 +39,8 @@ interface VideoPlayerProps {
   onUserGestureStart: () => void;
   onOpenUpload: () => void;
   onMediaRetry?: () => void;
+  subtitleState?: { url: string; filename: string } | null;
+  onUploadSubtitle?: (file: File) => void;
 }
 
 export function formatTime(seconds: number): string {
@@ -66,6 +72,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onUserGestureStart,
   onOpenUpload,
   onMediaRetry,
+  subtitleState,
+  onUploadSubtitle,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
@@ -79,10 +87,103 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPositionRatio, setHoverPositionRatio] = useState<number>(0);
   const [showRateMenu, setShowRateMenu] = useState<boolean>(false);
+  const [showSubtitleMenu, setShowSubtitleMenu] = useState<boolean>(false);
+  const [subtitlesEnabled, setSubtitlesEnabled] = useState<boolean>(true);
+  const [zoomMode, setZoomMode] = useState<'fit' | 'fill' | 'cover' | 'stretch' | 'custom'>(() => {
+    return (localStorage.getItem('cineva_zoom_mode') as any) || 'fit';
+  });
+  const [zoomScale, setZoomScale] = useState<number>(() => {
+    const saved = localStorage.getItem('cineva_zoom_scale');
+    return saved ? parseFloat(saved) : 1;
+  });
+  const [showZoomMenu, setShowZoomMenu] = useState<boolean>(false);
+  const [zoomToast, setZoomToast] = useState<string | null>(null);
+  const zoomToastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const zoomMenuRef = useRef<HTMLDivElement>(null);
+  const zoomScaleRef = useRef(zoomScale);
+  zoomScaleRef.current = zoomScale;
+  const zoomModeRef = useRef(zoomMode);
+  zoomModeRef.current = zoomMode;
   const [hasVideoError, setHasVideoError] = useState<boolean>(false);
   const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const rateMenuRef = useRef<HTMLDivElement>(null);
+  const subtitleMenuRef = useRef<HTMLDivElement>(null);
+  const subtitleInputRef = useRef<HTMLInputElement>(null);
   const isScrubbingRef = useRef<boolean>(false);
   isScrubbingRef.current = isScrubbing;
+
+  const triggerZoomToast = (msg: string) => {
+    setZoomToast(msg);
+    if (zoomToastTimeoutRef.current) {
+      clearTimeout(zoomToastTimeoutRef.current);
+    }
+    zoomToastTimeoutRef.current = setTimeout(() => {
+      setZoomToast(null);
+    }, 1500);
+  };
+
+  const applyZoom = (mode: 'fit' | 'fill' | 'cover' | 'stretch' | 'custom', scale = 1) => {
+    setZoomMode(mode);
+    setZoomScale(scale);
+    try {
+      localStorage.setItem('cineva_zoom_mode', mode);
+      localStorage.setItem('cineva_zoom_scale', scale.toString());
+    } catch { }
+
+    let label = 'Fit (Original)';
+    if (mode === 'fill') {
+      label = scale === 1.34 ? 'Zoom to Fill (21:9 Ultrawide)' : `Zoom to Fill (${Math.round(scale * 100)}%)`;
+    } else if (mode === 'cover') {
+      label = 'Auto Fill (Cover)';
+    } else if (mode === 'stretch') {
+      label = 'Stretch to Fill';
+    } else if (mode === 'custom') {
+      label = `Zoom: ${Math.round(scale * 100)}%`;
+    }
+    triggerZoomToast(label);
+  };
+
+  const toggleZoom = () => {
+    if (zoomScaleRef.current > 1 || zoomModeRef.current !== 'fit') {
+      applyZoom('fit', 1);
+    } else {
+      applyZoom('fill', 1.34);
+    }
+  };
+
+  // Close rate menu, subtitle menu, or zoom menu on outside click
+  useEffect(() => {
+    if (!showRateMenu && !showSubtitleMenu && !showZoomMenu) return;
+    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (showRateMenu && rateMenuRef.current && !rateMenuRef.current.contains(target)) {
+        setShowRateMenu(false);
+      }
+      if (showSubtitleMenu && subtitleMenuRef.current && !subtitleMenuRef.current.contains(target)) {
+        setShowSubtitleMenu(false);
+      }
+      if (showZoomMenu && zoomMenuRef.current && !zoomMenuRef.current.contains(target)) {
+        setShowZoomMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('touchstart', handleOutsideClick);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+    };
+  }, [showRateMenu, showSubtitleMenu, showZoomMenu]);
+
+  // Synchronize native text track mode with subtitlesEnabled state
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.textTracks && video.textTracks.length > 0) {
+      for (let i = 0; i < video.textTracks.length; i++) {
+        video.textTracks[i].mode = subtitlesEnabled && subtitleState ? 'showing' : 'disabled';
+      }
+    }
+  }, [subtitlesEnabled, subtitleState, videoRef]);
 
   // Reset video error and reload video when media changes or becomes ready
   useEffect(() => {
@@ -160,12 +261,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (hideControlsTimeoutRef.current) {
       clearTimeout(hideControlsTimeoutRef.current);
     }
-    if (playback.isPlaying) {
+    if (playback.isPlaying && !showRateMenu && !showSubtitleMenu && !showZoomMenu) {
       hideControlsTimeoutRef.current = setTimeout(() => {
         setShowControls(false);
       }, 3500);
     }
-  }, [playback.isPlaying]);
+  }, [playback.isPlaying, showRateMenu, showSubtitleMenu, showZoomMenu]);
 
   const handleMouseMove = () => {
     resetControlsTimer();
@@ -195,6 +296,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       } else if (e.code === 'KeyF') {
         e.preventDefault();
         toggleFullscreen();
+      } else if (e.code === 'KeyZ') {
+        e.preventDefault();
+        toggleZoom();
       }
     };
 
@@ -259,6 +363,30 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const rect = e.currentTarget.getBoundingClientRect();
     if (!rect.width) return;
     const clickX = e.clientX - rect.left;
+    const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+    const targetTime = Math.max(0, Math.min(ratio * actualDuration, actualDuration));
+
+    if (Number.isFinite(targetTime)) {
+      if (video) video.currentTime = targetTime;
+      setCurrentTime(targetTime);
+      onSeek(targetTime);
+    }
+  };
+
+  const handleTimelineTouch = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!canControl) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    const video = videoRef.current;
+    const actualDuration = video && Number.isFinite(video.duration) && video.duration > 0
+      ? video.duration
+      : (duration && Number.isFinite(duration) && duration > 0 ? duration : 0);
+
+    if (actualDuration <= 0) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (!rect.width) return;
+    const clickX = touch.clientX - rect.left;
     const ratio = Math.max(0, Math.min(1, clickX / rect.width));
     const targetTime = Math.max(0, Math.min(ratio * actualDuration, actualDuration));
 
@@ -340,15 +468,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   const toggleFullscreen = () => {
-    if (!containerRef.current) return;
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().catch((err) => {
-        console.error('Failed to enter fullscreen:', err);
+    const container = containerRef.current;
+    const video = videoRef.current;
+    if (!container) return;
+
+    if (document.fullscreenElement) {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => { });
+      }
+    } else if (container.requestFullscreen) {
+      container.requestFullscreen().catch(() => {
+        if (video && (video as any).webkitEnterFullscreen) {
+          try {
+            (video as any).webkitEnterFullscreen();
+          } catch { }
+        }
       });
-    } else {
-      document.exitFullscreen().catch((err) => {
-        console.error('Failed to exit fullscreen:', err);
-      });
+    } else if (video && (video as any).webkitEnterFullscreen) {
+      try {
+        (video as any).webkitEnterFullscreen();
+      } catch { }
     }
   };
 
@@ -404,27 +543,77 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     <div
       ref={containerRef}
       onMouseMove={handleMouseMove}
-      className="relative w-full aspect-video bg-[#020306] rounded-3xl overflow-hidden shadow-[0_30px_100px_-20px_rgba(0,0,0,0.95),0_0_60px_-15px_rgba(99,102,241,0.16)] border border-white/[0.08] group flex items-center justify-center select-none"
+      onTouchStart={resetControlsTimer}
+      onClick={resetControlsTimer}
+      className="relative w-full aspect-video bg-[#020306] rounded-3xl overflow-hidden shadow-[0_30px_100px_-20px_rgba(0,0,0,0.95),0_0_60px_-15px_rgba(var(--brand-rgb),0.18)] border border-white/[0.08] group flex items-center justify-center select-none"
     >
       {/* Subtle OLED Inner Bezel Shadow & Highlight */}
       <div className="absolute inset-0 pointer-events-none rounded-3xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.1),inset_0_-2px_8px_rgba(0,0,0,0.8)] z-10" />
 
-      {/* Video Element */}
-      {media && (media.status === 'ready' || (media.url && media.status !== 'processing')) ? (
+      {/* Cinema HUD Zoom Notification */}
+      {zoomToast && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-fadeIn">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-[#090b14]/90 backdrop-blur-xl border border-white/20 text-white font-medium text-xs sm:text-sm shadow-2xl">
+            <Crop className="w-4 h-4 text-brand-400" />
+            <span>{zoomToast}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Center Play Button Overlay (when paused) */}
+      {media && media.status === 'ready' && !playback.isPlaying && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            togglePlayPause();
+          }}
+          disabled={!canControl}
+          className="absolute z-20 w-12 h-12 sm:w-20 sm:h-20 rounded-full bg-brand-600/85 hover:bg-brand-500 backdrop-blur-xl border border-white/30 flex items-center justify-center text-white shadow-[0_0_40px_rgba(var(--brand-rgb),0.65)] hover:scale-110 active:scale-95 transition-all cursor-pointer group/centerplay disabled:opacity-40 disabled:cursor-not-allowed"
+          title={canControl ? 'Play (Space)' : 'Host is controlling playback'}
+          aria-label="Play video"
+        >
+          <Play className="w-6 h-6 sm:w-10 sm:h-10 fill-white ml-0.5 sm:ml-1 group-hover/centerplay:scale-105 transition-transform" />
+        </button>
+      )}
+
+      {/* Video Element: render ONLY when media is ready and has an authoritative playback URL */}
+      {media && media.status === 'ready' && media.url ? (
         <video
           key={`${media.id}_${media.url}_${media.status}`}
           ref={videoRef}
           src={media.url}
           playsInline
           disablePictureInPicture={false}
-          className="w-full h-full object-contain cursor-pointer relative z-0"
+          className={`w-full h-full cursor-pointer relative z-0 ${
+            zoomMode === 'stretch'
+              ? 'object-fill'
+              : zoomMode === 'cover'
+              ? 'object-cover'
+              : 'object-contain'
+          }`}
+          style={{
+            transform: `scale(${zoomScale})`,
+            transformOrigin: 'center center',
+            transition: 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
+          }}
           onClick={togglePlayPause}
           onError={() => {
             if (media.status === 'ready') {
               setHasVideoError(true);
             }
           }}
-        />
+        >
+          {subtitleState?.url && (
+            <track
+              key={subtitleState.url}
+              kind="subtitles"
+              src={subtitleState.url}
+              srcLang="en"
+              label={subtitleState.filename || 'Subtitles'}
+              default={subtitlesEnabled}
+            />
+          )}
+        </video>
       ) : media && media.status === 'processing' ? (
         <div className="w-full h-full bg-[#020306]" />
       ) : (
@@ -432,9 +621,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         <div className="relative w-full h-full flex flex-col items-center justify-center p-6 sm:p-12 text-center overflow-hidden z-10">
           {/* Cinema Spotlight Beam */}
           <div
-            className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[300px] rounded-full opacity-35 pointer-events-none blur-[90px]"
+            className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[300px] rounded-full opacity-35 pointer-events-none blur-[90px] transition-all duration-500"
             style={{
-              background: 'radial-gradient(ellipse at top, rgba(99, 102, 241, 0.35) 0%, rgba(139, 92, 246, 0.15) 50%, transparent 80%)',
+              background: 'radial-gradient(ellipse at top, rgba(var(--brand-glow-rgb), 0.35) 0%, rgba(var(--brand-500-rgb), 0.15) 50%, transparent 80%)',
             }}
           />
 
@@ -465,34 +654,47 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           {isHost && (
             <button
               onClick={onOpenUpload}
-              className="inline-flex items-center gap-2.5 px-7 py-3 rounded-2xl glass-btn-primary hover:shadow-[0_0_24px_rgba(99,102,241,0.4)] text-white font-semibold text-xs sm:text-sm shadow-xl transition-all active:scale-95 hover:scale-[1.02] cursor-pointer"
+              className="inline-flex items-center gap-2.5 px-7 py-3 rounded-2xl glass-btn-primary hover:shadow-[0_0_24px_rgba(var(--brand-rgb),0.4)] text-white font-semibold text-xs sm:text-sm shadow-xl transition-all active:scale-95 hover:scale-[1.02] cursor-pointer"
             >
-              <UploadCloud className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+              <HardDrive className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
               <span>Add video</span>
             </button>
           )}
         </div>
       )}
 
-      {/* Browser Decode Error Overlay */}
-      {hasVideoError && (
+      {/* Playback Error Overlay (shown ONLY when media is ready but stream decode fails) */}
+      {hasVideoError && media && media.status === 'ready' && (
         <div className="absolute inset-0 bg-[#020306]/95 backdrop-blur-md flex flex-col items-center justify-center z-40 p-6 text-center animate-fadeIn">
           <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center mb-3 shadow-glass-sm">
             <AlertCircle className="w-7 h-7" />
           </div>
-          <h3 className="text-base font-bold text-white mb-1">Playback format not supported by browser</h3>
+          <h3 className="text-base font-bold text-white mb-1">Playback Error</h3>
           <p className="text-xs text-slate-300 max-w-sm mb-5 leading-relaxed">
-            Your browser cannot natively decode this video file container or audio/video codec (e.g. MKV/AC3). Uploading MKV is fully supported, but browser playback requires MP4 (H.264/AAC) or WebM for universal compatibility.
+            Unable to stream this video. Please check your network connection or try reloading the player.
           </p>
-          {isHost && (
+          <div className="flex items-center gap-3">
             <button
-              onClick={onOpenUpload}
+              onClick={() => {
+                setHasVideoError(false);
+                const video = videoRef.current;
+                if (video) video.load();
+              }}
               className="px-5 py-2.5 rounded-xl glass-btn-primary text-white font-semibold text-xs shadow-md transition-all active:scale-95 flex items-center gap-2"
             >
-              <UploadCloud className="w-4 h-4" />
-              <span>Upload MP4 or WebM video</span>
+              <RefreshCw className="w-4 h-4" />
+              <span>Retry Playback</span>
             </button>
-          )}
+            {isHost && (
+              <button
+                onClick={onOpenUpload}
+                className="px-5 py-2.5 rounded-xl glass-btn-secondary text-white font-semibold text-xs shadow-md transition-all active:scale-95 flex items-center gap-2"
+              >
+                <HardDrive className="w-4 h-4" />
+                <span>Choose Another Video</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -525,9 +727,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         <div className="absolute inset-0 bg-[#020306]/95 backdrop-blur-md flex flex-col items-center justify-center z-40 p-6 sm:p-12 text-center animate-fadeIn overflow-hidden">
           {/* Theater Projector Light Beam */}
           <div
-            className="absolute top-0 left-1/2 -translate-x-1/2 w-[550px] h-[350px] rounded-full opacity-30 pointer-events-none blur-[100px]"
+            className="absolute top-0 left-1/2 -translate-x-1/2 w-[550px] h-[350px] rounded-full opacity-30 pointer-events-none blur-[100px] transition-all duration-500"
             style={{
-              background: 'radial-gradient(ellipse at top, rgba(99, 102, 241, 0.4) 0%, rgba(168, 85, 247, 0.15) 50%, transparent 80%)',
+              background: 'radial-gradient(ellipse at top, rgba(var(--brand-glow-rgb), 0.4) 0%, rgba(var(--brand-500-rgb), 0.15) 50%, transparent 80%)',
             }}
           />
 
@@ -564,7 +766,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
             <div className="relative w-full h-2.5 bg-white/[0.08] rounded-full overflow-hidden border border-white/[0.06] p-0.5">
               <div
-                className="h-full bg-gradient-to-r from-brand-500 via-indigo-400 to-purple-400 rounded-full transition-all duration-300 shadow-[0_0_14px_rgba(99,102,241,0.8)]"
+                className="h-full bg-gradient-to-r from-brand-500 via-brand-400 to-brand-300 rounded-full transition-all duration-300 shadow-[0_0_14px_rgba(var(--brand-rgb),0.8)]"
                 style={{ width: `${media.transcodeProgress || 5}%` }}
               />
             </div>
@@ -592,7 +794,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
           <h3 className="text-base font-bold text-white mb-1">Couldn't prepare this video</h3>
           <p className="text-xs text-slate-300 max-w-sm mb-5 leading-relaxed">
-            Your video couldn't be converted for browser playback.
+            {media.transcodeError || "Your video couldn't be converted for browser playback."}
           </p>
           {isHost && (
             <div className="flex items-center gap-3">
@@ -607,9 +809,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               )}
               <button
                 onClick={onOpenUpload}
-                className="px-5 py-2 rounded-xl glass-btn-primary hover:shadow-[0_0_20px_rgba(99,102,241,0.4)] text-white font-semibold text-xs shadow-md transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
+                className="px-5 py-2 rounded-xl glass-btn-primary hover:shadow-[0_0_20px_rgba(var(--brand-rgb),0.4)] text-white font-semibold text-xs shadow-md transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
               >
-                <UploadCloud className="w-4 h-4" />
+                <HardDrive className="w-4 h-4" />
                 <span>Change Video</span>
               </button>
             </div>
@@ -628,19 +830,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* Floating Liquid Glass Video Controls Overlay */}
       {media && media.status !== 'processing' && media.status !== 'failed' && (
         <div
-          className={`absolute inset-x-0 bottom-0 p-3 sm:p-5 transition-all duration-300 z-30 pointer-events-none ${
-            showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
-          }`}
+          className={`absolute inset-x-0 bottom-0 p-1.5 sm:p-5 transition-all duration-300 z-30 pointer-events-none ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
+            }`}
         >
           {/* Floating Glass Bar Container */}
-          <div className="max-w-4xl mx-auto rounded-2xl bg-black/65 backdrop-blur-xl border border-white/[0.12] p-3 shadow-glass-elevated glass-reflection pointer-events-auto transition-all">
+          <div className="max-w-4xl mx-auto rounded-xl sm:rounded-2xl bg-black/75 backdrop-blur-xl border border-white/[0.12] p-1.5 sm:p-3 shadow-glass-elevated glass-reflection pointer-events-auto transition-all">
             {/* Progress Timeline with Tooltip */}
             <div
               ref={progressBarRef}
-              className="relative w-full group/scrubber mb-2.5 flex items-center cursor-pointer py-1"
+              className="relative w-full group/scrubber mb-1 sm:mb-2.5 flex items-center cursor-pointer py-0.5 sm:py-1"
               onMouseMove={handleProgressBarMouseMove}
               onMouseLeave={handleProgressBarMouseLeave}
               onClick={handleTimelineClick}
+              onTouchStart={handleTimelineTouch}
+              onTouchMove={handleTimelineTouch}
             >
               {/* Hover timestamp tooltip */}
               {hoverTime !== null && (
@@ -656,7 +859,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               <div className="relative w-full h-1 group-hover/scrubber:h-2 bg-white/[0.15] rounded-full overflow-hidden transition-all">
                 {/* Played track */}
                 <div
-                  className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-brand-500 to-indigo-400 rounded-full shadow-[0_0_8px_rgba(99,102,241,0.6)]"
+                  className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-brand-500 to-brand-400 rounded-full shadow-[0_0_8px_rgba(var(--brand-rgb),0.6)]"
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
@@ -679,22 +882,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
 
             {/* Lower Controls Row */}
-            <div className="flex items-center justify-between gap-3 text-slate-200">
+            <div className="flex items-center justify-between gap-1 sm:gap-3 text-slate-200">
               {/* Left Controls: Play/Pause, Rewind, Forward, Volume, Time */}
-              <div className="flex items-center gap-1.5 sm:gap-2.5">
+              <div className="flex items-center gap-0.5 sm:gap-2 min-w-0 flex-1">
                 {/* Play/Pause Toggle */}
                 <button
                   onClick={togglePlayPause}
                   disabled={!canControl}
-                  className={`p-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.15] border border-white/[0.08] transition-all ${
-                    !canControl ? 'opacity-40 cursor-not-allowed' : 'hover:scale-105 active:scale-95'
-                  }`}
+                  className={`p-1 sm:p-2 rounded-lg sm:rounded-xl bg-white/[0.08] hover:bg-white/[0.15] border border-white/[0.08] transition-all cursor-pointer shrink-0 ${!canControl ? 'opacity-40 cursor-not-allowed' : 'hover:scale-105 active:scale-95'
+                    }`}
                   title={canControl ? (playback.isPlaying ? 'Pause (Space)' : 'Play (Space)') : 'Host is controlling playback'}
                 >
                   {playback.isPlaying ? (
-                    <Pause className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-white fill-white" />
+                    <Pause className="w-3.5 h-3.5 sm:w-4.5 sm:h-4.5 text-white fill-white" />
                   ) : (
-                    <Play className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-white fill-white ml-0.5" />
+                    <Play className="w-3.5 h-3.5 sm:w-4.5 sm:h-4.5 text-white fill-white ml-0.5" />
                   )}
                 </button>
 
@@ -702,10 +904,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 {canControl && (
                   <button
                     onClick={handleRewind10}
-                    className="p-1.5 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-white transition-colors"
+                    className="hidden sm:flex p-1 sm:p-2 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
                     title="Rewind 10s"
                   >
-                    <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <RotateCcw className="w-3 sm:w-4 sm:h-4" />
                   </button>
                 )}
 
@@ -713,24 +915,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 {canControl && (
                   <button
                     onClick={handleForward10}
-                    className="p-1.5 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-white transition-colors"
+                    className="hidden sm:flex p-1 sm:p-2 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
                     title="Forward 10s"
                   >
-                    <RotateCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <RotateCw className="w-3 sm:w-4 sm:h-4" />
                   </button>
                 )}
 
                 {/* Volume Control */}
-                <div className="flex items-center gap-1.5 pl-1">
+                <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
                   <button
                     onClick={toggleMute}
-                    className="p-1.5 rounded-lg hover:bg-white/[0.08] text-slate-300 hover:text-white transition-colors"
+                    className="p-1 sm:p-1.5 rounded-lg hover:bg-white/[0.08] text-slate-300 hover:text-white transition-colors cursor-pointer"
                     title="Mute/Unmute (M)"
                   >
                     {isMuted || volume === 0 ? (
-                      <VolumeX className="w-4 h-4 text-rose-400" />
+                      <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400" />
                     ) : (
-                      <Volume2 className="w-4 h-4 text-slate-300" />
+                      <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-300" />
                     )}
                   </button>
                   <input
@@ -740,34 +942,38 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     step={0.05}
                     value={isMuted ? 0 : volume}
                     onChange={handleVolumeChange}
-                    className="w-14 sm:w-20 h-1 bg-white/[0.2] rounded-lg accent-brand-400 hidden sm:block"
+                    className="volume-slider w-16 sm:w-24 h-1.5 rounded-full accent-brand-400 hidden sm:block cursor-pointer transition-all"
+                    style={{
+                      background: `linear-gradient(to right, rgb(var(--brand-500-rgb)) 0%, rgb(var(--brand-500-rgb)) ${Math.round((isMuted ? 0 : volume) * 100)}%, rgba(255, 255, 255, 0.2) ${Math.round((isMuted ? 0 : volume) * 100)}%, rgba(255, 255, 255, 0.2) 100%)`,
+                    }}
+                    aria-label="Volume slider"
                   />
                 </div>
 
                 {/* Time Display */}
-                <div className="text-[11px] font-mono text-slate-300 tracking-tight ml-1 px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.05]">
+                <div className="text-[9px] sm:text-[11px] font-mono text-slate-300 tracking-tight px-1 sm:px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.05] whitespace-nowrap shrink-0">
                   <span>{formatTime(currentTime)}</span>
-                  <span className="text-slate-500 mx-1">/</span>
+                  <span className="text-slate-500 mx-0.5 sm:mx-1">/</span>
                   <span className="text-slate-400">{formatTime(duration)}</span>
                 </div>
               </div>
 
               {/* Right Controls: Playback Speed, PiP, Fullscreen */}
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-0.5 sm:gap-1.5 shrink-0">
                 {/* Playback Speed dropdown */}
-                <div className="relative">
+                <div className="relative" ref={rateMenuRef}>
                   <button
                     onClick={() => setShowRateMenu(!showRateMenu)}
                     disabled={!canControl}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-xs font-mono font-medium text-slate-200 transition-all disabled:opacity-40"
+                    className="flex items-center gap-1 px-1 sm:px-2.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-[10px] sm:text-xs font-mono font-medium text-slate-200 transition-all disabled:opacity-40 cursor-pointer"
                     title="Playback Speed"
                   >
-                    <SlidersHorizontal className="w-3 h-3 text-brand-300" />
+                    <SlidersHorizontal className="w-3 h-3 text-brand-300 hidden sm:block" />
                     <span>{playback.playbackRate}x</span>
                   </button>
 
                   {showRateMenu && (
-                    <div className="absolute bottom-11 right-0 py-1 bg-[#0f1118]/90 backdrop-blur-xl border border-white/[0.12] rounded-xl shadow-glass-elevated z-50 flex flex-col min-w-[90px] animate-scaleUp">
+                    <div className="absolute bottom-full mb-2.5 right-0 py-1 bg-[#0f1118]/95 backdrop-blur-xl border border-white/[0.12] rounded-xl shadow-glass-elevated z-50 flex flex-col min-w-[90px] animate-scaleUp">
                       {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((rate) => (
                         <button
                           key={rate}
@@ -775,9 +981,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             onPlaybackRate(rate);
                             setShowRateMenu(false);
                           }}
-                          className={`px-3 py-1.5 text-xs text-left font-mono hover:bg-brand-500/20 transition-colors ${
-                            playback.playbackRate === rate ? 'text-brand-400 font-bold bg-white/[0.04]' : 'text-slate-300'
-                          }`}
+                          className={`px-3 py-1.5 text-xs text-left font-mono hover:bg-brand-500/20 transition-colors cursor-pointer ${playback.playbackRate === rate ? 'text-brand-400 font-bold bg-white/[0.04]' : 'text-slate-300'
+                            }`}
                         >
                           {rate}x
                         </button>
@@ -786,14 +991,259 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   )}
                 </div>
 
+                {/* Subtitles Button & Popover */}
+                <div className="relative" ref={subtitleMenuRef}>
+                  <button
+                    onClick={() => setShowSubtitleMenu(!showSubtitleMenu)}
+                    className={`p-1.5 sm:p-2 rounded-xl border transition-all cursor-pointer ${
+                      subtitleState && subtitlesEnabled
+                        ? 'bg-brand-500/20 text-brand-300 border-brand-500/40 shadow-glass-glow'
+                        : 'bg-white/[0.05] hover:bg-white/[0.1] border-white/[0.06] text-slate-300 hover:text-white'
+                    }`}
+                    title="Subtitles (.srt, .vtt)"
+                    aria-label="Subtitles"
+                  >
+                    <Subtitles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  </button>
+
+                  {/* Hidden file input for subtitle upload */}
+                  <input
+                    ref={subtitleInputRef}
+                    type="file"
+                    accept=".srt,.vtt,text/vtt,application/x-subrip"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file && onUploadSubtitle) {
+                        onUploadSubtitle(file);
+                        setSubtitlesEnabled(true);
+                      }
+                      e.target.value = '';
+                    }}
+                  />
+
+                  {showSubtitleMenu && (
+                    <div className="absolute bottom-full mb-2.5 right-0 py-2 px-1 bg-[#0f1118]/95 backdrop-blur-xl border border-white/[0.12] rounded-xl shadow-glass-elevated z-50 flex flex-col min-w-[210px] animate-scaleUp">
+                      <div className="px-3 py-1 text-[10px] uppercase font-mono font-bold tracking-wider text-slate-400">
+                        Subtitles
+                      </div>
+                      {subtitleState ? (
+                        <>
+                          <button
+                            onClick={() => {
+                              setSubtitlesEnabled(true);
+                              setShowSubtitleMenu(false);
+                            }}
+                            className={`flex items-center justify-between px-3 py-1.5 text-xs text-left rounded-lg transition-colors cursor-pointer ${
+                              subtitlesEnabled
+                                ? 'text-brand-400 font-bold bg-white/[0.06]'
+                                : 'text-slate-300 hover:bg-white/[0.04]'
+                            }`}
+                          >
+                            <span className="truncate max-w-[150px]" title={subtitleState.filename}>
+                              {subtitleState.filename}
+                            </span>
+                            {subtitlesEnabled && <Check className="w-3.5 h-3.5 text-brand-400 shrink-0" />}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSubtitlesEnabled(false);
+                              setShowSubtitleMenu(false);
+                            }}
+                            className={`flex items-center justify-between px-3 py-1.5 text-xs text-left rounded-lg transition-colors cursor-pointer ${
+                              !subtitlesEnabled
+                                ? 'text-brand-400 font-bold bg-white/[0.06]'
+                                : 'text-slate-300 hover:bg-white/[0.04]'
+                            }`}
+                          >
+                            <span>Off</span>
+                            {!subtitlesEnabled && <Check className="w-3.5 h-3.5 text-brand-400 shrink-0" />}
+                          </button>
+                          <div className="my-1 border-t border-white/[0.08]" />
+                        </>
+                      ) : (
+                        <div className="px-3 py-1.5 text-xs text-slate-400 italic">
+                          No subtitles loaded
+                        </div>
+                      )}
+                      <button
+                        onClick={() => {
+                          setShowSubtitleMenu(false);
+                          subtitleInputRef.current?.click();
+                        }}
+                        className="flex items-center gap-2 px-3 py-1.5 text-xs text-left text-brand-300 hover:text-brand-200 hover:bg-brand-500/10 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Upload className="w-3.5 h-3.5 shrink-0" />
+                        <span>{subtitleState ? 'Upload new .srt / .vtt' : 'Upload .srt / .vtt'}</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Zoom to Fill / Aspect Ratio (Ultrawide Black Bars Removal) */}
+                <div className="relative" ref={zoomMenuRef}>
+                  <button
+                    onClick={() => setShowZoomMenu(!showZoomMenu)}
+                    className={`p-1.5 sm:p-2 rounded-xl border transition-all cursor-pointer ${
+                      zoomScale > 1 || zoomMode !== 'fit'
+                        ? 'bg-brand-500/20 text-brand-300 border-brand-500/40 shadow-glass-glow'
+                        : 'bg-white/[0.05] hover:bg-white/[0.1] border-white/[0.06] text-slate-300 hover:text-white'
+                    }`}
+                    title={
+                      zoomScale > 1
+                        ? `Zoom to Fill (${Math.round(zoomScale * 100)}%) - Press Z to toggle`
+                        : 'Zoom to Fill / Hide Black Bars (Z)'
+                    }
+                    aria-label="Zoom to Fill / Aspect Ratio"
+                  >
+                    <Crop className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  </button>
+
+                  {showZoomMenu && (
+                    <div className="absolute bottom-full mb-2.5 right-0 py-2.5 px-3 bg-[#0f1118]/95 backdrop-blur-2xl border border-white/[0.12] rounded-2xl shadow-glass-elevated z-50 flex flex-col w-[260px] animate-scaleUp">
+                      {/* Header */}
+                      <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.08]">
+                        <div className="flex items-center gap-1.5">
+                          <Crop className="w-3.5 h-3.5 text-brand-400" />
+                          <span className="text-[11px] uppercase font-mono font-bold tracking-wider text-slate-300">
+                            Zoom to Fill
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-300 border border-brand-500/30">
+                          {Math.round(zoomScale * 100)}%
+                        </span>
+                      </div>
+
+                      {/* Preset Modes */}
+                      <div className="space-y-1 mb-3">
+                        {/* Fit (Default) */}
+                        <button
+                          onClick={() => {
+                            applyZoom('fit', 1);
+                            setShowZoomMenu(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs text-left rounded-xl transition-all cursor-pointer ${
+                            zoomMode === 'fit' && zoomScale === 1
+                              ? 'bg-brand-500/20 text-brand-300 font-semibold border border-brand-500/30'
+                              : 'text-slate-300 hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <div>
+                            <div className="font-medium">Fit (Original)</div>
+                            <div className="text-[10px] text-slate-400">100% letterbox</div>
+                          </div>
+                          {zoomMode === 'fit' && zoomScale === 1 && (
+                            <Check className="w-3.5 h-3.5 text-brand-400 shrink-0" />
+                          )}
+                        </button>
+
+                        {/* Zoom to Fill 21:9 Ultrawide (Crop Black Bars) */}
+                        <button
+                          onClick={() => {
+                            applyZoom('fill', 1.34);
+                            setShowZoomMenu(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs text-left rounded-xl transition-all cursor-pointer ${
+                            zoomMode === 'fill' && Math.abs(zoomScale - 1.34) < 0.02
+                              ? 'bg-brand-500/20 text-brand-300 font-semibold border border-brand-500/30'
+                              : 'text-slate-300 hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium">Zoom to Fill (21:9)</span>
+                              <span className="text-[9px] font-mono uppercase px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                Hide Bars
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-slate-400">Crops top & bottom black bars</div>
+                          </div>
+                          {zoomMode === 'fill' && Math.abs(zoomScale - 1.34) < 0.02 && (
+                            <Check className="w-3.5 h-3.5 text-brand-400 shrink-0" />
+                          )}
+                        </button>
+
+                        {/* Stretch to Fill */}
+                        <button
+                          onClick={() => {
+                            applyZoom('stretch', 1);
+                            setShowZoomMenu(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs text-left rounded-xl transition-all cursor-pointer ${
+                            zoomMode === 'stretch'
+                              ? 'bg-brand-500/20 text-brand-300 font-semibold border border-brand-500/30'
+                              : 'text-slate-300 hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <div>
+                            <div className="font-medium">Stretch to Fill</div>
+                            <div className="text-[10px] text-slate-400">Full screen without crop</div>
+                          </div>
+                          {zoomMode === 'stretch' && (
+                            <Check className="w-3.5 h-3.5 text-brand-400 shrink-0" />
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Custom Zoom Slider & Quick Chips */}
+                      <div className="pt-2 border-t border-white/[0.08]">
+                        <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-1.5">
+                          <span>CUSTOM ZOOM</span>
+                          <span className="text-white font-bold">{Math.round(zoomScale * 100)}%</span>
+                        </div>
+
+                        <input
+                          type="range"
+                          min={1}
+                          max={1.8}
+                          step={0.02}
+                          value={zoomScale}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            applyZoom(val === 1 ? 'fit' : 'custom', val);
+                          }}
+                          className="w-full h-1.5 rounded-full accent-brand-400 bg-white/20 cursor-pointer mb-2"
+                          aria-label="Zoom scale slider"
+                        />
+
+                        {/* Preset Chips */}
+                        <div className="grid grid-cols-4 gap-1">
+                          {[1.0, 1.2, 1.34, 1.5].map((scale) => (
+                            <button
+                              key={scale}
+                              onClick={() => {
+                                applyZoom(scale === 1 ? 'fit' : scale === 1.34 ? 'fill' : 'custom', scale);
+                              }}
+                              className={`py-1 text-[10px] font-mono rounded-lg border transition-all cursor-pointer ${
+                                Math.abs(zoomScale - scale) < 0.01 && zoomMode !== 'stretch'
+                                  ? 'bg-brand-500/25 text-brand-300 border-brand-500/40 font-bold'
+                                  : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.06] text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              {Math.round(scale * 100)}%
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Keyboard Shortcut Note */}
+                      <div className="mt-2.5 pt-2 border-t border-white/[0.08] flex items-center justify-between text-[10px] text-slate-400">
+                        <span>Quick Toggle</span>
+                        <kbd className="px-1.5 py-0.5 rounded bg-white/[0.08] border border-white/[0.1] font-mono text-slate-200 font-bold">
+                          Z
+                        </kbd>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Picture in Picture */}
                 <button
                   onClick={(e) => togglePiP(e)}
-                  className={`p-1.5 sm:p-2 rounded-xl border transition-all hidden sm:block ${
-                    isPiP
+                  className={`hidden sm:flex p-1.5 sm:p-2 rounded-xl border transition-all cursor-pointer ${isPiP
                       ? 'bg-brand-500/20 text-brand-300 border-brand-500/40 shadow-glass-glow'
                       : 'bg-white/[0.05] hover:bg-white/[0.1] border-white/[0.06] text-slate-300 hover:text-white'
-                  }`}
+                    }`}
                   title={isPiP ? 'Exit Picture-in-Picture' : 'Picture-in-Picture'}
                   aria-label={isPiP ? 'Exit Picture-in-Picture' : 'Picture-in-Picture'}
                 >

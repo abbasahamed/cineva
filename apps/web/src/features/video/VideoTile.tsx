@@ -257,11 +257,6 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
               <span className="w-1.5 h-1.5 rounded-full bg-brand-400"></span>
               Connecting...
             </span>
-          ) : isConnectedNoVideo ? (
-            <span className="text-[10px] text-amber-300 font-mono flex items-center gap-1">
-              <VideoOff className="w-3 h-3 text-amber-400" />
-              Video unavailable
-            </span>
           ) : isFailed ? (
             <span className="text-[10px] text-rose-400 font-mono flex items-center gap-1">
               <WifiOff className="w-3 h-3" />
@@ -269,7 +264,7 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
             </span>
           ) : (
             <span className="text-[10px] text-slate-400 flex items-center gap-1 font-mono">
-              <VideoOff className="w-3 h-3" />
+              <VideoOff className="w-3 h-3 text-slate-400" />
               Camera off
             </span>
           )}

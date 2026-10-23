@@ -11,15 +11,15 @@ export default {
         brand: {
           50: '#eef2ff',
           100: '#e0e7ff',
-          200: '#c7d2fe',
-          300: '#a5b4fc',
-          400: '#818cf8',
-          500: '#6366f1', // Primary brand accent (Indigo)
-          600: '#4f46e5',
-          700: '#4338ca',
+          200: 'rgb(var(--brand-200) / <alpha-value>)',
+          300: 'rgb(var(--brand-300) / <alpha-value>)',
+          400: 'rgb(var(--brand-400) / <alpha-value>)',
+          500: 'rgb(var(--brand-500) / <alpha-value>)', // Primary brand accent (themeable)
+          600: 'rgb(var(--brand-600) / <alpha-value>)',
+          700: 'rgb(var(--brand-700) / <alpha-value>)',
           800: '#3730a3',
           900: '#312e81',
-          accent: '#6366f1',
+          accent: 'rgb(var(--brand-500) / <alpha-value>)',
         },
         surface: {
           deep: '#05060a',

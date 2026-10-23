@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { socketService } from '../services/socket.js';
+import { srtToVtt } from '../utils/subtitleUtils.js';
 import {
   PlaybackState,
   RoomInfo,
@@ -28,6 +29,7 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
   const [isHost, setIsHost] = useState<boolean>(false);
   const [canControl, setCanControl] = useState<boolean>(false);
   const [needsUserGesture, setNeedsUserGesture] = useState<boolean>(false);
+  const [subtitleState, setSubtitleState] = useState<{ url: string; filename: string } | null>(null);
   const [rtt, setRtt] = useState<number>(0);
 
   // Authoritative playback state
@@ -48,6 +50,9 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
   const isTerminatedRef = useRef<boolean>(false);
 
   latestPlaybackRef.current = playback;
+  const lastAppliedVersionRef = useRef<number>(0);
+  const lastSeekTimeRef = useRef<number>(0);
+  const lastActionTimeRef = useRef<number>(0);
   isHostRef.current = isHost;
   canControlRef.current = canControl;
 
@@ -277,6 +282,22 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
       setChatMessages(history);
     };
 
+    const onSubtitleState = (data: { filename: string; vttContent: string }) => {
+      try {
+        if (!data || !data.vttContent) return;
+        const vttBlob = new Blob([data.vttContent], { type: 'text/vtt' });
+        const url = URL.createObjectURL(vttBlob);
+        setSubtitleState((prev) => {
+          if (prev?.url) {
+            URL.revokeObjectURL(prev.url);
+          }
+          return { url, filename: data.filename || 'Subtitles.srt' };
+        });
+      } catch (err) {
+        console.warn('Failed to parse incoming room subtitles:', err);
+      }
+    };
+
     const onError = (data: { message: string }) => {
       console.warn('Sync server error:', data.message);
     };
@@ -395,6 +416,7 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
     socket.on(SOCKET_EVENTS.ROOM_NOT_FOUND, onRoomNotFound);
     socket.on(SOCKET_EVENTS.CHAT_MESSAGE, onChatMessage);
     socket.on(SOCKET_EVENTS.CHAT_HISTORY, onChatHistory);
+    socket.on(SOCKET_EVENTS.SUBTITLE_STATE, onSubtitleState);
     socket.on(SOCKET_EVENTS.MEDIA_PROCESSING, onMediaProcessing);
     socket.on(SOCKET_EVENTS.MEDIA_PROGRESS, onMediaProgress);
     socket.on(SOCKET_EVENTS.MEDIA_READY, onMediaReady);
@@ -420,6 +442,7 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
       socket.off(SOCKET_EVENTS.ROOM_NOT_FOUND, onRoomNotFound);
       socket.off(SOCKET_EVENTS.CHAT_MESSAGE, onChatMessage);
       socket.off(SOCKET_EVENTS.CHAT_HISTORY, onChatHistory);
+      socket.off(SOCKET_EVENTS.SUBTITLE_STATE, onSubtitleState);
       socket.off(SOCKET_EVENTS.MEDIA_PROCESSING, onMediaProcessing);
       socket.off(SOCKET_EVENTS.MEDIA_PROGRESS, onMediaProgress);
       socket.off(SOCKET_EVENTS.MEDIA_READY, onMediaReady);
@@ -446,44 +469,98 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
       const drift = expected - actual; // Positive = video is behind; Negative = video is ahead
 
       const absDrift = Math.abs(drift);
+      const now = Date.now();
 
-      if (absDrift < DEFAULT_DRIFT_CONFIG.minThreshold) {
-        // Less than 0.25s: Perfect sync, maintain target playbackRate
+      // Multi-tier Proportional Rate Controller & Fast Seek Catchup:
+      if (absDrift >= 1.2) {
+        // Severe drift (>= 1.2s): Hard snap with 600ms cooldown
+        if (now - lastSeekTimeRef.current > 600) {
+          lastSeekTimeRef.current = now;
+          try {
+            if ('fastSeek' in video && typeof (video as any).fastSeek === 'function') {
+              (video as any).fastSeek(expected);
+            } else {
+              video.currentTime = expected;
+            }
+          } catch {
+            video.currentTime = expected;
+          }
+          video.playbackRate = currentPB.playbackRate;
+        } else {
+          const rateMultiplier = drift > 0 ? 1.35 : 0.65;
+          video.playbackRate = currentPB.playbackRate * rateMultiplier;
+        }
+      } else if (absDrift < 0.12) {
+        // Imperceptible drift (< 120ms): Perfect sync lock
         if (video.playbackRate !== currentPB.playbackRate) {
           video.playbackRate = currentPB.playbackRate;
         }
-      } else if (absDrift < DEFAULT_DRIFT_CONFIG.maxThreshold) {
-        // Between 0.25s and 1.00s: Gentle rate nudging (no jarring seek jumps)
-        if (drift > 0) {
-          // Video is lagging behind -> accelerate slightly (1.05x)
-          video.playbackRate = currentPB.playbackRate * DEFAULT_DRIFT_CONFIG.rateNudgeHigh;
-        } else {
-          // Video is racing ahead -> decelerate slightly (0.95x)
-          video.playbackRate = currentPB.playbackRate * DEFAULT_DRIFT_CONFIG.rateNudgeLow;
-        }
+      } else if (absDrift < 0.40) {
+        // Minor drift (120ms - 400ms): Gentle ±8% rate adjustment
+        const rateMultiplier = drift > 0 ? 1.08 : 0.92;
+        video.playbackRate = currentPB.playbackRate * rateMultiplier;
       } else {
-        // Severe drift >= 1.0s: Controlled seek to exact expected position
-        video.currentTime = expected;
-        video.playbackRate = currentPB.playbackRate;
+        // Moderate drift (400ms - 1.2s): Responsive ±25% catch-up
+        const rateMultiplier = drift > 0 ? 1.25 : 0.75;
+        video.playbackRate = currentPB.playbackRate * rateMultiplier;
       }
-    }, DEFAULT_DRIFT_CONFIG.syncIntervalMs);
+    }, 250);
 
     return () => clearInterval(interval);
   }, []);
 
   // Controls triggered by user
   const handlePlay = useCallback(() => {
+    const now = Date.now();
+    if (now - lastActionTimeRef.current < 150 && latestPlaybackRef.current.isPlaying) return;
+    lastActionTimeRef.current = now;
+
     const video = videoRef.current;
-    const currentPos = video ? video.currentTime : playback.position;
-    socketService.emitPlay(currentPos, playback.playbackRate);
+    const currentPos = video && Number.isFinite(video.currentTime)
+      ? video.currentTime
+      : latestPlaybackRef.current.position;
+
+    const optimistic: PlaybackState = {
+      ...latestPlaybackRef.current,
+      isPlaying: true,
+      position: currentPos,
+      lastUpdatedAt: now,
+    };
+    setPlayback(optimistic);
+    latestPlaybackRef.current = optimistic;
+
+    if (video) {
+      video.playbackRate = optimistic.playbackRate;
+      if (video.paused) { video.play().catch(() => {}); }
+    }
+
+    socketService.emitPlay(currentPos, optimistic.playbackRate);
     setNeedsUserGesture(false);
-  }, [playback.position, playback.playbackRate]);
+  }, []);
 
   const handlePause = useCallback(() => {
+    const now = Date.now();
+    if (now - lastActionTimeRef.current < 150 && !latestPlaybackRef.current.isPlaying) return;
+    lastActionTimeRef.current = now;
+
     const video = videoRef.current;
-    const currentPos = video ? video.currentTime : playback.position;
+    const currentPos = video && Number.isFinite(video.currentTime)
+      ? video.currentTime
+      : latestPlaybackRef.current.position;
+
+    const optimistic: PlaybackState = {
+      ...latestPlaybackRef.current,
+      isPlaying: false,
+      position: currentPos,
+      lastUpdatedAt: now,
+    };
+    setPlayback(optimistic);
+    latestPlaybackRef.current = optimistic;
+
+    if (video && !video.paused) { video.pause(); }
+
     socketService.emitPause(currentPos);
-  }, [playback.position]);
+  }, []);
 
   const handleSeek = useCallback((newPosition: number) => {
     if (!Number.isFinite(newPosition)) return;
@@ -510,8 +587,18 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
       timestamp: Date.now(),
     };
 
+    lastSeekTimeRef.current = Date.now();
+
     if (video) {
-      video.currentTime = targetPos;
+      try {
+        if ('fastSeek' in video && typeof (video as any).fastSeek === 'function') {
+          (video as any).fastSeek(targetPos);
+        } else {
+          video.currentTime = targetPos;
+        }
+      } catch {
+        video.currentTime = targetPos;
+      }
     }
 
     const newPlaybackState: PlaybackState = {
@@ -585,12 +672,40 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
     }
   }, [applyPlaybackToVideo]);
 
+  const handleUploadSubtitle = useCallback(async (file: File) => {
+    try {
+      const rawText = await file.text();
+      const vttContent = srtToVtt(rawText);
+      const vttBlob = new Blob([vttContent], { type: 'text/vtt' });
+      const url = URL.createObjectURL(vttBlob);
+
+      setSubtitleState((prev) => {
+        if (prev?.url) {
+          URL.revokeObjectURL(prev.url);
+        }
+        return { url, filename: file.name };
+      });
+
+      // Broadcast to room members so everyone sees subtitles
+      const socket = socketService.getSocket();
+      if (socket && socket.connected) {
+        socket.emit(SOCKET_EVENTS.SUBTITLE_UPDATE, {
+          filename: file.name,
+          vttContent,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to process subtitle file:', err);
+    }
+  }, []);
+
   return {
     videoRef,
     room,
     playback,
     participants,
     chatMessages,
+    subtitleState,
     isHost,
     canControl,
     connectionStatus,
@@ -610,5 +725,6 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
     handleLeaveRoom,
     handleMediaRetry,
     handleUserGestureStart,
+    handleUploadSubtitle,
   };
 }

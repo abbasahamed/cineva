@@ -25,8 +25,10 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
     showToast(`Removed ${p.displayName} from the room`, 'info');
   };
 
+  const activeAudience = participants.filter((p) => p.isOnline);
+
   return (
-    <div className="flex flex-col h-full bg-[#0a0c16]/75 backdrop-blur-2xl border border-white/[0.1] rounded-3xl overflow-hidden shadow-2xl">
+    <div className="flex flex-col h-full bg-black/90 backdrop-blur-2xl border border-white/[0.1] rounded-3xl overflow-hidden shadow-2xl">
       {/* Header */}
       <div className="px-4 py-3 border-b border-white/[0.07] flex items-center justify-between bg-white/[0.02]">
         <div className="flex items-center gap-2">
@@ -36,13 +38,13 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
           </span>
         </div>
         <span className="text-[10px] font-mono text-slate-400 px-2.5 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06]">
-          {participants.length} watching
+          {activeAudience.length} watching
         </span>
       </div>
 
       {/* List */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {participants.map((p) => {
+        {activeAudience.map((p) => {
           const isMe = p.sessionId === currentSessionId;
           const initial = (p.displayName || 'U').charAt(0).toUpperCase();
 

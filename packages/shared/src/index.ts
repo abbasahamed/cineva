@@ -158,6 +158,7 @@ export const SOCKET_EVENTS = {
   ROOM_END: 'room:end',
   MEDIA_RETRY: 'media:retry',
   CHAT_SEND: 'chat:send',
+  SUBTITLE_UPDATE: 'room:subtitleUpdate',
   PING: 'sync:ping',
 
   // Server -> Client
@@ -172,6 +173,7 @@ export const SOCKET_EVENTS = {
   PLAYBACK_ACTIVITY: 'playback:activity',
   CHAT_MESSAGE: 'chat:message',
   CHAT_HISTORY: 'chat:history',
+  SUBTITLE_STATE: 'room:subtitleState',
   PONG: 'sync:pong',
   ERROR: 'system:error',
   MEDIA_PROCESSING: 'media:processing',

@@ -59,6 +59,9 @@ export function setupSocketHandlers(io: SocketIOServer) {
   const roomVideoParticipants = new Map<string, Map<string, ActiveVideoParticipant>>();
   // Room connected participant sockets: roomId -> (participantId -> { socketId, displayName })
   const roomParticipantSockets = new Map<string, Map<string, { socketId: string; displayName: string }>>();
+  // Active sockets per session: `${roomId}:${sessionId}` -> Set<socketId>
+  const activeSessionSockets = new Map<string, Set<string>>();
+  const roomSubtitles = new Map<string, { filename: string; vttContent: string }>();
   const videoSignalingRateLimit = new Map<string, { count: number; resetTime: number }>();
 
   const isVideoSignalingAllowed = (socketId: string): boolean => {
@@ -177,8 +180,16 @@ export function setupSocketHandlers(io: SocketIOServer) {
         socketData.displayName = joinResult.participant.displayName;
         socketData.isHost = joinResult.participant.isHost;
 
-        // Clear any disconnect timer for this session
+        // Clear any disconnect timer for this session & track active socket
         const timerKey = `${roomId}:${joinResult.sessionId}`;
+
+        let sessionSocketsSet = activeSessionSockets.get(timerKey);
+        if (!sessionSocketsSet) {
+          sessionSocketsSet = new Set();
+          activeSessionSockets.set(timerKey, sessionSocketsSet);
+        }
+        sessionSocketsSet.add(socket.id);
+
         if (disconnectTimers.has(timerKey)) {
           clearTimeout(disconnectTimers.get(timerKey)!);
           disconnectTimers.delete(timerKey);
@@ -202,6 +213,12 @@ export function setupSocketHandlers(io: SocketIOServer) {
         const snapshot = await roomManager.getRoomSnapshot(roomId, joinResult.sessionId);
         if (snapshot) {
           socket.emit(SOCKET_EVENTS.ROOM_STATE, snapshot);
+        }
+
+        // Send current room subtitle if any
+        const currentSubtitle = roomSubtitles.get(roomId);
+        if (currentSubtitle) {
+          socket.emit(SOCKET_EVENTS.SUBTITLE_STATE, currentSubtitle);
         }
 
         // Send current active video participants in room to joining user
@@ -443,6 +460,23 @@ export function setupSocketHandlers(io: SocketIOServer) {
       await roomManager.updateMediaTitle(socketData.roomId, parsed.data.title);
       const roomInfo = await roomManager.getRoomInfo(socketData.roomId);
       io.to(socketData.roomId).emit('room:updated', { room: roomInfo });
+    });
+
+    socket.on(SOCKET_EVENTS.SUBTITLE_UPDATE, (payload: { filename?: string; vttContent?: string }) => {
+      if (!socketData.roomId || !payload || typeof payload.vttContent !== 'string') return;
+      // Cap at 1MB to prevent abuse
+      if (payload.vttContent.length > 1024 * 1024) return;
+      const subData = {
+        filename: payload.filename || 'Subtitles.srt',
+        vttContent: payload.vttContent,
+      };
+      roomSubtitles.set(socketData.roomId, subData);
+      io.to(socketData.roomId).emit(SOCKET_EVENTS.SUBTITLE_STATE, subData);
+      logger.info('ROOM_SUBTITLE_UPDATED', {
+        roomId: socketData.roomId,
+        filename: subData.filename,
+        by: socketData.displayName,
+      });
     });
 
     socket.on(SOCKET_EVENTS.ROOM_KICK_PARTICIPANT, async (payload: { participantId: string }) => {
@@ -794,6 +828,15 @@ export function setupSocketHandlers(io: SocketIOServer) {
       const isHostSocket = socketData.isHost === true;
       const timerKey = `${roomId}:${sessionId}`;
 
+      // Remove socket from activeSessionSockets
+      const sessionSocketsSet = activeSessionSockets.get(timerKey);
+      if (sessionSocketsSet) {
+        sessionSocketsSet.delete(socket.id);
+        if (sessionSocketsSet.size === 0) {
+          activeSessionSockets.delete(timerKey);
+        }
+      }
+
       // Clean up video call immediately upon socket disconnect (no need to wait grace period for WebRTC P2P)
       if (participantId) {
         cleanVideoParticipant(roomId, participantId);
@@ -807,44 +850,69 @@ export function setupSocketHandlers(io: SocketIOServer) {
       }
       videoSignalingRateLimit.delete(socket.id);
 
-      // Set grace-period timer before marking offline
+      // If this session still has another active socket connected (e.g. from page reload or multi-tab), do NOT start a disconnect timer!
+      if (activeSessionSockets.has(timerKey)) {
+        return;
+      }
+
+      // Set grace-period timer before marking offline (2s for guests so audience list updates promptly on tab close)
+      const gracePeriod = isHostSocket ? CONFIG.ROOM_GRACE_PERIOD_MS : 2000;
       const timer = setTimeout(async () => {
-        await roomManager.setParticipantOnline(roomId, sessionId, false);
-        const participants = await roomManager.getParticipants(roomId);
-
-        io.to(roomId).emit(SOCKET_EVENTS.PARTICIPANT_LEFT, {
-          sessionId,
-          participants,
-        });
-
-        if (displayName) {
-          const sysMsg = await roomManager.saveChatMessage(
-            roomId,
-            'system',
-            'System',
-            `${displayName} left the room.`,
-            true
-          );
-          io.to(roomId).emit(SOCKET_EVENTS.CHAT_MESSAGE, sysMsg);
-        }
-
-        // If the disconnected participant was the host, cancel the room for all guests
-        if (isHostSocket) {
-          // Verify authoritatively via DB (not just in-memory socketData)
-          const isStillHost = await roomManager.isHost(roomId, sessionId).catch(() => false);
-          if (isStillHost) {
-            roomVideoParticipants.delete(roomId);
-            await roomManager.endRoom(roomId);
-            io.to(roomId).emit(SOCKET_EVENTS.ROOM_CANCELLED, {
-              message: 'The host has left the room. This screening has ended.',
-            });
-            logger.info('ROOM_CANCELLED_HOST_DISCONNECT', { roomId, displayName });
+        try {
+          // If session reconnected while timer was waiting, skip disconnect handling
+          if (activeSessionSockets.has(timerKey)) {
+            disconnectTimers.delete(timerKey);
+            return;
           }
-        }
 
-        logger.participantDisconnected(roomId, displayName);
-        disconnectTimers.delete(timerKey);
-      }, CONFIG.ROOM_GRACE_PERIOD_MS);
+          // Check if room is still active before attempting DB operations
+          const isActive = await roomManager.isRoomActive(roomId).catch(() => false);
+          if (!isActive) {
+            disconnectTimers.delete(timerKey);
+            return;
+          }
+
+          await roomManager.setParticipantOnline(roomId, sessionId, false).catch(() => {});
+          const participants = await roomManager.getParticipants(roomId).catch(() => []);
+
+          io.to(roomId).emit(SOCKET_EVENTS.PARTICIPANT_LEFT, {
+            sessionId,
+            participants,
+          });
+
+          if (displayName) {
+            try {
+              const sysMsg = await roomManager.saveChatMessage(
+                roomId,
+                'system',
+                'System',
+                `${displayName} left the room.`,
+                true
+              );
+              io.to(roomId).emit(SOCKET_EVENTS.CHAT_MESSAGE, sysMsg);
+            } catch {}
+          }
+
+          // If the disconnected participant was the host, cancel the room for all guests
+          if (isHostSocket) {
+            const isStillHost = await roomManager.isHost(roomId, sessionId).catch(() => false);
+            if (isStillHost) {
+              roomVideoParticipants.delete(roomId);
+              await roomManager.endRoom(roomId).catch(() => {});
+              io.to(roomId).emit(SOCKET_EVENTS.ROOM_CANCELLED, {
+                message: 'The host has left the room. This screening has ended.',
+              });
+              logger.info('ROOM_CANCELLED_HOST_DISCONNECT', { roomId, displayName });
+            }
+          }
+
+          logger.participantDisconnected(roomId, displayName);
+        } catch (err) {
+          logger.warn('Grace-period timer error handled safely', { roomId, error: err });
+        } finally {
+          disconnectTimers.delete(timerKey);
+        }
+      }, gracePeriod);
 
       const seekKey = `${roomId}:${sessionId}`;
       if (pendingSeeks.has(seekKey)) {

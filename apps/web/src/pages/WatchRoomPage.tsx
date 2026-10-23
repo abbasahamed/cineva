@@ -44,13 +44,13 @@ const RoomHeaderDeviceControls: React.FC = () => {
 
   return (
     <div className="flex items-center gap-1.5 sm:gap-2">
-      {/* Camera Toggle Button */}
+      {/* Camera Toggle */}
       <button
         onClick={toggleCamera}
         disabled={isConnecting}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all active:scale-95 ${
+        className={`w-9 h-9 sm:w-auto sm:h-auto flex items-center justify-center sm:gap-1.5 sm:px-3 sm:py-1.5 rounded-xl border text-xs font-semibold transition-all active:scale-95 ${
           isCameraOn
-            ? 'bg-brand-500/20 hover:bg-brand-500/30 border-brand-500/40 text-brand-300 shadow-glass-glow'
+            ? 'bg-brand-500/20 hover:bg-brand-500/30 border-brand-500/40 text-brand-300'
             : isConnecting
             ? 'bg-brand-500/10 border-brand-500/20 text-brand-300 animate-pulse cursor-wait'
             : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08] text-slate-300 hover:text-white'
@@ -59,17 +59,17 @@ const RoomHeaderDeviceControls: React.FC = () => {
         aria-label={isCameraOn ? 'Turn camera off' : 'Turn camera on'}
       >
         {isCameraOn ? (
-          <Video className="w-3.5 h-3.5 text-brand-400" />
+          <Video className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-brand-400" />
         ) : (
-          <VideoOff className="w-3.5 h-3.5 text-slate-400" />
+          <VideoOff className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-slate-400" />
         )}
-        <span>{isCameraOn ? 'Camera' : isConnecting ? 'Starting...' : 'Camera Off'}</span>
+        <span className="hidden sm:inline">{isCameraOn ? 'Camera' : isConnecting ? 'Starting...' : 'Camera Off'}</span>
       </button>
 
-      {/* Mic Toggle Button */}
+      {/* Mic Toggle */}
       <button
         onClick={toggleMute}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all active:scale-95 ${
+        className={`w-9 h-9 sm:w-auto sm:h-auto flex items-center justify-center sm:gap-1.5 sm:px-3 sm:py-1.5 rounded-xl border text-xs font-semibold transition-all active:scale-95 ${
           isMuted
             ? 'bg-rose-500/15 hover:bg-rose-500/25 border-rose-500/30 text-rose-300'
             : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08] text-emerald-400 hover:text-emerald-300'
@@ -78,11 +78,11 @@ const RoomHeaderDeviceControls: React.FC = () => {
         aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
       >
         {isMuted ? (
-          <MicOff className="w-3.5 h-3.5 text-rose-400" />
+          <MicOff className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-rose-400" />
         ) : (
-          <Mic className="w-3.5 h-3.5 text-emerald-400" />
+          <Mic className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-emerald-400" />
         )}
-        <span>{isMuted ? 'Muted' : 'Mic'}</span>
+        <span className="hidden sm:inline">{isMuted ? 'Muted' : 'Mic'}</span>
       </button>
     </div>
   );
@@ -153,6 +153,7 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
     playback,
     participants,
     chatMessages,
+    subtitleState,
     isHost,
     canControl,
     connectionStatus,
@@ -172,6 +173,7 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
     handleLeaveRoom,
     handleMediaRetry,
     handleUserGestureStart,
+    handleUploadSubtitle,
   } = useSyncWatch({ roomCode, displayName, sessionId });
 
   const currentParticipant = participants.find((p) => p.sessionId === sessionId);
@@ -250,7 +252,7 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
         />
 
         {/* Main Theater Viewport: Dominant Movie (~70%) + Right Sidebar (~30%) */}
-        <main className="flex-1 flex flex-col lg:flex-row overflow-hidden p-3 sm:p-4 lg:p-5 gap-3 sm:gap-4 lg:gap-5 min-h-0 relative z-10 justify-center items-center">
+        <main className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden p-1.5 sm:p-4 lg:p-5 gap-1.5 sm:gap-3 lg:gap-5 min-h-0 relative z-10 justify-start lg:justify-center items-center">
           {/* Dominant Cinema Stage (Movie ~70%) */}
           <div
             className={`flex-1 flex flex-col justify-start items-center min-w-0 min-h-0 h-full w-full overflow-y-auto no-scrollbar transition-all duration-300 ${
@@ -281,15 +283,17 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
                   onUserGestureStart={handleUserGestureStart}
                   onOpenUpload={() => setIsUploadOpen(true)}
                   onMediaRetry={handleMediaRetry}
+                  subtitleState={subtitleState}
+                  onUploadSubtitle={handleUploadSubtitle}
                 />
               )}
 
               {/* Cinematic Movie Title & Metadata Header Area */}
-              <div className="mt-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-2 sm:px-3">
+              <div className="mt-2 sm:mt-3 flex flex-row items-center justify-between gap-2 px-1 sm:px-3">
                 {/* Left: Movie Title & Format */}
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2.5">
-                    <h2 className="text-base sm:text-xl font-bold tracking-tight text-white truncate drop-shadow-xs">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm sm:text-base lg:text-xl font-bold tracking-tight text-white truncate drop-shadow-xs">
                       {room?.media ? mediaInfo.displayTitle : room?.name || 'Private Screening'}
                     </h2>
                     {isHost && (

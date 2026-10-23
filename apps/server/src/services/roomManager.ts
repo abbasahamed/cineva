@@ -280,10 +280,12 @@ export class RoomManager {
 
     if (participant) {
       // Re-connecting existing participant
+      const isHost = room.hostSessionId === sessionId || participant.isHost;
       participant = await prisma.participant.update({
         where: { id: participant.id },
         data: {
           isOnline: true,
+          isHost,
           lastSeenAt: new Date(),
           displayName: input.displayName || participant.displayName,
         },
@@ -479,6 +481,14 @@ export class RoomManager {
     });
     syncEngine.removeRoom(roomId);
     await this.cleanupRoomMedia(roomId);
+  }
+
+  async isRoomActive(roomId: string): Promise<boolean> {
+    const room = await prisma.room.findUnique({
+      where: { id: roomId },
+      select: { status: true },
+    });
+    return !!room && room.status !== 'ended';
   }
 
   /**
