@@ -57,7 +57,7 @@ describe('Public Tunnel Abuse Limits & Capacity Suite', () => {
   describe('2. Concurrent Room Capacity Limit', () => {
     it('enforces MAX_CONCURRENT_ROOMS and returns 429 when capacity is reached', async () => {
       const originalMax = CONFIG.MAX_CONCURRENT_ROOMS;
-      const currentActive = await prisma.room.count({ where: { expiresAt: { gt: new Date() } } });
+      const currentActive = await prisma.room.count({ where: { status: 'active', expiresAt: { gt: new Date() } } });
       // Set limit dynamically to currentActive + 1 so the next creation succeeds, and the following triggers 429
       CONFIG.MAX_CONCURRENT_ROOMS = currentActive + 1;
 

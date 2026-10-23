@@ -67,7 +67,6 @@ export const Dropzone: React.FC<DropzoneProps> = ({
     <div
       className={`cineva-drop ${isOver ? 'over' : ''} ${className}`.trim()}
       tabIndex={disabled ? -1 : 0}
-      role="button"
       aria-label="Drop a video here, or browse"
       onClick={handleClick}
       onKeyDown={handleKeyDown}

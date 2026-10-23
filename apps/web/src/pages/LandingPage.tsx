@@ -650,7 +650,7 @@ export const LandingPage: React.FC = () => {
                   />
                 ))}
                 <button type="submit" className="btn w lgx" style={{ marginLeft: 10 }}>
-                  Join room
+                  Join room &rarr;
                 </button>
               </form>
               <p className="err" id="err" role="alert">

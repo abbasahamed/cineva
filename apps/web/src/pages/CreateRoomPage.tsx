@@ -452,7 +452,6 @@ export const CreateRoomPage: React.FC = () => {
                       className={`drop ${isDragOver ? 'over' : ''}`.trim()}
                       id="drop"
                       tabIndex={0}
-                      role="button"
                       aria-labelledby="mlabel"
                       onClick={(e) => {
                         if ((e.target as HTMLElement).id !== 'sample') {

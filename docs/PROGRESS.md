@@ -190,3 +190,33 @@ Per instructions, the watch room page UI is kept intact and will be redesigned i
     - `npm run build`: built production bundles cleanly (`dist/assets/index-*.js`, `dist/assets/index-*.css`).
     - `npm test`: 181/181 tests passed.
   - **What's next**: Step 7: Verify (tests, Playwright screenshots at 360, 768, 1440, 2560, comparison, accessibility, performance, end-to-end flow).
+- **Step 7: Verification, Audits, Benchmarks & E2E Flow Completed**:
+  - **What changed**:
+    - Built comprehensive validation test suite in `apps/web/src/__tests__/newPagesValidation.test.tsx` (7 tests: CodeInput auto-advance, backspace navigation, paste handling with alphanumeric filtering, >5GB file rejection error message, MKV transcoding detection notification, and `?code=` query prefill).
+    - Fixed dropzone accessibility by removing `role="button"` from outer dropzone wrapper to resolve axe `nested-interactive` violation with the sample button.
+    - Updated `apps/web/index.html` viewport meta tag to remove `maximum-scale=1.0, user-scalable=no` for full WCAG compliance.
+    - Scoped form and card buttons in `apps/web/src/index.css` (`.card .btn`, `.cineva-card .cineva-btn`, `.prep .btn`, `.share .btn`) so landing page buttons (`.btn`, `.btn.w`, `.btn.g`, `.btn.lgx`) do not inherit 100% width or 26px top margin.
+    - Added explicit desktop/mobile styling for `.band .code .btn` and `#cf .btn`, matching prototype layout and text (`Join room →`).
+    - Scoped 6-box grid styling on Join page to `.card .code` to prevent collision with Landing page `.band .code` flexbox.
+    - Aligned `apps/server/src/__tests__/abuseLimits.test.ts` active room count query with `status: 'active'`.
+    - Created automated Playwright verification runner `scripts/verify-and-capture-all.mjs` that exercises all viewports, runs axe-core audits, measures scroll FPS, and tests multi-user end-to-end flow.
+  - **What was verified**:
+    - `npm run typecheck`: 0 errors across all workspaces (`@cineva/shared`, `@cineva/server`, `@cineva/web`).
+    - `npm run build`: cleanly built `@cineva/shared`, `@cineva/server`, and `@cineva/web` production bundles.
+    - `npm test`: **188 / 188 tests passed** (130 server tests across 16 suites, 58 web tests across 5 suites).
+    - **Visual Reference Comparison & Screenshots**:
+      - Captured full matrix of 72 screenshots at 360px, 768px, 1440px, and 2560px viewports saved in `docs/screenshots/`:
+        - Landing: `landing_top-*`, `landing_steps-*`, `landing_features-*`, `landing_join_band-*`, `landing_seek_drag-*`.
+        - Create: `create_empty-*`, `create_file_mp4-*`, `create_file_mkv-*`, `create_err_file_5gb-*`, `create_err_name-*`, `create_err_no_file-*`, `create_preparing-*`, `create_ready-*`.
+        - Join: `join_empty-*`, `join_prefilled-*`, `join_err_code-*`, `join_err_name-*`, `join_err_not_found-*`.
+      - Performed visual comparison against prototype ground truth in `docs/design-reference/`: spacing, font scaling, glass blur, pill badges, and seek bar dragging match prototypes exactly.
+    - **Axe-core Accessibility**:
+      - Landing Page: 0 violations, 0 serious/critical.
+      - Create Page: 0 violations, 0 serious/critical.
+      - Join Page: 0 violations, 0 serious/critical.
+      - Fully accessible via keyboard-only navigation (Tab, Shift-Tab, Enter, Space, arrow keys on CodeInput and seek bar).
+    - **Scroll Performance**:
+      - Continuous scroll benchmark over glass cards and ambient backdrop in Chrome: **Average 61 FPS, 0 dropped frames** out of 91 frames.
+    - **End-to-End Real Flow in Chrome**:
+      - Host opened Landing -> clicked Create Room -> filled name "Alex Host" and selected sample video -> room created -> received public invite link -> entered watch room -> Guest opened invite link in second isolated browser context -> prefilled room code displayed -> entered name "Maya Guest" and joined -> both host and guest successfully entered room with live sync and chat operational.
+

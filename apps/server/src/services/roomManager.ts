@@ -24,6 +24,7 @@ export class RoomManager {
   async createRoom(input: CreateRoomInput, hostSessionId?: string): Promise<{ room: RoomInfo; hostSessionId: string; hostParticipantId: string }> {
     const activeRoomsCount = await prisma.room.count({
       where: {
+        status: 'active',
         expiresAt: { gt: new Date() },
       },
     });

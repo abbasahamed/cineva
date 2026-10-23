@@ -750,7 +750,7 @@ input[type="range"]:hover::-webkit-slider-thumb {
   color: var(--ok);
 }
 
-.btn, .cineva-btn {
+.card .btn, .cineva-card .cineva-btn, .prep .btn, .prep .cineva-btn, .share .btn, .share .cineva-btn, .card .cineva-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -768,17 +768,17 @@ input[type="range"]:hover::-webkit-slider-thumb {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 10px 24px rgba(241, 217, 160, 0.18);
   transition: transform 0.15s var(--ease), background 0.15s;
 }
-.btn:hover, .cineva-btn:hover {
+.card .btn:hover, .cineva-card .cineva-btn:hover, .prep .btn:hover, .share .btn:hover {
   background: #f6e3b4;
 }
-.btn:active, .cineva-btn:active {
+.card .btn:active, .cineva-card .cineva-btn:active, .prep .btn:active, .share .btn:active {
   transform: scale(0.985);
 }
-.btn:disabled, .cineva-btn:disabled {
+.card .btn:disabled, .cineva-card .cineva-btn:disabled, .prep .btn:disabled, .share .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
-.btn.ghost, .cineva-btn.ghost {
+.card .btn.ghost, .cineva-card .cineva-btn.ghost, .prep .btn.ghost, .share .btn.ghost {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
@@ -1048,12 +1048,12 @@ input[type="range"]:hover::-webkit-slider-thumb {
 }
 
 /* 6-box room code input */
-.code, .cineva-code {
+.card .code, .cineva-code {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 10px;
 }
-.code input, .cineva-code input {
+.card .code input, .cineva-code input {
   width: 100%;
   min-width: 0;
   height: 62px;
@@ -1068,16 +1068,16 @@ input[type="range"]:hover::-webkit-slider-thumb {
   color: var(--text);
   transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s var(--ease);
 }
-.cineva-code input:focus {
+.card .code input:focus, .cineva-code input:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35), 0 0 0 3px rgba(241, 217, 160, 0.2);
   transform: translateY(-1px);
 }
-.cineva-code input:not(:placeholder-shown) {
+.card .code input:not(:placeholder-shown), .cineva-code input:not(:placeholder-shown) {
   background: rgba(255, 255, 255, 0.1);
 }
-.cineva-code.bad input {
+.card .code.bad input, .card .cineva-code.bad input, .cineva-code.bad input {
   border-color: var(--danger);
 }
 @media (max-width: 480px) {
@@ -1203,6 +1203,8 @@ input[type="range"]:hover::-webkit-slider-thumb {
   align-items: center;
   justify-content: center;
   gap: 10px;
+  width: auto;
+  margin: 0;
   height: 46px;
   padding: 0 24px;
   border-radius: 99px;
@@ -1798,6 +1800,13 @@ h2 {
   border-color: #fff;
   box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.2), inset 0 2px 6px rgba(0, 0, 0, 0.4);
   transform: translateY(-2px);
+}
+.code .btn, #cf .btn {
+  width: auto;
+  margin: 0;
+  margin-left: 10px;
+  height: 56px;
+  border-radius: 99px;
 }
 .err {
   min-height: 22px;
