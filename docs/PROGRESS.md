@@ -179,3 +179,14 @@ Per instructions, the watch room page UI is kept intact and will be redesigned i
     - `npm run typecheck`: 0 errors across `@cineva/shared`, `@cineva/server`, `@cineva/web`.
     - `npm test`: 181/181 tests passed (130 server, 51 web).
   - **What's next**: Step 6: Clean up old unused landing/create/join components while preserving watch room UI.
+- **Step 6: Clean up Completed**:
+  - **What changed**:
+    - Audited imports across `apps/web/src` for all components and styling rules.
+    - Verified that all old landing/create/join markup and styles have been removed or migrated.
+    - Verified that all watch room components (`ThemeContext`, `ThemeSelector`, `Navbar`, `CinematicBackground`, `StarfieldBackground`, `VideoPlayer`, `ChatPanel`, `ParticipantsList`, `MediaUploadModal`, `SettingsModal`, `ShareModal`, `DebugPanel`, and `--brand-*` CSS properties) are preserved and intact.
+    - Verified `npm run build` succeeds without warnings or dead code issues.
+  - **What was verified**:
+    - `npm run typecheck`: 0 errors.
+    - `npm run build`: built production bundles cleanly (`dist/assets/index-*.js`, `dist/assets/index-*.css`).
+    - `npm test`: 181/181 tests passed.
+  - **What's next**: Step 7: Verify (tests, Playwright screenshots at 360, 768, 1440, 2560, comparison, accessibility, performance, end-to-end flow).
