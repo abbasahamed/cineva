@@ -121,6 +121,19 @@ Per instructions, the watch room page UI is kept intact and will be redesigned i
     - `npx vitest run src/__tests__/sharedUiComponents.test.tsx`: 5/5 tests passed.
     - `npm run typecheck`: 0 errors across `@cineva/shared`, `@cineva/server`, `@cineva/web`.
   - **What's next**: Step 3: Landing page implementation matching `claude/index.html`.
-
-
-
+- **Step 3: Landing page Completed**:
+  - **What changed**:
+    - Replaced `LandingPage.tsx` with full port of `claude/index.html`.
+    - Implemented SVG symbol definitions and liquid refraction filter (`#liquid-refract`).
+    - Implemented floating glass navigation pill with scroll state (`scrolled`), brand mark, anchor navigation (`#how`, `#features`, `#join`), and direct `/create` link.
+    - Implemented animated hero with staggered word reveal (`Watch together. Perfect sync. Zero friction.`), room invite chip, and primary/ghost CTAs.
+    - Implemented interactive room preview card with active seek-bar demo: supports pointer dragging and left/right arrow keys, updates "You" and "Maya" avatars in unison, updates playback time, and displays a floating toast confirmation (`You skipped to H:MM:SS`).
+    - Implemented bento features grid: live drift sync visualization, peer avatars with speaking rings, audio/subtitle language chips, automatic file conversion, and auto-cleanup privacy guarantee.
+    - Implemented 3-step workflow guide ("How it works" section).
+    - Implemented 5 privacy & performance guarantee facts.
+    - Implemented bottom join-code band with 6-character CodeInput and instant navigation to `/join?code=XXXXXX`.
+    - Fixed anchor scrolling with `scroll-padding-top: 100px` for the fixed navigation offset.
+  - **What was verified**:
+    - `npm run typecheck --workspace=@cineva/web`: 0 errors.
+    - `npm test --workspace=@cineva/web`: 51/51 tests passed.
+  - **What's next**: Step 4: Create room page (`CreateRoomPage.tsx`) matching `claude/create.html`.
