@@ -74,3 +74,35 @@
     - `npm test`: 176 passed (130 server, 46 web).
   - **What's next**: Show Track Manifest JSON and Master Playlist to the user for review, then wire media storage/job queue and the frontend HLS player.
 
+## Old UI still in use by the watch room
+Per instructions, the watch room page UI is kept intact and will be redesigned in the next phase. The following components and styles remain active for the watch room:
+- `apps/web/src/context/ThemeContext.tsx` (palette themes: blue, red, purple, emerald, amber, rose)
+- `apps/web/src/components/ThemeSelector.tsx`
+- `apps/web/src/components/Navbar.tsx`
+- `apps/web/src/components/CinematicBackground.tsx`
+- `apps/web/src/components/StarfieldBackground.tsx`
+- `apps/web/src/components/VideoPlayer.tsx`
+- `apps/web/src/components/ChatPanel.tsx`
+- `apps/web/src/components/ParticipantsList.tsx`
+- `apps/web/src/components/MediaUploadModal.tsx`
+- `apps/web/src/components/SettingsModal.tsx`
+- `apps/web/src/components/ShareModal.tsx`
+- `apps/web/src/components/DebugPanel.tsx`
+- Existing `--brand-*` CSS custom properties in `apps/web/src/index.css`
+
+## New UI Implementation (Landing, Create, Join)
+
+- **Step 0: Ground Truth Reference Capture Completed**:
+  - Captured Playwright Chrome reference screenshots of the static prototypes (`claude/index.html`, `claude/create.html`, `claude/join.html`) across 360px, 768px, 1440px, and 2560px viewports into `docs/design-reference/`.
+- **Step 1: Design tokens, fonts, and glass primitives Completed**:
+  - **What changed**:
+    - Installed and self-hosted `@fontsource-variable/geist` and `@fontsource-variable/geist-mono` in `apps/web/src/main.tsx`.
+    - Extended `tailwind.config.js` to map Geist / Geist Mono fonts.
+    - Added Cineva 2.0 design tokens (`--bg`, `--text`, `--line`, `--accent`, `--ok`, `--danger`, aurora colors `--a1`...`--a4`, radii, easings) and CSS rules to `apps/web/src/index.css`.
+    - Created `apps/web/src/components/AmbientBackground.tsx` supporting ambient background with blurred color fields and film still, plus aurora variant for landing.
+    - Created `apps/web/src/components/GlassSurface.tsx` supporting pointer sheen coordinates (`--mx`, `--my`), specular rim gradient, inner highlight, blur/saturation/brightness, and accessibility fallbacks.
+  - **What was verified**:
+    - `npm run typecheck --workspace=@cineva/web`: 0 errors.
+  - **What's next**: Step 2: Shared UI components (Logo, PillLink, Button, Field, Input, Switch, CodeInput, Dropzone, FileRow, ProgressStages).
+
+

@@ -18,7 +18,9 @@
     "clean": "rm -rf node_modules apps/*/node_modules apps/*/dist packages/*/node_modules packages/*/dist"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "concurrently": "^9.1.2",
+    "playwright": "^1.64.1",
     "typescript": "^5.7.3"
   }
 }
