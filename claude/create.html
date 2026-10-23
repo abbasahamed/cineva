@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Create Watch Room — Cineva</title>
+<style>
+:root {
+  --bg: #06060c;
+  --text: #f6f5f2;
+  --t2: rgba(246, 245, 242, 0.68);
+  --t3: rgba(246, 245, 242, 0.42);
+  --a1: #7b6bff;
+  --a2: #ff5fa8;
+  --a3: #ffab5e;
+  --a4: #38d5ff;
+  --ok: #6ee7a0;
+  --sans: "Geist Variable", "Geist", -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
+  --mono: "Geist Mono Variable", "SF Mono", Menlo, Consolas, monospace;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 400 16px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  overflow-x: hidden;
+  position: relative;
+}
+
+a { color: inherit; text-decoration: none; }
+button, input { font: inherit; color: inherit; }
+
+/* Aurora liquid backdrop */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  background: radial-gradient(120% 80% at 50% -10%, #14123a, var(--bg) 60%);
+  pointer-events: none;
+}
+.aurora i {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  mix-blend-mode: screen;
+  will-change: transform;
+}
+.aurora i:nth-child(1) { width: 46vw; height: 46vw; left: -8vw; top: -12vw; background: var(--a1); opacity: .55; animation: f1 22s ease-in-out infinite alternate; }
+.aurora i:nth-child(2) { width: 38vw; height: 38vw; right: -6vw; top: 4vh; background: var(--a2); opacity: .42; animation: f2 26s ease-in-out infinite alternate; }
+.aurora i:nth-child(3) { width: 34vw; height: 34vw; left: 30vw; top: 42vh; background: var(--a4); opacity: .28; animation: f1 30s ease-in-out infinite alternate-reverse; }
+.aurora i:nth-child(4) { width: 30vw; height: 30vw; right: 10vw; top: 70vh; background: var(--a3); opacity: .32; animation: f2 34s ease-in-out infinite alternate; }
+.aurora::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: .08;
+  mix-blend-mode: overlay;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+@keyframes f1 { to { transform: translate3d(9vw, 7vh, 0) scale(1.15); } }
+@keyframes f2 { to { transform: translate3d(-8vw, 9vh, 0) scale(0.9); } }
+
+/* Liquid glass base class */
+.lg {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04) 48%, rgba(255, 255, 255, 0.11));
+  -webkit-backdrop-filter: blur(28px) saturate(190%) brightness(1.08);
+  backdrop-filter: blur(28px) saturate(190%) brightness(1.08);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.6),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.14),
+    inset 0 0 32px rgba(255, 255, 255, 0.05),
+    0 30px 80px -15px rgba(0, 0, 0, 0.65),
+    0 0 50px -10px rgba(123, 107, 255, 0.18);
+  border-radius: 36px;
+  transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease);
+}
+.refract .lg {
+  backdrop-filter: url(#lens) blur(12px) saturate(190%) brightness(1.08);
+}
+.lg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.2px;
+  pointer-events: none;
+  z-index: 2;
+  background: conic-gradient(
+    from 210deg at 50% 50%,
+    rgba(255, 255, 255, 0.75),
+    rgba(255, 255, 255, 0.08) 18%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0.5) 72%,
+    rgba(255, 255, 255, 0.08) 88%,
+    rgba(255, 255, 255, 0.75)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.lg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.9;
+  background: radial-gradient(380px circle at var(--mx, 30%) var(--my, 0%), rgba(255, 255, 255, 0.22), transparent 60%);
+  transition: opacity 0.3s var(--ease);
+}
+.lg > * { position: relative; z-index: 3; }
+
+/* Shell */
+.app-shell {
+  width: 100%;
+  max-width: 530px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Nav pill */
+.top-nav {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 18px 0 14px;
+  border-radius: 99px;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--t2);
+  transition: transform 0.2s var(--ease), color 0.2s;
+}
+.top-nav:hover {
+  color: #fff;
+  transform: translateX(-3px);
+}
+.top-nav svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+}
+
+/* Card content */
+.card {
+  padding: 38px 36px 36px;
+  overflow: hidden;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 14px 0 10px;
+  border-radius: 99px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--t2);
+  margin-bottom: 18px;
+}
+.badge .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--a1), var(--a2));
+  box-shadow: 0 0 10px var(--a1);
+}
+
+h1 {
+  font-size: 34px;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+  color: var(--text);
+}
+.subtitle {
+  margin-top: 8px;
+  color: var(--t2);
+  font-size: 15.5px;
+  line-height: 1.45;
+}
+
+.form-group {
+  margin-top: 24px;
+}
+.form-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--t2);
+  margin-bottom: 8px;
+}
+
+/* Frosted glass inputs */
+.input-wrap {
+  position: relative;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
+}
+.input-wrap:focus-within {
+  border-color: rgba(255, 255, 255, 0.38);
+  box-shadow: 0 0 0 4px rgba(123, 107, 255, 0.2), inset 0 2px 6px rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.42);
+}
+.input-wrap input {
+  width: 100%;
+  height: 52px;
+  padding: 0 18px;
+  background: transparent;
+  border: 0;
+  outline: none;
+  font-size: 15.5px;
+  color: var(--text);
+}
+.input-wrap input::placeholder {
+  color: var(--t3);
+}
+
+/* Upload dropzone */
+.dropzone {
+  margin-top: 8px;
+  border-radius: 24px;
+  border: 1.5px dashed rgba(255, 255, 255, 0.22);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+  padding: 28px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.25s var(--ease);
+  position: relative;
+  overflow: hidden;
+}
+.dropzone:hover, .dropzone.dragover {
+  border-color: rgba(255, 255, 255, 0.45);
+  background: rgba(123, 107, 255, 0.09);
+  transform: translateY(-1px);
+}
+.upload-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.04));
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.4), 0 8px 18px rgba(0, 0, 0, 0.35);
+  margin-bottom: 14px;
+  color: #fff;
+}
+.upload-icon svg {
+  width: 24px;
+  height: 24px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  fill: none;
+}
+.dropzone-title {
+  font-size: 15px;
+  font-weight: 550;
+  color: var(--text);
+}
+.dropzone-sub {
+  font-size: 13px;
+  color: var(--t3);
+  margin-top: 4px;
+}
+.sample-btn {
+  margin-top: 14px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 99px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.sample-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.sample-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
+
+/* Loaded file chip */
+.loaded-chip {
+  display: none;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: rgba(110, 231, 160, 0.12);
+  border: 1px solid rgba(110, 231, 160, 0.35);
+  color: var(--text);
+  font-size: 14px;
+}
+.loaded-chip.active { display: flex; }
+.loaded-chip .info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+.loaded-chip .tag {
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--ok);
+  color: #122818;
+  padding: 2px 7px;
+  border-radius: 6px;
+  text-transform: uppercase;
+}
+.loaded-chip .fname {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+  font-weight: 500;
+}
+.loaded-chip .remove-file {
+  background: transparent;
+  border: none;
+  color: var(--t2);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+}
+.loaded-chip .remove-file:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
+
+/* Primary Button (Cineva White-Gloss Glass Pill) */
+.btn-primary {
+  width: 100%;
+  height: 54px;
+  margin-top: 26px;
+  border-radius: 99px;
+  border: 0;
+  cursor: pointer;
+  font-size: 16.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: linear-gradient(180deg, #ffffff, #e6e3ff);
+  color: #1b1540;
+  box-shadow:
+    inset 0 -2px 6px rgba(123, 107, 255, 0.28),
+    0 12px 35px -6px rgba(180, 170, 255, 0.7);
+  transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 -2px 6px rgba(123, 107, 255, 0.35),
+    0 16px 42px -6px rgba(180, 170, 255, 0.85);
+}
+.btn-primary:active {
+  transform: scale(0.985);
+}
+
+/* Bottom switch link */
+.footer-switch {
+  text-align: center;
+  margin-top: 22px;
+  font-size: 14.5px;
+  color: var(--t2);
+}
+.footer-switch a {
+  color: #fff;
+  font-weight: 550;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  margin-left: 4px;
+  transition: opacity 0.2s;
+}
+.footer-switch a:hover {
+  opacity: 0.85;
+}
+
+/* Modal for Simulated Live Watchroom */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 6, 12, 0.75);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s var(--ease);
+}
+.modal-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.modal-box {
+  width: min(500px, 100%);
+  padding: 34px 30px;
+  text-align: center;
+  transform: scale(0.94);
+  transition: transform 0.3s var(--ease);
+}
+.modal-overlay.open .modal-box {
+  transform: scale(1);
+}
+.modal-icon {
+  width: 62px;
+  height: 62px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, var(--ok), #27b673);
+  color: #0d2817;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 18px;
+  box-shadow: 0 10px 25px rgba(110, 231, 160, 0.4);
+}
+.modal-code {
+  font-family: var(--mono);
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  margin: 14px 0;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 10px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  display: inline-block;
+}
+</style>
+</head>
+<body>
+
+<!-- SVG displacement lens for Chromium -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="lens" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency=".009 .014" numOctaves="2" seed="7" result="n"/>
+      <feGaussianBlur in="n" stdDeviation="3" result="m"/>
+      <feDisplacementMap in="SourceGraphic" in2="m" scale="38" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+</svg>
+
+<div class="aurora" aria-hidden="true">
+  <i></i><i></i><i></i><i></i>
+</div>
+
+<main class="app-shell">
+  <!-- Back to Home navigation -->
+  <a href="/" class="top-nav lg">
+    <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>Back to Home</span>
+  </a>
+
+  <!-- Create Watch Room Card -->
+  <section class="card lg">
+    <div class="badge lg">
+      <span class="dot"></span>
+      <span>Host Studio · 4K Sync</span>
+    </div>
+
+    <h1>Create your watch room</h1>
+    <p class="subtitle">Set up your room, drop an authorized video, and invite your friends.</p>
+
+    <form id="createForm" autocomplete="off">
+      <div class="form-group">
+        <label class="form-label" for="displayName">Your display name</label>
+        <div class="input-wrap">
+          <input type="text" id="displayName" placeholder="e.g. Alex" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="roomTitle">Room title (optional)</label>
+        <div class="input-wrap">
+          <input type="text" id="roomTitle" placeholder="e.g. Friday Movie Night">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Video source</label>
+        
+        <input type="file" id="videoFile" accept="video/mp4,video/webm,video/x-matroska,video/quicktime" style="display:none">
+
+        <!-- Upload Dropzone -->
+        <div class="dropzone" id="dropArea" tabindex="0" role="button" aria-label="Drop video file or click to select">
+          <div class="upload-icon">
+            <svg viewBox="0 0 24 24"><path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="dropzone-title">Drag & drop your video here</div>
+          <div class="dropzone-sub">MP4, WebM, MKV, MOV • up to 5 GB</div>
+          <button type="button" class="sample-btn" id="sampleBtn">
+            <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span>Or use sample HD demo video</span>
+          </button>
+        </div>
+
+        <!-- Loaded file indicator -->
+        <div class="loaded-chip" id="loadedChip">
+          <div class="info">
+            <span class="tag">Ready</span>
+            <span class="fname" id="fileNameDisplay">interstellar_imax_trailer.mp4</span>
+          </div>
+          <button type="button" class="remove-file" id="removeFile" aria-label="Remove video">&times;</button>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-primary" id="submitBtn">
+        <span>Create Room</span>
+      </button>
+
+      <div class="footer-switch">
+        <span>Already have an invite code?</span>
+        <a href="join.html">Join a room &rarr;</a>
+      </div>
+    </form>
+  </section>
+</main>
+
+<!-- Room Created Success Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal-box lg">
+    <div class="modal-icon">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <h2>Your Watch Room is Ready!</h2>
+    <p class="subtitle" style="margin-top:6px;">Share this code with your friends to sync playback.</p>
+    <div>
+      <span class="modal-code" id="modalCodeDisplay">CN-8892</span>
+    </div>
+    <button type="button" class="btn-primary" style="margin-top:14px;" onclick="document.getElementById('modal').classList.remove('open')">
+      Enter Theater
+    </button>
+  </div>
+</div>
+
+<script>
+(function() {
+  const d = document;
+
+  /* Chromium lens refraction detection */
+  try {
+    if (CSS.supports('backdrop-filter', 'url(#lens)') && !matchMedia('(prefers-reduced-transparency:reduce)').matches) {
+      d.documentElement.classList.add('refract');
+    }
+  } catch(e) {}
+
+  /* Pointer specular tracking */
+  d.addEventListener('pointermove', function(e) {
+    const el = e.target.closest && e.target.closest('.lg');
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    el.style.setProperty('--mx', (e.clientX - rect.left) + 'px');
+    el.style.setProperty('--my', (e.clientY - rect.top) + 'px');
+  });
+
+  /* File upload handling */
+  const dropArea = d.getElementById('dropArea');
+  const videoInput = d.getElementById('videoFile');
+  const sampleBtn = d.getElementById('sampleBtn');
+  const loadedChip = d.getElementById('loadedChip');
+  const fileNameDisplay = d.getElementById('fileNameDisplay');
+  const removeFile = d.getElementById('removeFile');
+
+  function setVideoFile(name) {
+    fileNameDisplay.textContent = name;
+    dropArea.style.display = 'none';
+    loadedChip.classList.add('active');
+  }
+
+  function clearVideoFile() {
+    videoInput.value = '';
+    loadedChip.classList.remove('active');
+    dropArea.style.display = 'flex';
+  }
+
+  dropArea.addEventListener('click', (e) => {
+    if (e.target.closest('#sampleBtn')) return;
+    videoInput.click();
+  });
+
+  dropArea.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropArea.classList.add('dragover');
+  });
+
+  dropArea.addEventListener('dragleave', () => dropArea.classList.remove('dragover'));
+
+  dropArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropArea.classList.remove('dragover');
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      setVideoFile(e.dataTransfer.files[0].name);
+    }
+  });
+
+  videoInput.addEventListener('change', () => {
+    if (videoInput.files && videoInput.files[0]) {
+      setVideoFile(videoInput.files[0].name);
+    }
+  });
+
+  sampleBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setVideoFile('Sample_Nature_Documentary_1080p.mp4');
+  });
+
+  removeFile.addEventListener('click', (e) => {
+    e.stopPropagation();
+    clearVideoFile();
+  });
+
+  /* Form Submission */
+  const form = d.getElementById('createForm');
+  const modal = d.getElementById('modal');
+  const modalCodeDisplay = d.getElementById('modalCodeDisplay');
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    modalCodeDisplay.textContent = code;
+    modal.classList.add('open');
+  });
+})();
+</script>
+</body>
+</html>

@@ -3,7 +3,6 @@ import AxeBuilder from '@axe-core/playwright';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-
 import { execSync } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -17,7 +16,9 @@ if (!fs.existsSync(outDir)) {
 
 function cleanActiveRooms() {
   try {
-    execSync('sqlite3 apps/server/prisma/dev.db "UPDATE Room SET status = \'ended\' WHERE status = \'active\';"', { cwd: rootDir });
+    execSync('sqlite3 apps/server/prisma/dev.db "UPDATE Room SET status = \'ended\' WHERE status = \'active\';"', {
+      cwd: rootDir,
+    });
   } catch {}
 }
 
@@ -25,7 +26,7 @@ const widths = [360, 768, 1440, 2560];
 const baseUrl = 'http://localhost:5173';
 
 async function captureAll() {
-  console.log('--- Step 7: Launching Google Chrome via Playwright ---');
+  console.log('--- Launching Google Chrome via Playwright ---');
   const browser = await chromium.launch({
     channel: 'chrome',
     headless: true,
@@ -54,7 +55,7 @@ async function captureAll() {
 
       // Steps section
       const howSection = page.locator('#how');
-      if (await howSection.count() > 0) {
+      if ((await howSection.count()) > 0) {
         await howSection.scrollIntoViewIfNeeded();
         await page.waitForTimeout(300);
         await page.screenshot({ path: path.join(outDir, `landing_steps-${width}.png`), fullPage: false });
@@ -62,7 +63,7 @@ async function captureAll() {
 
       // Features bento
       const featSection = page.locator('#features');
-      if (await featSection.count() > 0) {
+      if ((await featSection.count()) > 0) {
         await featSection.scrollIntoViewIfNeeded();
         await page.waitForTimeout(300);
         await page.screenshot({ path: path.join(outDir, `landing_features-${width}.png`), fullPage: false });
@@ -70,33 +71,17 @@ async function captureAll() {
 
       // Join band
       const joinBand = page.locator('#join');
-      if (await joinBand.count() > 0) {
+      if ((await joinBand.count()) > 0) {
         await joinBand.scrollIntoViewIfNeeded();
         await page.waitForTimeout(300);
         await page.screenshot({ path: path.join(outDir, `landing_join_band-${width}.png`), fullPage: false });
       }
-
-      // Interactive seek-bar demo with drag & toast
-      await page.goto(`${baseUrl}/`, { waitUntil: 'networkidle' });
-      const thumb = page.locator('.c-thumb').first();
-      if (await thumb.count() > 0) {
-        const box = await thumb.boundingBox();
-        if (box) {
-          await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-          await page.mouse.down();
-          await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2, { steps: 5 });
-          await page.mouse.up();
-          await page.waitForTimeout(400); // allow toast to appear
-        }
-      }
-      await page.screenshot({ path: path.join(outDir, `landing_seek_drag-${width}.png`), fullPage: false });
 
       await context.close();
     }
 
     // --- CREATE PAGE ---
     {
-      // 1. Create Empty
       const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 2 });
       const page = await context.newPage();
       await page.goto(`${baseUrl}/create`, { waitUntil: 'networkidle' });
@@ -109,15 +94,14 @@ async function captureAll() {
       await page.screenshot({ path: path.join(outDir, `create_name_error-${width}.png`), fullPage: true });
 
       // 3. No File Error (fill name, click submit)
-      await page.fill('#name', 'Alex');
+      await page.fill('#displayName', 'Alex');
       await page.click('button[type="submit"]');
       await page.waitForTimeout(200);
       await page.screenshot({ path: path.join(outDir, `create_no_file_error-${width}.png`), fullPage: true });
 
       // 4. Over 5 GB Error
-      // Dispatch mock synthetic oversized file to picker
       await page.evaluate(() => {
-        const input = document.getElementById('picker');
+        const input = document.getElementById('videoFile');
         const file = new File(['0'], 'avatar_huge.mp4', { type: 'video/mp4' });
         Object.defineProperty(file, 'size', { value: 6 * 1024 * 1024 * 1024 }); // 6 GB
         const dt = new DataTransfer();
@@ -129,27 +113,32 @@ async function captureAll() {
       await page.screenshot({ path: path.join(outDir, `create_over_5gb_error-${width}.png`), fullPage: true });
 
       // 5. MP4 Selected
-      await page.setInputFiles('#picker', mp4Path);
-      await page.waitForTimeout(200);
-      await page.screenshot({ path: path.join(outDir, `create_file_mp4-${width}.png`), fullPage: true });
+      if (fs.existsSync(mp4Path)) {
+        await page.setInputFiles('#videoFile', mp4Path);
+        await page.waitForTimeout(200);
+        await page.screenshot({ path: path.join(outDir, `create_file_mp4-${width}.png`), fullPage: true });
+      }
 
       // 6. MKV Selected (Shows "Will be converted for browsers")
-      await page.click('#remove');
-      await page.setInputFiles('#picker', mkvPath);
-      await page.waitForTimeout(200);
-      await page.screenshot({ path: path.join(outDir, `create_file_mkv-${width}.png`), fullPage: true });
+      const removeBtn = page.locator('#removeFile');
+      if ((await removeBtn.count()) > 0) await removeBtn.click();
+      if (fs.existsSync(mkvPath)) {
+        await page.setInputFiles('#videoFile', mkvPath);
+        await page.waitForTimeout(200);
+        await page.screenshot({ path: path.join(outDir, `create_file_mkv-${width}.png`), fullPage: true });
+      }
 
-      // 7. Preparing State (sample video mid-upload / analyzing)
-      await page.click('#remove');
-      await page.click('#sample');
-      await page.fill('#name', 'Alex');
+      // 7. Sample video selected & room ready
+      if ((await page.locator('#removeFile').count()) > 0) {
+        await page.click('#removeFile');
+      }
+      await page.click('#sampleBtn');
+      await page.fill('#displayName', 'Alex');
       await page.click('button[type="submit"]');
-      await page.waitForTimeout(200); // Snapshot during preparing
-      await page.screenshot({ path: path.join(outDir, `create_preparing-${width}.png`), fullPage: true });
 
-      // 8. Ready with Link
-      await page.waitForSelector('#ready', { timeout: 15000 });
-      await page.waitForTimeout(300);
+      // Wait for Room Ready modal
+      await page.waitForSelector('#modal.open', { timeout: 15000 });
+      await page.waitForTimeout(400);
       await page.screenshot({ path: path.join(outDir, `create_ready-${width}.png`), fullPage: true });
 
       await context.close();
@@ -157,7 +146,6 @@ async function captureAll() {
 
     // --- JOIN PAGE ---
     {
-      // 1. Join Empty
       const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 2 });
       const page = await context.newPage();
       await page.goto(`${baseUrl}/join`, { waitUntil: 'networkidle' });
@@ -185,6 +173,39 @@ async function captureAll() {
 
       await context.close();
     }
+
+    // --- WATCH ROOM PAGE ---
+    {
+      const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 2 });
+      const page = await context.newPage();
+
+      // Create a live demo room to enter watch room
+      await page.goto(`${baseUrl}/create`, { waitUntil: 'networkidle' });
+      await page.fill('#displayName', 'Alex');
+      await page.click('#sampleBtn');
+      await page.click('button[type="submit"]');
+      await page.waitForSelector('#modal.open', { timeout: 15000 });
+      await page.click('#modal button:has-text("Enter Theater")');
+      await page.waitForURL('**/room/**', { timeout: 10000 });
+      await page.waitForTimeout(1000);
+
+      // Capture default watch room
+      await page.screenshot({ path: path.join(outDir, `room-${width}.png`), fullPage: false });
+
+      // Open invite popover & capture
+      await page.click('#inviteBtn');
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: path.join(outDir, `room_invite-${width}.png`), fullPage: false });
+      await page.click('#inviteBtn'); // close
+
+      // Open settings modal & capture
+      await page.click('#settingsBtn');
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: path.join(outDir, `room_settings-${width}.png`), fullPage: false });
+      await page.click('#closeSettingsBtn');
+
+      await context.close();
+    }
   }
 
   // =========================================================================
@@ -206,14 +227,16 @@ async function captureAll() {
 
     const results = await new AxeBuilder({ page: auditPage })
       .withTags(['wcag2a', 'wcag2aa'])
-      .disableRules(['color-contrast']) // color-contrast on translucent glass backdrop handled by WCAG fallbacks
+      .disableRules(['color-contrast'])
       .analyze();
 
     const seriousOrCritical = results.violations.filter(
       (v) => v.impact === 'serious' || v.impact === 'critical'
     );
 
-    console.log(`[Axe] ${item.name} Page: ${results.violations.length} total violations, ${seriousOrCritical.length} serious/critical.`);
+    console.log(
+      `[Axe] ${item.name} Page: ${results.violations.length} total violations, ${seriousOrCritical.length} serious/critical.`
+    );
     if (seriousOrCritical.length > 0) {
       console.warn(`  Serious/Critical on ${item.name}:`, seriousOrCritical.map((v) => `${v.id}: ${v.description}`));
     }
@@ -234,7 +257,7 @@ async function captureAll() {
       let frames = 0;
       let startTime = performance.now();
       let lastTime = startTime;
-      let longFrames = 0; // frames taking > 33ms (dropping below 30fps)
+      let longFrames = 0;
 
       const onFrame = (now) => {
         frames++;
@@ -255,7 +278,9 @@ async function captureAll() {
       requestAnimationFrame(onFrame);
     });
   });
-  console.log(`[Perf] Scroll benchmark: Average ${scrollPerf.fps} FPS, ${scrollPerf.longFrames} dropped frames out of ${scrollPerf.totalFrames} frames.`);
+  console.log(
+    `[Perf] Scroll benchmark: Average ${scrollPerf.fps} FPS, ${scrollPerf.longFrames} dropped frames out of ${scrollPerf.totalFrames} frames.`
+  );
   await perfContext.close();
 
   // =========================================================================
@@ -271,34 +296,32 @@ async function captureAll() {
   await hostPage.waitForURL('**/create');
 
   // 2. Fill host details and pick sample video
-  await hostPage.fill('#name', 'Alex Host');
-  await hostPage.click('#sample');
+  await hostPage.fill('#displayName', 'Alex Host');
+  await hostPage.click('#sampleBtn');
   await hostPage.click('button[type="submit"]');
 
   // 3. Wait for room ready
-  await hostPage.waitForSelector('#ready', { timeout: 15000 });
-  const inviteUrl = await hostPage.inputValue('#link');
-  console.log(`[E2E] Host created room with invite URL: ${inviteUrl}`);
+  await hostPage.waitForSelector('#modal.open', { timeout: 15000 });
+  const hostCode = await hostPage.textContent('#modalCodeDisplay');
+  console.log(`[E2E] Host created room with code: ${hostCode?.trim()}`);
 
   // 4. Host enters room
-  await hostPage.click('#ready button:has-text("Enter the room")');
-  await hostPage.waitForURL('**/room/**');
+  await hostPage.click('#modal button:has-text("Enter Theater")');
+  await hostPage.waitForURL('**/room/**', { timeout: 10000 });
   console.log('[E2E] Host successfully entered watch room.');
 
-  // 5. Second context (Guest) opens invite link
+  // 5. Second context (Guest) opens join link
   const guestContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const guestPage = await guestContext.newPage();
 
-  // Map inviteUrl to local test port if it contains tunnel domain
-  const guestUrl = inviteUrl.replace(/^https?:\/\/[^/]+/, baseUrl);
-  await guestPage.goto(guestUrl, { waitUntil: 'networkidle' });
+  const cleanCode = (hostCode || '').trim();
+  await guestPage.goto(`${baseUrl}/join?code=${cleanCode}`, { waitUntil: 'networkidle' });
 
   // Guest enters name and clicks Join
-  const joinNameInput = guestPage.locator('#name, input[placeholder="Alex"], input[name="displayName"]').first();
-  await joinNameInput.fill('Maya Guest');
+  await guestPage.fill('#joinName', 'Maya Guest');
   await guestPage.click('button[type="submit"]');
 
-  await guestPage.waitForURL('**/room/**');
+  await guestPage.waitForURL('**/room/**', { timeout: 10000 });
   console.log('[E2E] Guest successfully entered watch room.');
 
   // 6. Verify watch room functionality: participants & chat
@@ -306,13 +329,13 @@ async function captureAll() {
   await guestPage.waitForTimeout(1000);
 
   // Send chat from host
-  const chatInput = hostPage.locator('input[placeholder*="message"], input[placeholder*="chat"]').first();
-  if (await chatInput.count() > 0) {
+  const chatInput = hostPage.locator('#chatInput');
+  if ((await chatInput.count()) > 0) {
     await chatInput.fill('Hey Maya! Testing sync watch room.');
     await chatInput.press('Enter');
     await guestPage.waitForTimeout(500);
-    const guestChatText = await guestPage.textContent('body');
-    const received = guestChatText.includes('Hey Maya!');
+    const guestChatText = await guestPage.textContent('#msgStream');
+    const received = guestChatText?.includes('Hey Maya!');
     console.log(`[E2E] Chat synchronization between Host and Guest: ${received ? 'PASSED' : 'UNCONFIRMED'}`);
   }
 

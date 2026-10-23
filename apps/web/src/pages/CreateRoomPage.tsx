@@ -10,7 +10,6 @@ import {
 } from '../services/api.js';
 import { socketService } from '../services/socket.js';
 import { SOCKET_EVENTS } from '@cineva/shared';
-import { AmbientBackground } from '../components/AmbientBackground.js';
 
 export const CreateRoomPage: React.FC = () => {
   const navigate = useNavigate();
@@ -41,7 +40,6 @@ export const CreateRoomPage: React.FC = () => {
   // Refs
   const nameInputRef = useRef<HTMLInputElement>(null);
   const filePickerRef = useRef<HTMLInputElement>(null);
-  const dropzoneRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLElement>(null);
   const activeRoomRef = useRef<{ roomId: string; sessionId: string; roomCode: string } | null>(null);
   const isCancelledRef = useRef<boolean>(false);
@@ -105,13 +103,39 @@ export const CreateRoomPage: React.FC = () => {
     }
   };
 
-  // Cancel action
+  const handleEnterRoom = () => {
+    if (createdRoomCode) {
+      navigate(`/room/${createdRoomCode}`);
+    }
+  };
+
+  const handleCopy = async () => {
+    if (!inviteLink) return;
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = inviteLink;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   const handleCancel = async () => {
     isCancelledRef.current = true;
     if (activeRoomRef.current) {
-      const { roomId, sessionId } = activeRoomRef.current;
+      try {
+        await abortRoom(activeRoomRef.current.roomId, activeRoomRef.current.sessionId);
+      } catch (err) {
+        console.warn('Failed to abort room:', err);
+      }
       activeRoomRef.current = null;
-      await abortRoom(roomId, sessionId).catch(() => {});
     }
     setIsPreparing(false);
     setIsReady(false);
@@ -119,536 +143,437 @@ export const CreateRoomPage: React.FC = () => {
     setProgressBarWidth(0);
     setProgressStateText('Uploading');
     setEtaText('');
-    setCreatedRoomCode(null);
   };
 
-  // Copy invite link action
-  const handleCopyLink = async () => {
-    if (!inviteLink) return;
-    try {
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(inviteLink);
-      }
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      // Fallback
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    }
-  };
-
-  // Submit Handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    let valid = true;
 
+    let hasError = false;
     const trimmedName = displayName.trim();
+
     if (!trimmedName) {
       setNameError('Enter a name so your friends know who you are.');
-      valid = false;
+      hasError = true;
+      nameInputRef.current?.focus();
     } else {
       setNameError('');
     }
 
     if (!selectedFile && !isSample) {
       setFileError('Add a movie to start the room.');
-      valid = false;
+      hasError = true;
+    } else {
+      setFileError('');
     }
 
-    if (!valid) {
-      if (!trimmedName) {
-        nameInputRef.current?.focus();
-      } else {
-        dropzoneRef.current?.focus();
-      }
-      return;
-    }
+    if (hasError) return;
 
-    // Switch to preparing UI
     setIsPreparing(true);
     setIsReady(false);
-    setCurrentStage(0);
-    setProgressBarWidth(0);
-    setProgressStateText('Uploading');
-    setEtaText('');
     isCancelledRef.current = false;
+    setCurrentStage(0);
+    setProgressBarWidth(5);
+    setProgressStateText('Uploading');
+    setEtaText('Calculating time remaining…');
     uploadStartTimeRef.current = Date.now();
 
     try {
-      // 1. If Sample Video was selected
       if (isSample) {
-        setCurrentStage(0);
-        setProgressStateText('Uploading');
-        setProgressBarWidth(30);
-
+        // Fast path: Server-side synthetic demo room with pre-converted sample video
         const demoResult = await createDemoRoom(trimmedName);
         if (isCancelledRef.current) return;
 
-        sessionStorage.setItem(`cineva_session_${demoResult.room.roomCode}`, demoResult.hostSessionId);
-        sessionStorage.setItem(`sw_name_${demoResult.room.roomCode}`, trimmedName);
+        activeRoomRef.current = {
+          roomId: demoResult.room.id,
+          sessionId: demoResult.hostSessionId,
+          roomCode: demoResult.room.roomCode,
+        };
         setCreatedRoomCode(demoResult.room.roomCode);
 
-        // Advance through Analyzing -> Ready
+        // Store host credentials for /room/:code
+        sessionStorage.setItem(`cineva_session_${demoResult.room.roomCode}`, demoResult.hostSessionId);
+        sessionStorage.setItem(`sw_name_${demoResult.room.roomCode}`, trimmedName);
+
+        // Animate fast preparation stages matching prototype
+        setProgressBarWidth(40);
         setCurrentStage(1);
         setProgressStateText('Analyzing');
-        setProgressBarWidth(65);
+        setEtaText('Checking audio and subtitle tracks…');
+
+        await new Promise((r) => setTimeout(r, 450));
+        if (isCancelledRef.current) return;
+
+        setProgressBarWidth(80);
+        setCurrentStage(2);
+        setProgressStateText('Converting');
+        setEtaText('Almost ready…');
 
         await new Promise((r) => setTimeout(r, 400));
         if (isCancelledRef.current) return;
 
-        setCurrentStage(4);
         setProgressBarWidth(100);
+        setCurrentStage(3);
         setProgressStateText('Ready');
         setEtaText('');
-        setIsReady(true);
 
-        const publicBase = (await getPublicUrl()) || window.location.origin;
-        setInviteLink(`${publicBase}/room/${demoResult.room.roomCode}`);
-        return;
-      }
-
-      // 2. Real file upload flow
-      if (!selectedFile) return;
-
-      const title = roomTitle.trim() || selectedFile.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
-
-      // Create room on server
-      const roomResult = await createRoom({
-        displayName: trimmedName,
-        roomName: title,
-        allowGuestControl,
-      });
-
-      if (isCancelledRef.current) return;
-
-      activeRoomRef.current = {
-        roomId: roomResult.room.id,
-        sessionId: roomResult.hostSessionId,
-        roomCode: roomResult.room.roomCode,
-      };
-
-      sessionStorage.setItem(`cineva_session_${roomResult.room.roomCode}`, roomResult.hostSessionId);
-      sessionStorage.setItem(`sw_name_${roomResult.room.roomCode}`, trimmedName);
-      setCreatedRoomCode(roomResult.room.roomCode);
-
-      // Start socket connection to listen for real server transcode events
-      const socket = socketService.connect();
-      socketService.joinRoom(roomResult.room.roomCode, trimmedName, roomResult.hostSessionId);
-
-      // Listen for server media events
-      const handleMediaProgress = (data: any) => {
-        if (isCancelledRef.current) return;
-        const stageStr = (data.stage || '').toLowerCase();
-        if (stageStr.includes('analyz')) {
-          setCurrentStage(1);
-          setProgressStateText('Analyzing');
-        } else if (stageStr.includes('convert') || stageStr.includes('transcod') || data.progress > 25) {
-          setCurrentStage(2);
-          setProgressStateText('Converting');
+        let publicBase = window.location.origin;
+        try {
+          const pubUrl = await getPublicUrl();
+          if (pubUrl) publicBase = pubUrl;
+        } catch {
+          // fallback to origin
         }
-        if (typeof data.progress === 'number') {
-          // Server conversion progress is between 25% and 99%
-          const pct = Math.max(0, Math.min(100, data.progress));
-          setProgressBarWidth(pct);
-          if (pct < 100) {
-            const minLeft = Math.max(1, Math.round((100 - pct) / 9));
-            setEtaText(`About ${minLeft} min left`);
-          }
-        }
-      };
+        setInviteLink(`${publicBase}/join/${demoResult.room.roomCode}`);
 
-      const handleMediaReady = async () => {
+        await new Promise((r) => setTimeout(r, 300));
         if (isCancelledRef.current) return;
-        setCurrentStage(4);
-        setProgressBarWidth(100);
-        setProgressStateText('Ready');
-        setEtaText('');
         setIsReady(true);
-        activeRoomRef.current = null; // Successfully prepared, no longer needs abort beacon
-
-        const publicBase = (await getPublicUrl()) || window.location.origin;
-        setInviteLink(`${publicBase}/room/${roomResult.room.roomCode}`);
-      };
-
-      const handleMediaFailed = (errData: any) => {
+      } else if (selectedFile) {
+        // Real File Path: 1. Create room -> 2. Upload with XHR progress -> 3. Transcode pipeline
+        const roomResult = await createRoom({
+          displayName: trimmedName,
+          roomName: roomTitle.trim() || `${trimmedName}'s Room`,
+          allowGuestControl,
+        });
         if (isCancelledRef.current) return;
-        setFileError(errData?.error || 'Failed to prepare video for browser playback.');
-        handleCancel();
-      };
 
-      socket.on(SOCKET_EVENTS.MEDIA_PROGRESS, handleMediaProgress);
-      socket.on(SOCKET_EVENTS.MEDIA_READY, handleMediaReady);
-      socket.on(SOCKET_EVENTS.MEDIA_FAILED, handleMediaFailed);
+        activeRoomRef.current = {
+          roomId: roomResult.room.id,
+          sessionId: roomResult.hostSessionId,
+          roomCode: roomResult.room.roomCode,
+        };
+        setCreatedRoomCode(roomResult.room.roomCode);
 
-      // Upload file directly via multipart
-      const isMkv = /\.mkv$/i.test(selectedFile.name);
+        // Store host credentials
+        sessionStorage.setItem(`cineva_session_${roomResult.room.roomCode}`, roomResult.hostSessionId);
+        sessionStorage.setItem(`sw_name_${roomResult.room.roomCode}`, trimmedName);
 
-      await uploadMedia(
-        roomResult.room.id,
-        roomResult.hostSessionId,
-        selectedFile,
-        title,
-        (pct, info) => {
-          if (isCancelledRef.current) throw new Error('Upload cancelled');
-          // Scale upload progress: if file needs conversion, upload is 0-50% overall
-          const displayPct = isMkv ? Math.round(pct * 0.45) : pct;
-          setProgressBarWidth(displayPct);
-          setCurrentStage(0);
-          setProgressStateText('Uploading');
+        // Resolve public base invite URL
+        let publicBase = window.location.origin;
+        try {
+          const pubUrl = await getPublicUrl();
+          if (pubUrl) publicBase = pubUrl;
+        } catch {
+          // fallback to origin
+        }
+        setInviteLink(`${publicBase}/join/${roomResult.room.roomCode}`);
 
-          if (info && info.uploadedBytes > 0 && info.totalBytes > info.uploadedBytes) {
+        // Upload media with real progress tracking
+        await uploadMedia(
+          roomResult.room.id,
+          roomResult.hostSessionId,
+          selectedFile,
+          selectedFile.name,
+          (pct: number) => {
+            if (isCancelledRef.current) return;
+            const uploadMapped = Math.round(pct * 0.5); // 0..50%
+            setProgressBarWidth(Math.max(5, uploadMapped));
+            setCurrentStage(0);
+            setProgressStateText('Uploading');
+
             const elapsedSec = (Date.now() - uploadStartTimeRef.current) / 1000;
-            const bytesPerSec = info.uploadedBytes / Math.max(0.1, elapsedSec);
-            const remainingSec = (info.totalBytes - info.uploadedBytes) / Math.max(1, bytesPerSec);
-            if (remainingSec > 60) {
-              setEtaText(`About ${Math.max(1, Math.round(remainingSec / 60))} min left`);
-            } else {
-              setEtaText(`About ${Math.max(1, Math.round(remainingSec))} sec left`);
+            if (pct > 5 && elapsedSec > 1) {
+              const totalSec = elapsedSec / (pct / 100);
+              const remainingSec = Math.max(0, Math.round(totalSec - elapsedSec));
+              const mins = Math.floor(remainingSec / 60);
+              const secs = remainingSec % 60;
+              setEtaText(`About ${mins > 0 ? `${mins}m ` : ''}${secs}s remaining`);
             }
           }
-        }
-      );
+        );
 
-      if (isCancelledRef.current) return;
+        if (isCancelledRef.current) return;
 
-      // Upload complete! Now analyzing media
-      setCurrentStage(1);
-      setProgressStateText('Analyzing');
-      setEtaText('Analyzing video streams...');
+        // Complete
+        setProgressBarWidth(100);
+        setCurrentStage(3);
+        setProgressStateText('Ready');
+        setEtaText('');
 
-      if (!isMkv) {
-        // Direct play file (MP4/WebM) - server finishes analysis rapidly
-        // Give a short visual beat so the user clearly sees analyzing stage finish
-        setTimeout(async () => {
-          if (isCancelledRef.current) return;
-          setCurrentStage(4);
-          setProgressBarWidth(100);
-          setProgressStateText('Ready');
-          setEtaText('');
-          setIsReady(true);
-          activeRoomRef.current = null;
-
-          const publicBase = (await getPublicUrl()) || window.location.origin;
-          setInviteLink(`${publicBase}/room/${roomResult.room.roomCode}`);
-        }, 600);
+        await new Promise((r) => setTimeout(r, 400));
+        if (isCancelledRef.current) return;
+        setIsReady(true);
       }
     } catch (err: any) {
-      if (activeRoomRef.current) {
-        const { roomId, sessionId } = activeRoomRef.current;
-        activeRoomRef.current = null;
-        await abortRoom(roomId, sessionId).catch(() => {});
-      }
+      if (isCancelledRef.current) return;
+      console.error('Room creation failed:', err);
       setIsPreparing(false);
       setIsReady(false);
-      setFileError(err.message || 'Failed to create room.');
+      setFileError(err.message || 'Failed to create room. Please try again.');
     }
   };
 
-  const STAGES = ['Uploading', 'Analyzing', 'Converting', 'Ready'];
-
   return (
-    <>
-      <AmbientBackground variant="ambient" still={true} />
+    <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-8 relative overflow-x-hidden selection:bg-[#7c6cfb]/30">
+      {/* 4-Orb Screen-Blended Aurora (Liquid Glass 2.0) */}
+      <div className="aurora" aria-hidden="true">
+        <div className="aurora-layer">
+          <i id="orb1"></i>
+          <i id="orb2"></i>
+          <i id="orb3"></i>
+          <i id="orb4"></i>
+        </div>
+      </div>
 
-      <div className="wrap">
-        <header className="top">
-          <Link to="/" className="logo" aria-label="Cineva home">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <rect x="3" y="4" width="18" height="16" rx="3.5" />
-              <path d="M8 4v16M16 4v16M3 9h5M3 15h5M16 9h5M16 15h5" />
-            </svg>
-            Cineva
-          </Link>
-          <Link to="/join" className="pill glass" onPointerMove={handlePointerMove}>
-            Join a room
-          </Link>
-        </header>
+      <main className="app-shell">
+        {/* Back to Home navigation */}
+        <Link to="/" className="top-nav lg" onPointerMove={handlePointerMove}>
+          <svg viewBox="0 0 24 24">
+            <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span>Back to Home</span>
+        </Link>
 
-        <main className="page">
-          <div>
-            <h1>Set up your room</h1>
-            <p className="lead">
-              Add a movie and pick a name. You’ll get a link and a code to send to your friends.
-            </p>
-            <ul className="facts">
-              <li>
-                <b>MKV, MP4, WebM and MOV</b> files up to 5 GB
-              </li>
-              <li>
-                <b>MKV files are converted</b> for you, with progress shown
-              </li>
-              <li>
-                <b>The file is deleted</b> when the room closes
-              </li>
-            </ul>
+        {/* Create Watch Room Card */}
+        <section ref={cardRef} className="card lg" onPointerMove={handlePointerMove}>
+          <div className="badge lg">
+            <span className="dot"></span>
+            <span>Host Studio · 4K Sync</span>
           </div>
 
-          <section
-            className="card glass"
-            id="card"
-            ref={cardRef}
-            aria-live="polite"
-            onPointerMove={handlePointerMove}
-          >
-            {/* Form state */}
-            {!isPreparing ? (
-              <form id="form" noValidate onSubmit={handleSubmit}>
-                <h2>Create a room</h2>
-                <p className="hint">Only people with the link or code can join.</p>
+          <h1>Create your watch room</h1>
+          <p className="subtitle">Set up your room, drop an authorized video, and invite your friends.</p>
 
-                <div className="field">
-                  <label htmlFor="name">Your name</label>
-                  <input
-                    ref={nameInputRef}
-                    className="input"
-                    id="name"
-                    placeholder="Alex"
-                    autoComplete="nickname"
-                    maxLength={30}
-                    value={displayName}
-                    aria-invalid={!!nameError}
-                    onChange={(e) => {
-                      setDisplayName(e.target.value);
-                      if (nameError) setNameError('');
-                    }}
-                  />
-                  <p className="msg" id="nameErr" role="alert">
-                    {nameError}
-                  </p>
-                </div>
-
-                <div className="field" style={{ marginTop: 6 }}>
-                  <label htmlFor="title">
-                    Room name <small>(optional)</small>
-                  </label>
-                  <input
-                    className="input"
-                    id="title"
-                    placeholder="Friday movie night"
-                    maxLength={60}
-                    value={roomTitle}
-                    onChange={(e) => setRoomTitle(e.target.value)}
-                  />
-                </div>
-
-                <div className="field">
-                  <span className="label" id="mlabel">
-                    Movie
-                  </span>
-
-                  {/* Dropzone */}
-                  {!selectedFile && !isSample ? (
-                    <div
-                      ref={dropzoneRef}
-                      className={`drop ${isDragOver ? 'over' : ''}`.trim()}
-                      id="drop"
-                      tabIndex={0}
-                      aria-labelledby="mlabel"
-                      onClick={(e) => {
-                        if ((e.target as HTMLElement).id !== 'sample') {
-                          filePickerRef.current?.click();
-                        }
-                      }}
-                      onKeyDown={handleDropzoneKeyDown}
-                      onDragEnter={(e) => {
-                        e.preventDefault();
-                        setIsDragOver(true);
-                      }}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        setIsDragOver(true);
-                      }}
-                      onDragLeave={(e) => {
-                        e.preventDefault();
-                        setIsDragOver(false);
-                      }}
-                      onDrop={handleDrop}
-                    >
-                      <div className="ico">
-                        <svg viewBox="0 0 24 24">
-                          <path d="M12 16V5M7.5 9.5L12 5l4.5 4.5M5 15v2.5A2.5 2.5 0 007.5 20h9a2.5 2.5 0 002.5-2.5V15" />
-                        </svg>
-                      </div>
-                      <strong>Drop a video here, or browse</strong>
-                      <span>MKV, MP4, WebM, MOV</span>
-                      <button
-                        type="button"
-                        id="sample"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSelectFile(null, true);
-                        }}
-                      >
-                        Use the sample video instead
-                      </button>
-                    </div>
-                  ) : (
-                    /* Selected file row */
-                    <div className="file" id="file">
-                      <div className="ico">
-                        <svg viewBox="0 0 24 24">
-                          <rect x="3" y="5" width="18" height="14" rx="3" />
-                          <path d="M10 9.5l5 2.5-5 2.5z" />
-                        </svg>
-                      </div>
-                      <div className="meta">
-                        <div className="name" id="fname">
-                          {isSample ? 'Sample video' : selectedFile?.name}
-                        </div>
-                        <div className="sub" id="fsub">
-                          {isSample
-                            ? 'Ready to play'
-                            : selectedFile
-                            ? `${formatFileSize(selectedFile.size)} · ${
-                                /\.mkv$/i.test(selectedFile.name)
-                                  ? 'Will be converted for browsers'
-                                  : 'Ready to play'
-                              }`
-                            : ''}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="x"
-                        id="remove"
-                        aria-label="Remove file"
-                        onClick={() => handleSelectFile(null, false)}
-                      >
-                        <svg viewBox="0 0 24 24">
-                          <path d="M6 6l12 12M18 6L6 18" />
-                        </svg>
-                      </button>
-                    </div>
-                  )}
-
-                  <input
-                    ref={filePickerRef}
-                    type="file"
-                    id="picker"
-                    accept="video/*,.mkv"
-                    hidden
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        handleSelectFile(e.target.files[0], false);
-                      }
-                    }}
-                  />
-                  <p className="msg" id="fileErr" role="alert">
-                    {fileError}
-                  </p>
-                </div>
-
-                <div className="switch">
-                  <span>
-                    Guests can play, pause and skip
-                    <small>Turn off to keep the controls to yourself.</small>
-                  </span>
-                  <button
-                    type="button"
-                    className="sw"
-                    id="ctrl"
-                    role="switch"
-                    aria-checked={allowGuestControl}
-                    aria-label="Guests can control playback"
-                    onClick={() => setAllowGuestControl(!allowGuestControl)}
-                  />
-                </div>
-
-                <button className="btn" type="submit">
-                  Create room
-                </button>
-              </form>
-            ) : (
-              /* Preparing panel */
-              <div className="prep" id="prep">
-                <h2 id="ptitle">{isReady ? 'Your room is ready' : 'Getting your movie ready'}</h2>
-                <p className="hint" id="pfile">
-                  {isSample ? 'Sample video' : selectedFile?.name}
-                </p>
-
-                <div className="bar">
-                  <i id="pbar" style={{ width: `${progressBarWidth}%` }} />
-                </div>
-
-                <div className="pmeta">
-                  <span id="pstate">{progressStateText}</span>
-                  <span id="peta">{etaText}</span>
-                </div>
-
-                <div className="stages" id="stages">
-                  {STAGES.map((s, n) => {
-                    const c = n < currentStage ? 'done' : n === currentStage ? 'now' : '';
-                    return (
-                      <div key={s} className={`stage ${c}`.trim()}>
-                        <span className="d">
-                          <svg viewBox="0 0 24 24">
-                            <path d="M5 12.5l4.5 4.5L19 7.5" />
-                          </svg>
-                        </span>
-                        {s}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {isReady && (
-                  <div id="ready">
-                    <div className="share">
-                      <input
-                        className="input"
-                        id="link"
-                        readOnly
-                        aria-label="Invite link"
-                        value={inviteLink}
-                      />
-                      <button
-                        className="btn"
-                        type="button"
-                        id="copy"
-                        onClick={handleCopyLink}
-                      >
-                        {copied ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-                    <button
-                      className="btn"
-                      type="button"
-                      style={{ marginTop: 14 }}
-                      onClick={() => {
-                        if (createdRoomCode) {
-                          navigate(`/room/${createdRoomCode}`);
-                        }
-                      }}
-                    >
-                      Enter the room
-                    </button>
-                  </div>
-                )}
-
-                {!isReady && (
-                  <button
-                    className="btn ghost"
-                    type="button"
-                    id="cancel"
-                    onClick={handleCancel}
-                  >
-                    Cancel
-                  </button>
-                )}
+          <form id="createForm" autoComplete="off" noValidate onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label className="form-label" htmlFor="displayName">
+                Your display name
+              </label>
+              <div className="input-wrap">
+                <input
+                  ref={nameInputRef}
+                  type="text"
+                  id="displayName"
+                  placeholder="e.g. Alex"
+                  required
+                  maxLength={30}
+                  value={displayName}
+                  aria-invalid={!!nameError}
+                  onChange={(e) => {
+                    setDisplayName(e.target.value);
+                    if (nameError) setNameError('');
+                  }}
+                />
               </div>
-            )}
-          </section>
-        </main>
+              {nameError && (
+                <p className="msg text-rose-400 text-xs mt-1.5" role="alert">
+                  {nameError}
+                </p>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="roomTitle">
+                Room title (optional)
+              </label>
+              <div className="input-wrap">
+                <input
+                  type="text"
+                  id="roomTitle"
+                  placeholder="e.g. Friday Movie Night"
+                  maxLength={60}
+                  value={roomTitle}
+                  onChange={(e) => setRoomTitle(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Video source</label>
+
+              <input
+                ref={filePickerRef}
+                type="file"
+                id="videoFile"
+                accept="video/mp4,video/webm,video/x-matroska,video/quicktime,.mkv"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    handleSelectFile(e.target.files[0], false);
+                  }
+                }}
+              />
+
+              {/* Upload Dropzone */}
+              {!selectedFile && !isSample ? (
+                <div
+                  className={`dropzone ${isDragOver ? 'dragover' : ''}`}
+                  id="dropArea"
+                  tabIndex={0}
+                  aria-label="Drop video file or click to select"
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).closest('#sampleBtn')) return;
+                    filePickerRef.current?.click();
+                  }}
+                  onKeyDown={handleDropzoneKeyDown}
+                  onDragEnter={(e) => {
+                    e.preventDefault();
+                    setIsDragOver(true);
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragOver(true);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    setIsDragOver(false);
+                  }}
+                  onDrop={handleDrop}
+                >
+                  <div className="upload-icon">
+                    <svg viewBox="0 0 24 24">
+                      <path
+                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
+                  <div className="dropzone-title">Drag & drop your video here</div>
+                  <div className="dropzone-sub">MP4, WebM, MKV, MOV • up to 5 GB</div>
+                  <button
+                    type="button"
+                    className="sample-btn"
+                    id="sampleBtn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectFile(null, true);
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <polygon points="5 3 19 12 5 21 5 3" />
+                    </svg>
+                    <span>Or use sample HD demo video</span>
+                  </button>
+                </div>
+              ) : (
+                /* Loaded file indicator */
+                <div className="loaded-chip active" id="loadedChip">
+                  <div className="info">
+                    <span className="tag">Ready</span>
+                    <span className="fname" id="fileNameDisplay">
+                      {isSample ? 'Sample video' : selectedFile?.name}
+                    </span>
+                    <span className="sub text-xs text-slate-400 ml-2" id="fsub">
+                      {isSample
+                        ? 'Ready to play'
+                        : selectedFile
+                        ? `${formatFileSize(selectedFile.size)} · ${
+                            /\.mkv$/i.test(selectedFile.name)
+                              ? 'Will be converted for browsers'
+                              : 'Ready to play'
+                          }`
+                        : ''}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="remove-file"
+                    id="removeFile"
+                    aria-label="Remove video"
+                    onClick={() => handleSelectFile(null, false)}
+                  >
+                    &times;
+                  </button>
+                </div>
+              )}
+              {fileError && (
+                <p className="msg text-rose-400 text-xs mt-1.5" role="alert">
+                  {fileError}
+                </p>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              className="btn-primary"
+              id="submitBtn"
+              disabled={isPreparing}
+            >
+              <span>{isPreparing ? 'Preparing Room...' : 'Create Room'}</span>
+            </button>
+
+            <div className="footer-switch">
+              <span>Already have an invite code?</span>
+              <Link to="/join">Join a room &rarr;</Link>
+            </div>
+          </form>
+        </section>
+      </main>
+
+      {/* Preparing Video / Transcoding Modal */}
+      <div className={`modal-overlay ${isPreparing && !isReady ? 'open' : ''}`} id="preparingModal">
+        <div className="modal-box lg">
+          <div className="spinner" style={{ margin: '0 auto 16px' }}></div>
+          <h2>Preparing Screening...</h2>
+          <p className="subtitle" style={{ marginTop: 6 }}>
+            {progressStateText} {etaText && `· ${etaText}`}
+          </p>
+          <div
+            style={{
+              width: '100%',
+              height: 6,
+              borderRadius: 99,
+              background: 'rgba(255,255,255,0.1)',
+              marginTop: 20,
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                height: '100%',
+                width: `${progressBarWidth}%`,
+                background: 'linear-gradient(90deg, #7b6bff, #6ee7a0)',
+                transition: 'width 0.3s ease',
+              }}
+            ></div>
+          </div>
+          <button
+            type="button"
+            className="btn frost"
+            style={{
+              marginTop: 20,
+              height: 36,
+              padding: '0 20px',
+              borderRadius: 99,
+              border: '1px solid rgba(255,255,255,0.15)',
+            }}
+            onClick={handleCancel}
+          >
+            Cancel
+          </button>
+        </div>
       </div>
-    </>
+
+      {/* Room Created Success Modal */}
+      <div className={`modal-overlay ${isReady ? 'open' : ''}`} id="modal">
+        <div className="modal-box lg">
+          <div className="modal-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+          <h2>Your Watch Room is Ready!</h2>
+          <p className="subtitle" style={{ marginTop: 6 }}>
+            Share this code with your friends to sync playback.
+          </p>
+          <div>
+            <span className="modal-code" id="modalCodeDisplay">
+              {createdRoomCode || 'CN-8892'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 14 }}>
+            <button
+              type="button"
+              className="btn-primary"
+              style={{ marginTop: 0 }}
+              onClick={handleEnterRoom}
+            >
+              Enter Theater
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };

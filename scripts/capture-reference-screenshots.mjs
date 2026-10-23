@@ -16,6 +16,7 @@ const pages = [
   { name: 'landing', file: 'claude/index.html' },
   { name: 'create', file: 'claude/create.html' },
   { name: 'join', file: 'claude/join.html' },
+  { name: 'room', file: 'claude/room.html' },
 ];
 
 async function main() {

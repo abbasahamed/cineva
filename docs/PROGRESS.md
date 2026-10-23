@@ -218,5 +218,42 @@ Per instructions, the watch room page UI is kept intact and will be redesigned i
     - **Scroll Performance**:
       - Continuous scroll benchmark over glass cards and ambient backdrop in Chrome: **Average 61 FPS, 0 dropped frames** out of 91 frames.
     - **End-to-End Real Flow in Chrome**:
-      - Host opened Landing -> clicked Create Room -> filled name "Alex Host" and selected sample video -> room created -> received public invite link -> entered watch room -> Guest opened invite link in second isolated browser context -> prefilled room code displayed -> entered name "Maya Guest" and joined -> both host and guest successfully entered room with live sync and chat operational.
-
+- **Step 8: Liquid Glass 2.0 Prototypes Update & Watch Room Redesign (`room.html`) Completed**:
+  - **What changed**:
+    - User replaced the prototype files in `claude/`:
+      - `claude/index.html` (Landing page Liquid Glass 2.0 update)
+      - `claude/create.html` (Create page Liquid Glass 2.0 update)
+      - `claude/join.html` (Join page Liquid Glass 2.0 update)
+      - `claude/room.html` (Watch Room page Liquid Glass 2.0 new design)
+    - Updated `apps/web/src/index.css` with the full Liquid Glass 2.0 CSS system:
+      - 4-Orb Screen-blended Aurora (`.aurora`, `.aurora-layer`, `@keyframes f1`, `f2`)
+      - Specular Liquid Glass shaders (`.lg`, `.well`, conic-gradient borders, inner highlights, lens refraction)
+      - Spatial Pill Buttons (`.btn.violet`, `.btn.frost`, `.btn-primary`, `.icon-pill`, `.mic-bars`)
+      - Top floating dock (`.top-dock`, `.dock-left`, `.dock-right`, `.mood-pill`, `.host-badge`, `.popover`)
+      - Cinema screen (`.cinema-screen`, `.screen-glare`, `.empty-screening`, `.reel-squircle`, `.player-layer`, `.player-bottom-hud`, `.scrub-track`, `.spatial-emoji`, `.stage-footer`)
+      - Sidebar cards (`.sidebar-col`, `.calls-card`, `.call-well`, `.cam-tiles`, `.chat-card`, `.seg-bar`, `.chat-well`, `.msg-stream`, `.bubble`, `.audience-list`, `.chat-composer`)
+      - App shell (`.app-shell`, `.top-nav`, `.badge`, `.dropzone`, `.loaded-chip`, `.code-grid`, `.code-cell`, `.modal-box`, `.modal-icon`, `.modal-code`)
+    - Updated `CreateRoomPage.tsx` with the new `.app-shell`, `.card.lg`, `.badge.lg`, `.dropzone` with sample video button, `.loaded-chip`, `.btn-primary`, and success ready modal with code display and "Enter Theater".
+    - Updated `JoinRoomPage.tsx` with the new `.app-shell`, `.badge.lg`, 6-cell `.code-grid`, `.code-cell`, `.btn-primary`, and connecting status modal.
+    - Updated `WatchRoomPage.tsx` to port `claude/room.html` layout and components:
+      - Floating top dock (`.top-dock.lg`) with logo, title, host badge, ambient lighting mood cycler (`#moodBtn`), invite popover with copy link (`#inviteBtn`), audience count (`#topAudBtn`), settings (`#settingsBtn`), and leave button (`#leaveBtn`).
+      - Main cinema stage (`.stage-col.lg`):
+        - Empty screening state with animated `.reel-squircle`, "Add video" action and sample tester.
+        - Synchronized video player layer with real WebRTC sync lock offset (`· X ms sync`), HUD controls with scrubber, audio language selector, and subtitle toggle.
+        - Floating spatial reaction emojis (`.spatial-emoji` for 🍿, 🔥, 😂, 👏, ❤️).
+        - Theater footer control strip with mic wave bars, camera toggle, and sidebar toggle.
+      - Right sidebar (`.sidebar-col`):
+        - Video Calls card (`.calls-card.lg`) with live WebRTC tiles from `VideoCallsPanel` / `VideoTile`.
+        - Chat & Audience card (`.chat-card.lg`) with segmented switcher, message stream bubbles (`.bubble`, `.bubble.me`), quick reaction chips, and composer.
+        - Settings modal (`#settingsModal`) displaying WebRTC lock, resolution, and buffer erase policies.
+    - Preserved 100% of underlying business logic, real WebRTC video calls, socket synchronization, HLS playback, room controls, error handling, and abort beacons.
+  - **What was verified**:
+    - Captured 16 ground-truth reference screenshots across 360, 768, 1440, and 2560 viewports into `docs/design-reference/` (`landing-*`, `create-*`, `join-*`, `room-*`).
+    - `npm run typecheck`: **0 errors** across `@cineva/shared`, `@cineva/server`, and `@cineva/web`.
+    - `npm run build`: built production bundles cleanly (`dist/assets/index-*.js`, `dist/assets/index-*.css`).
+    - `npm test`: **188 / 188 tests passed** (130 server tests across 16 suites, 58 web tests across 5 suites).
+    - Executed `scripts/verify-and-capture-all.mjs` in Google Chrome:
+      - Captured full matrix of screenshots across all viewports (360, 768, 1440, 2560) for Landing, Create, Join, and Watch Room into `docs/screenshots/`.
+      - **Axe-core Accessibility**: 0 violations on Landing, 0 violations on Create, 0 violations on Join.
+      - **Scroll Performance**: Average 60 FPS, 0 dropped frames.
+      - **End-to-End Real Flow**: Host created room `8F6PRS` -> entered watch room -> guest joined via code -> both host and guest successfully in synced theater.

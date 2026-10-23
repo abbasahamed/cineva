@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { joinRoom, checkRoom } from '../services/api.js';
-import { AmbientBackground } from '../components/AmbientBackground.js';
 
 export const JoinRoomPage: React.FC = () => {
   const navigate = useNavigate();
@@ -21,6 +20,7 @@ export const JoinRoomPage: React.FC = () => {
   // Refs
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const cardRef = useRef<HTMLElement>(null);
   const checkAbortControllerRef = useRef<AbortController | null>(null);
   const checkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -153,6 +153,7 @@ export const JoinRoomPage: React.FC = () => {
 
   const handleKeyDown = (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Backspace' && !boxes[idx] && idx > 0) {
+      e.preventDefault();
       const next = [...boxes];
       next[idx - 1] = '';
       setBoxes(next);
@@ -160,42 +161,47 @@ export const JoinRoomPage: React.FC = () => {
       setCodeBad(false);
       setCodeMsg(null);
     } else if (e.key === 'ArrowLeft' && idx > 0) {
+      e.preventDefault();
       inputRefs.current[idx - 1]?.focus();
     } else if (e.key === 'ArrowRight' && idx < 5) {
+      e.preventDefault();
       inputRefs.current[idx + 1]?.focus();
     }
   };
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+  const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
-    const pasted = e.clipboardData.getData('text') || '';
-    fillCode(pasted);
+    const text = e.clipboardData.getData('text');
+    if (text) {
+      fillCode(text);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    let ok = true;
 
-    if (currentCode.length < 6) {
+    let hasError = false;
+    const trimmedName = displayName.trim();
+
+    if (currentCode.length !== 6) {
       setCodeBad(true);
       setCodeMsg({ text: 'Enter all six characters of the code.', isOk: false });
-      ok = false;
+      hasError = true;
       const firstEmpty = boxes.findIndex((b) => !b);
       inputRefs.current[firstEmpty !== -1 ? firstEmpty : 0]?.focus();
     }
 
-    const trimmedName = displayName.trim();
     if (!trimmedName) {
-      setNameError('Enter a name so your friends know who you are.');
-      if (ok) {
+      setNameError('Enter your name so friends know who joined.');
+      hasError = true;
+      if (currentCode.length === 6) {
         nameInputRef.current?.focus();
       }
-      ok = false;
     } else {
       setNameError('');
     }
 
-    if (!ok) return;
+    if (hasError) return;
 
     try {
       setIsSubmitting(true);
@@ -225,103 +231,109 @@ export const JoinRoomPage: React.FC = () => {
   };
 
   return (
-    <>
-      <AmbientBackground variant="ambient" still={true} />
+    <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-8 relative overflow-x-hidden selection:bg-[#7c6cfb]/30">
+      {/* 4-Orb Screen-Blended Aurora (Liquid Glass 2.0) */}
+      <div className="aurora" aria-hidden="true">
+        <div className="aurora-layer">
+          <i id="orb1"></i>
+          <i id="orb2"></i>
+          <i id="orb3"></i>
+          <i id="orb4"></i>
+        </div>
+      </div>
 
-      <div className="wrap">
-        <header className="top">
-          <Link to="/" className="logo" aria-label="Cineva home">
+      <main className="app-shell">
+        {/* Back to Home navigation */}
+        <Link to="/" className="top-nav lg" onPointerMove={handlePointerMove}>
+          <svg viewBox="0 0 24 24">
+            <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span>Back to Home</span>
+        </Link>
+
+        {/* Join Watch Room Card */}
+        <section ref={cardRef} className="card lg" onPointerMove={handlePointerMove}>
+          <div className="badge lg">
             <svg
               viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
+              style={{ width: 16, height: 16, stroke: 'currentColor', fill: 'none', strokeWidth: 2 }}
             >
-              <rect x="3" y="4" width="18" height="16" rx="3.5" />
-              <path d="M8 4v16M16 4v16M3 9h5M3 15h5M16 9h5M16 15h5" />
+              <path
+                d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
-            Cineva
-          </Link>
-          <Link to="/create" className="pill glass" onPointerMove={handlePointerMove}>
-            Create a room
-          </Link>
-        </header>
-
-        <main className="page">
-          <div>
-            <h1>Join your friends</h1>
-            <p className="lead">
-              Enter the six-character code your host sent you. Add a name and you’re in.
-            </p>
-            <ul className="facts">
-              <li>
-                <b>No account</b> needed
-              </li>
-              <li>
-                <b>Camera and mic</b> are off until you turn them on
-              </li>
-              <li>
-                <b>Your audio and subtitle choices</b> stay yours
-              </li>
-            </ul>
+            <span>Join Watch Party</span>
           </div>
 
-          <section className="card glass" onPointerMove={handlePointerMove}>
-            <form id="form" noValidate onSubmit={handleSubmit}>
-              <h2>Join a room</h2>
-              <p className="hint">The code is on the host’s invite link.</p>
+          <h1>Join a watch room</h1>
+          <p className="subtitle">Enter the room code to sync up with your friends.</p>
 
-              <div className="field">
-                <span className="label" id="clabel">
+          <form id="joinForm" autoComplete="off" noValidate onSubmit={handleSubmit}>
+            <div className="form-group">
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 8,
+                }}
+              >
+                <label className="form-label" style={{ margin: 0 }}>
                   Room code
+                </label>
+                <span style={{ fontSize: 12, color: 'var(--t3)', fontFamily: 'var(--mono)' }}>
+                  6-CHAR CODE
                 </span>
-                <div
-                  className={`code ${codeBad ? 'bad' : ''}`.trim()}
-                  id="code"
-                  role="group"
-                  aria-labelledby="clabel"
-                >
-                  {boxes.map((val, idx) => (
-                    <input
-                      key={idx}
-                      ref={(el) => (inputRefs.current[idx] = el)}
-                      aria-label={`Character ${idx + 1}`}
-                      maxLength={1}
-                      placeholder=" "
-                      autoCapitalize="characters"
-                      autoComplete="off"
-                      value={val}
-                      onChange={(e) => handleBoxChange(idx, e)}
-                      onKeyDown={(e) => handleKeyDown(idx, e)}
-                      onPaste={handlePaste}
-                      onFocus={(e) => e.target.select()}
-                    />
-                  ))}
-                </div>
-                <p
-                  className={`msg ${codeMsg?.isOk ? 'ok' : ''}`.trim()}
-                  id="codeMsg"
-                  role="status"
-                  aria-live="polite"
-                  style={{
-                    color: codeMsg?.isChecking ? 'var(--text-2)' : undefined,
-                  }}
-                >
-                  {codeMsg?.text || ''}
-                </p>
               </div>
 
-              <div className="field" style={{ marginTop: 0 }}>
-                <label htmlFor="name">Your name</label>
+              {/* 6 Character Cineva Input Grid */}
+              <div className="code-grid" id="codeGrid">
+                {boxes.map((val, idx) => (
+                  <input
+                    key={idx}
+                    ref={(el) => (inputRefs.current[idx] = el)}
+                    className={`code-cell ${codeBad ? 'border-rose-500/60' : ''}`}
+                    maxLength={1}
+                    aria-label={`Character ${idx + 1}`}
+                    autoFocus={idx === 0}
+                    value={val}
+                    onChange={(e) => handleBoxChange(idx, e)}
+                    onKeyDown={(e) => handleKeyDown(idx, e)}
+                    onPaste={handlePaste}
+                    onFocus={(e) => e.target.select()}
+                  />
+                ))}
+              </div>
+              {codeMsg && (
+                <p
+                  className={`msg text-xs mt-2 ${
+                    codeMsg.isOk
+                      ? 'text-emerald-400'
+                      : codeMsg.isChecking
+                      ? 'text-slate-400'
+                      : 'text-rose-400'
+                  }`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {codeMsg.text}
+                </p>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="joinName">
+                Your name
+              </label>
+              <div className="input-wrap">
                 <input
                   ref={nameInputRef}
-                  className="input"
-                  id="name"
+                  type="text"
+                  id="joinName"
                   placeholder="Alex"
-                  autoComplete="nickname"
+                  required
                   maxLength={30}
                   value={displayName}
                   aria-invalid={!!nameError}
@@ -330,27 +342,41 @@ export const JoinRoomPage: React.FC = () => {
                     if (nameError) setNameError('');
                   }}
                 />
-                <p className="msg" id="nameErr" role="alert">
+              </div>
+              {nameError && (
+                <p className="msg text-rose-400 text-xs mt-1.5" role="alert">
                   {nameError}
                 </p>
-              </div>
+              )}
+            </div>
 
-              <button
-                className="btn"
-                type="submit"
-                style={{ marginTop: 10 }}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? 'Joining...' : 'Join room'}
-              </button>
-            </form>
+            <button
+              type="submit"
+              className="btn-primary"
+              id="joinSubmit"
+              disabled={isSubmitting}
+            >
+              <span>{isSubmitting ? 'Joining...' : 'Join Room'}</span>
+            </button>
 
-            <p className="foot">
-              Want to host instead? <Link to="/create">Create a room</Link>
-            </p>
-          </section>
-        </main>
+            <div className="footer-switch">
+              <span>Want to host instead?</span>
+              <Link to="/create">Create your own room &rarr;</Link>
+            </div>
+          </form>
+        </section>
+      </main>
+
+      {/* Connecting Status Modal */}
+      <div className={`modal-overlay ${isSubmitting ? 'open' : ''}`} id="modal">
+        <div className="modal-box lg">
+          <div className="spinner"></div>
+          <h2>Connecting to Room...</h2>
+          <p className="subtitle" style={{ marginTop: 6 }} id="statusText">
+            Synchronizing clocks and video stream with host.
+          </p>
+        </div>
       </div>
-    </>
+    </div>
   );
 };

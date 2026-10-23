@@ -1,0 +1,1540 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Cineva — Watch Movies Together in Realistic Liquid Glass</title>
+<style>
+:root {
+  --bg: #05050a;
+  --text: #f7f6f2;
+  --t2: rgba(247, 246, 242, 0.72);
+  --t3: rgba(247, 246, 242, 0.45);
+  --t4: rgba(247, 246, 242, 0.22);
+  --a1: #7c6cfb;  /* Electric violet */
+  --a2: #ff5da6;  /* Neon fuchsia */
+  --a3: #ff9d54;  /* Sunset amber */
+  --a4: #34d5ff;  /* Cryo cyan */
+  --ok: #65e7a8;  /* Emerald phosphor */
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; scroll-padding-top: 100px; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 400 16px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  position: relative;
+  selection-background-color: var(--a1);
+}
+::selection { background: rgba(124, 108, 251, 0.35); color: #fff; }
+
+a { color: inherit; text-decoration: none; }
+button, input { font: inherit; color: inherit; border: none; background: none; }
+:focus-visible { outline: 2px solid #fff; outline-offset: 3px; border-radius: 12px; }
+
+/* SVG icons */
+svg.ic {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+svg.ic .d { fill: currentColor; fill-opacity: 0.2; stroke: none; }
+
+.wrap { width: min(1200px, 100% - 48px); margin-inline: auto; position: relative; }
+
+/* Dynamic Multi-layered Aurora */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  background: radial-gradient(130% 90% at 50% -15%, #161245 0%, #0c0922 45%, var(--bg) 80%);
+  pointer-events: none;
+}
+.aurora i {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(105px);
+  mix-blend-mode: screen;
+  will-change: transform;
+}
+.aurora i:nth-child(1) {
+  width: 50vw; height: 50vw; left: -10vw; top: -14vw;
+  background: var(--a1); opacity: 0.52;
+  animation: fl1 20s ease-in-out infinite alternate;
+}
+.aurora i:nth-child(2) {
+  width: 42vw; height: 42vw; right: -8vw; top: 8vh;
+  background: var(--a2); opacity: 0.40;
+  animation: fl2 25s ease-in-out infinite alternate;
+}
+.aurora i:nth-child(3) {
+  width: 38vw; height: 38vw; left: 28vw; top: 40vh;
+  background: var(--a4); opacity: 0.26;
+  animation: fl1 28s ease-in-out infinite alternate-reverse;
+}
+.aurora i:nth-child(4) {
+  width: 36vw; height: 36vw; right: 12vw; top: 72vh;
+  background: var(--a3); opacity: 0.30;
+  animation: fl2 32s ease-in-out infinite alternate;
+}
+.aurora i:nth-child(5) {
+  width: 28vw; height: 28vw; left: 8vw; top: 88vh;
+  background: var(--ok); opacity: 0.18;
+  animation: fl1 36s ease-in-out infinite alternate-reverse;
+}
+.aurora::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.085;
+  mix-blend-mode: overlay;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+@keyframes fl1 { to { transform: translate3d(8vw, 6vh, 0) scale(1.12); } }
+@keyframes fl2 { to { transform: translate3d(-7vw, 8vh, 0) scale(0.92); } }
+
+/* Realistic Apple Liquid Glass Foundation (.lg) */
+.lg {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.17) 0%, rgba(255, 255, 255, 0.035) 45%, rgba(255, 255, 255, 0.09) 100%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.12);
+  backdrop-filter: blur(28px) saturate(200%) brightness(1.12);
+  box-shadow:
+    inset 0 1.2px 1px 0 rgba(255, 255, 255, 0.65),
+    inset 0 -1px 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 0 32px 0 rgba(255, 255, 255, 0.04),
+    0 24px 60px -15px rgba(0, 0, 0, 0.72);
+  transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease);
+}
+.refract .lg {
+  backdrop-filter: url(#lens) blur(10px) saturate(200%) brightness(1.12);
+}
+.lg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.2px;
+  pointer-events: none;
+  z-index: 2;
+  background: conic-gradient(
+    from 215deg at 50% 50%,
+    rgba(255, 255, 255, 0.8) 0deg,
+    rgba(255, 255, 255, 0.1) 60deg,
+    rgba(255, 255, 255, 0.04) 180deg,
+    rgba(255, 255, 255, 0.65) 260deg,
+    rgba(255, 255, 255, 0.1) 320deg,
+    rgba(255, 255, 255, 0.8) 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.lg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.95;
+  background:
+    radial-gradient(380px circle at var(--mx, 40%) var(--my, 15%), rgba(255, 255, 255, 0.22), transparent 62%),
+    linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, 0.12) 48%, transparent 60%) -150% 0 / 250% 100% no-repeat;
+  transition: background-position 0.85s var(--ease);
+}
+.lg:hover::after {
+  background-position: var(--mx, 40%) 0, 150% 0;
+}
+.lg > * { position: relative; z-index: 3; }
+
+/* Navigation Bar */
+.nav {
+  position: fixed;
+  z-index: 60;
+  top: calc(16px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(1040px, 100% - 24px);
+  height: 62px;
+  border-radius: 99px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px 0 24px;
+}
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font-weight: 650;
+  font-size: 19px;
+  letter-spacing: -0.025em;
+  color: #fff;
+}
+.logo .mk {
+  width: 32px;
+  height: 32px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, #ffffff, #d2ccff);
+  color: #211956;
+  box-shadow: 0 4px 14px rgba(124, 108, 251, 0.55);
+}
+.logo .mk svg { width: 19px; height: 19px; stroke-width: 2.2; }
+.links { display: flex; gap: 4px; }
+.links a {
+  padding: 8px 16px;
+  border-radius: 99px;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--t2);
+  transition: all 0.2s var(--ease);
+}
+.links a:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
+.nav-actions { display: flex; align-items: center; gap: 8px; }
+
+/* Glass Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  height: 48px;
+  padding: 0 24px;
+  border-radius: 99px;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: transform 0.22s var(--ease), box-shadow 0.22s var(--ease), background 0.22s;
+  white-space: nowrap;
+}
+.btn:hover { transform: translateY(-2px); }
+.btn:active { transform: scale(0.975); }
+.btn.w {
+  background: linear-gradient(180deg, #ffffff, #e7e4ff);
+  color: #17123d;
+  box-shadow:
+    inset 0 -2px 6px rgba(124, 108, 251, 0.28),
+    0 12px 34px -6px rgba(184, 174, 255, 0.75);
+}
+.btn.w:hover {
+  box-shadow:
+    inset 0 -2px 6px rgba(124, 108, 251, 0.35),
+    0 16px 42px -4px rgba(184, 174, 255, 0.9);
+}
+.btn.g { color: #fff; }
+.btn.g:hover { background: rgba(255, 255, 255, 0.14); }
+.btn.lgx { height: 56px; padding: 0 32px; font-size: 16.5px; }
+.btn.s { height: 40px; padding: 0 18px; font-size: 14px; }
+
+/* Hero Section */
+.hero {
+  padding: clamp(140px, 18vh, 185px) 0 40px;
+  text-align: center;
+  position: relative;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 18px 0 10px;
+  border-radius: 99px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--t2);
+  margin-bottom: 24px;
+}
+.pill b {
+  display: inline-grid;
+  place-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 99px;
+  background: linear-gradient(135deg, var(--a1), var(--a2));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+h1 {
+  margin: 0 auto;
+  max-width: 14em;
+  font-weight: 700;
+  font-size: clamp(48px, 7.2vw, 96px);
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+  color: #fff;
+}
+h1 span {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(0.35em);
+  filter: blur(10px);
+  animation: wordReveal 0.85s var(--ease) forwards;
+}
+@keyframes wordReveal { to { opacity: 1; transform: none; filter: none; } }
+
+.lead {
+  margin: 24px auto 0;
+  max-width: 34em;
+  font-size: clamp(17px, 1.7vw, 21px);
+  color: var(--t2);
+  line-height: 1.5;
+}
+.cta-group {
+  margin-top: 36px;
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.proof {
+  margin-top: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--t3);
+}
+.avs { display: flex; }
+.avs i {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  margin-left: -10px;
+  border: 2px solid #14112e;
+  display: grid;
+  place-items: center;
+  font: 650 12.5px var(--sans);
+  font-style: normal;
+  color: #1a1438;
+}
+.avs i:first-child { margin: 0; }
+
+/* 3D Cinema Stage */
+.stagewrap {
+  position: relative;
+  margin: 64px auto 0;
+  max-width: 1080px;
+  perspective: 1800px;
+}
+.device {
+  position: relative;
+  aspect-ratio: 16 / 9.6;
+  border-radius: 36px;
+  overflow: hidden;
+  transform: rotateX(var(--rx, 3.5deg)) rotateY(var(--ry, 0deg));
+  transition: transform 0.4s var(--ease);
+  transform-style: preserve-3d;
+  box-shadow:
+    0 60px 140px -20px rgba(0, 0, 0, 0.8),
+    0 0 0 1px rgba(255, 255, 255, 0.15),
+    0 0 120px -15px rgba(124, 108, 251, 0.45);
+  animation: stageRise 1.1s 0.25s var(--ease) both;
+}
+@keyframes stageRise { from { opacity: 0; transform: translateY(60px) rotateX(12deg); } }
+
+/* Cinema Film Canvas */
+.film {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(46% 42% at 64% 56%, #fff2c4 0%, rgba(255, 198, 115, 0.95) 15%, rgba(255, 115, 95, 0.55) 44%, transparent 72%),
+    linear-gradient(180deg, #0d1233 0%, #36286a 33%, #d26588 56%, #ff985f 63%, #180e1d 65%, #08050c 100%);
+}
+.film::before, .film::after {
+  content: "";
+  position: absolute;
+  left: -4%; right: -4%; bottom: 0;
+}
+.film::before {
+  height: 32%;
+  clip-path: polygon(0 62%, 12% 36%, 26% 56%, 44% 20%, 62% 52%, 80% 26%, 100% 54%, 100% 100%, 0 100%);
+  background: #140a18;
+  filter: drop-shadow(0 -10px 30px rgba(255, 140, 90, 0.35));
+}
+.film::after {
+  height: 16%;
+  clip-path: polygon(0 42%, 18% 18%, 42% 46%, 70% 14%, 100% 42%, 100% 100%, 0 100%);
+  background: #08040a;
+}
+.sun {
+  position: absolute;
+  left: 61%; top: 43%;
+  width: 7.5%; aspect-ratio: 1;
+  border-radius: 50%;
+  background: #fff5ce;
+  box-shadow: 0 0 65px 24px rgba(255, 195, 115, 0.85);
+  animation: sunPulse 5s ease-in-out infinite alternate;
+}
+@keyframes sunPulse { to { box-shadow: 0 0 95px 36px rgba(255, 165, 95, 0.95); } }
+
+/* Stage Chrome Overlay UI */
+.dtop {
+  position: absolute;
+  top: 18px; left: 18px;
+  height: 44px;
+  padding: 0 20px 0 16px;
+  border-radius: 99px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font-size: 14px;
+  font-weight: 550;
+  color: #fff;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 4px rgba(101, 231, 168, 0.25), 0 0 12px var(--ok);
+}
+
+.dside {
+  position: absolute;
+  top: 18px; right: 18px; bottom: 18px;
+  width: 28%;
+  border-radius: 28px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.tl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tile {
+  aspect-ratio: 1.15;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 24px;
+  color: #21184a;
+  position: relative;
+  transition: transform 0.2s var(--ease);
+}
+.tile:hover { transform: scale(1.03); }
+.tile small {
+  position: absolute;
+  left: 8px; bottom: 7px;
+  font: 600 10.5px var(--sans);
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #120e2e;
+}
+.tile.sp {
+  box-shadow: 0 0 0 3px var(--ok), 0 0 26px rgba(101, 231, 168, 0.55);
+}
+
+.chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+  overflow: hidden;
+}
+.chat p {
+  padding: 9px 13px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 13px;
+  line-height: 1.35;
+  color: #fff;
+  backdrop-filter: blur(8px);
+}
+.chat p.me {
+  align-self: flex-end;
+  background: rgba(124, 108, 251, 0.35);
+  border: 1px solid rgba(124, 108, 251, 0.45);
+}
+
+.dbar {
+  position: absolute;
+  left: 18px;
+  right: calc(28% + 36px);
+  bottom: 18px;
+  border-radius: 28px;
+  padding: 14px 22px 12px;
+}
+.sk {
+  height: 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.22);
+  position: relative;
+  cursor: pointer;
+}
+.sk i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 44%;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #fff, #d2ccff);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.6);
+}
+.sk i::after {
+  content: "";
+  position: absolute;
+  right: -8px; top: -5px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5), 0 0 10px rgba(255, 255, 255, 0.8);
+}
+.ctl {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 10px;
+  font: 550 12.5px var(--mono);
+  color: rgba(255, 255, 255, 0.9);
+}
+.ctl button { cursor: pointer; display: flex; align-items: center; color: #fff; transition: opacity 0.2s; }
+.ctl button:hover { opacity: 0.75; }
+.ctl .s { flex: 1; }
+
+/* Floating visionOS Chips */
+.chip {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 50px;
+  padding: 0 22px 0 12px;
+  border-radius: 99px;
+  font-size: 14px;
+  font-weight: 550;
+  white-space: nowrap;
+  color: #fff;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+}
+.chip .e {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+.chip .e svg { width: 17px; height: 17px; }
+.c1 { left: -3%; top: 22%; animation: floatPill 7s ease-in-out infinite; }
+.c2 { left: 5%; bottom: -4%; animation: floatPill 8s 1.2s ease-in-out infinite; }
+.c3 { right: -2%; top: 48%; animation: floatPill 9s 0.6s ease-in-out infinite; }
+@keyframes floatPill { 50% { transform: translateY(-16px); } }
+
+/* Sections Common */
+section { padding: clamp(80px, 12vw, 150px) 0; position: relative; }
+.eyebrow {
+  display: inline-block;
+  padding: 7px 18px;
+  border-radius: 99px;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--t2);
+  margin-bottom: 20px;
+}
+h2 {
+  font-weight: 700;
+  font-size: clamp(36px, 5.2vw, 68px);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+  color: #fff;
+}
+.hd { text-align: center; margin-bottom: 68px; }
+.hd p { margin: 20px auto 0; max-width: 34em; color: var(--t2); font-size: 19px; line-height: 1.5; }
+
+/* Scroll Reveal Utility */
+.rv {
+  opacity: 0;
+  transform: translateY(38px);
+  filter: blur(10px);
+  transition: opacity 0.9s var(--ease), transform 0.9s var(--ease), filter 0.9s var(--ease);
+}
+.rv.in { opacity: 1; transform: none; filter: none; }
+
+/* Interactive Bento Grid */
+.bento {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 18px;
+}
+.tc {
+  position: relative;
+  overflow: hidden;
+  border-radius: 34px;
+  padding: 34px;
+  min-height: 310px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.035));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 20px 50px -15px rgba(0, 0, 0, 0.65);
+  transition: transform 0.3s var(--ease), border-color 0.3s var(--ease);
+}
+.tc:hover {
+  transform: translateY(-4px);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+.tc::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), rgba(255, 255, 255, 0.16), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.tc:hover::after { opacity: 1; }
+.tc > * { position: relative; z-index: 1; }
+.s4 { grid-column: span 4; }
+.s2 { grid-column: span 2; }
+.s3 { grid-column: span 3; }
+
+.ib {
+  width: 58px;
+  height: 58px;
+  border-radius: 19px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 24px;
+  color: #fff;
+  box-shadow: inset 0 1px 1.5px rgba(255, 255, 255, 0.7), 0 12px 26px -6px rgba(0, 0, 0, 0.55);
+}
+.ib svg { width: 28px; height: 28px; }
+.i1 { background: linear-gradient(145deg, #8f80ff, #5542f0); }
+.i2 { background: linear-gradient(145deg, #ff7db7, #de3879); }
+.i3 { background: linear-gradient(145deg, #4ce0ff, #1796d1); }
+.i4 { background: linear-gradient(145deg, #ffc47d, #ef862e); }
+.i5 { background: linear-gradient(145deg, #7cf0b2, #21b26d); }
+
+.tc h3 { font-size: 24px; font-weight: 650; letter-spacing: -0.03em; color: #fff; }
+.tc p { margin-top: 9px; color: var(--t2); font-size: 16px; line-height: 1.48; max-width: 29em; }
+
+/* Interactive Bento Feature 1: Drift Slider */
+.viz { margin-top: 26px; }
+.row2 { display: flex; align-items: center; gap: 12px; margin: 12px 0; font-size: 13.5px; color: var(--t2); }
+.row2 b { width: 48px; font-weight: 550; color: #fff; }
+.bar {
+  flex: 1;
+  height: 9px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.12);
+  position: relative;
+  overflow: hidden;
+}
+.bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 9px;
+  background: linear-gradient(90deg, var(--a1), var(--a4));
+  animation: syncDrift 5s linear infinite;
+}
+.bar.b i {
+  background: linear-gradient(90deg, var(--a2), var(--a3));
+  animation-delay: 0.15s;
+}
+@keyframes syncDrift { from { width: 8%; } to { width: 98%; } }
+.slider-sync-wrap { margin-top: 14px; display: flex; align-items: center; justify-content: space-between; font: 12px var(--mono); color: var(--ok); }
+
+/* Interactive Bento Feature 2: Audio Ring Waveform */
+.ring-wrap { display: flex; align-items: center; gap: 18px; margin-top: 24px; }
+.ring { display: flex; gap: 12px; }
+.ring i {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: 700 18px var(--sans);
+  font-style: normal;
+  color: #21184a;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.ring i.speaking {
+  animation: rippleRing 2.2s infinite;
+}
+@keyframes rippleRing {
+  0% { box-shadow: 0 0 0 0 rgba(101, 231, 168, 0.8); }
+  100% { box-shadow: 0 0 0 20px rgba(101, 231, 168, 0); }
+}
+.audio-bars {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 28px;
+}
+.audio-bars span {
+  width: 4px;
+  border-radius: 3px;
+  background: var(--ok);
+  animation: soundBounce 0.8s ease-in-out infinite alternate;
+}
+.audio-bars span:nth-child(2) { animation-delay: 0.15s; height: 18px; }
+.audio-bars span:nth-child(3) { animation-delay: 0.35s; height: 26px; }
+.audio-bars span:nth-child(4) { animation-delay: 0.2s; height: 12px; }
+@keyframes soundBounce { from { height: 6px; } to { height: 26px; } }
+
+/* Interactive Bento Feature 3: Audio & Subtitle Selector */
+.langs { display: grid; gap: 8px; margin-top: 20px; }
+.lang-item {
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 14.5px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+}
+.lang-item:hover { background: rgba(255, 255, 255, 0.12); }
+.lang-item.on {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+.lang-item em { font-style: normal; color: var(--t3); font-size: 12.5px; font-family: var(--mono); }
+
+/* Interactive Bento Feature 4: Drag & Drop Converter Sandbox */
+.conv {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font: 12.5px var(--mono);
+  color: var(--t2);
+  margin-top: 24px;
+}
+.fchip {
+  padding: 9px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+.cb {
+  flex: 1;
+  height: 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+.cb i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--a3), var(--a2));
+  animation: muxProgress 3.2s ease-in-out infinite;
+}
+@keyframes muxProgress { 0% { width: 0; } 80%, 100% { width: 100%; } }
+
+/* Interactive Bento Feature 5: Ephemeral Disintegration */
+.gone-box {
+  margin-top: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ephemeral-chip {
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: dissolveCycle 4.8s ease-in-out infinite;
+}
+@keyframes dissolveCycle {
+  0%, 55% { opacity: 1; filter: none; transform: none; }
+  80%, 100% { opacity: 0; filter: blur(10px); transform: scale(0.92) translateY(-6px); }
+}
+
+/* Steps Section */
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  counter-reset: stepCounter;
+}
+.st {
+  padding: 38px 34px;
+  border-radius: 34px;
+  text-align: left;
+  overflow: hidden;
+}
+.st .ib { margin-bottom: 28px; }
+.st h3 { font-size: 24px; font-weight: 650; letter-spacing: -0.03em; color: #fff; }
+.st p { margin-top: 10px; color: var(--t2); font-size: 16px; line-height: 1.5; }
+.st .n {
+  position: absolute;
+  right: 28px; top: 16px;
+  font-size: 78px;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  color: rgba(255, 255, 255, 0.07);
+  user-select: none;
+}
+
+/* Bottom Code Card (Got a code?) */
+.band {
+  border-radius: 46px;
+  padding: clamp(48px, 8vw, 92px) 24px;
+  text-align: center;
+  overflow: hidden;
+  max-width: 980px;
+  margin-inline: auto;
+}
+.band h2 { margin-top: 0; }
+.band p { margin: 16px auto 0; color: var(--t2); max-width: 32em; font-size: 19px; line-height: 1.5; }
+.code-form {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-top: 36px;
+  flex-wrap: wrap;
+}
+.code-cells {
+  display: flex;
+  gap: 8px;
+}
+.code-cells input {
+  width: 54px;
+  height: 66px;
+  border-radius: 18px;
+  text-align: center;
+  font: 600 28px var(--mono);
+  text-transform: uppercase;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.45);
+  color: #fff;
+  transition: all 0.2s var(--ease);
+}
+.code-cells input:focus {
+  outline: none;
+  border-color: #fff;
+  background: rgba(22, 18, 48, 0.7);
+  box-shadow: 0 0 0 4px rgba(124, 108, 251, 0.3), inset 0 2px 6px rgba(0, 0, 0, 0.5);
+  transform: translateY(-2px);
+}
+.err { min-height: 24px; margin-top: 14px; font-size: 14.5px; color: #ff9fb4; font-weight: 500; }
+
+/* Interactive Modals (Create & Join Flows) */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(4, 4, 10, 0.75);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  display: none;
+  place-items: center;
+  padding: 20px;
+  opacity: 0;
+  transition: opacity 0.3s var(--ease);
+}
+.modal-overlay.open { display: grid; opacity: 1; }
+.modal-box {
+  width: min(540px, 100%);
+  border-radius: 36px;
+  padding: clamp(28px, 5vw, 42px);
+  position: relative;
+  transform: scale(0.95) translateY(12px);
+  transition: transform 0.35s var(--ease);
+}
+.modal-overlay.open .modal-box { transform: scale(1) translateY(0); }
+.modal-close {
+  position: absolute;
+  top: 24px; right: 24px;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--t2);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.modal-close:hover { background: rgba(255, 255, 255, 0.2); color: #fff; }
+
+.modal-input-wrap {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+.modal-input-wrap label { font-size: 13.5px; font-weight: 550; color: var(--t2); }
+.modal-input-wrap input {
+  height: 52px;
+  padding: 0 18px;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 15.5px;
+  transition: all 0.2s;
+}
+.modal-input-wrap input:focus {
+  border-color: #fff;
+  box-shadow: 0 0 0 3px rgba(124, 108, 251, 0.3), inset 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 28px; left: 50%;
+  transform: translateX(-50%) translateY(30px);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 120;
+  padding: 10px 22px;
+  border-radius: 99px;
+  font-size: 14px;
+  font-weight: 550;
+  background: rgba(18, 15, 34, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.6), 0 0 20px rgba(124, 108, 251, 0.35);
+  color: #fff;
+  transition: all 0.28s var(--ease);
+}
+.toast.active { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+/* Footer */
+footer {
+  padding: 40px 0 60px;
+  color: var(--t3);
+  font-size: 14.5px;
+}
+footer .wrap {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 32px;
+}
+
+/* Responsive Breakpoints */
+@media (max-width: 980px) {
+  .links { display: none; }
+  .bento { grid-template-columns: 1fr 1fr; }
+  .s4, .s3, .s2 { grid-column: span 2; }
+  .steps { grid-template-columns: 1fr; }
+  .dside { display: none; }
+  .dbar { right: 18px; }
+  .chip { display: none; }
+  .device { aspect-ratio: 16 / 11; }
+}
+@media (max-width: 600px) {
+  .code-cells input { width: 44px; height: 56px; font-size: 22px; border-radius: 14px; }
+  .btn.lgx { width: 100%; }
+  .nav .btn.g { display: none; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .lg, .tc { background: rgba(30, 26, 60, 0.94); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  h1 span, .rv, .device { opacity: 1 !important; transform: none !important; filter: none !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- Liquid Refraction Filter for Chromium -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="lens" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency=".009 .014" numOctaves="2" seed="7" result="n"/>
+      <feGaussianBlur in="n" stdDeviation="3" result="m"/>
+      <feDisplacementMap in="SourceGraphic" in2="m" scale="36" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <symbol id="film" viewBox="0 0 24 24"><rect class="d" x="3" y="4" width="18" height="16" rx="4"/><rect x="3" y="4" width="18" height="16" rx="4"/><path d="M8 4v16M16 4v16M3 9h5M3 15h5M16 9h5M16 15h5"/></symbol>
+    <symbol id="sync" viewBox="0 0 24 24"><circle class="d" cx="12" cy="12" r="9"/><path d="M20 12a8 8 0 01-13.7 5.6M4 12a8 8 0 0113.7-5.6M18 3v4h-4M6 21v-4h4"/></symbol>
+    <symbol id="call" viewBox="0 0 24 24"><rect class="d" x="3" y="6" width="12" height="12" rx="3.5"/><rect x="3" y="6" width="12" height="12" rx="3.5"/><path d="M15 10.5l5.5-3v9l-5.5-3"/></symbol>
+    <symbol id="lang" viewBox="0 0 24 24"><circle class="d" cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></symbol>
+    <symbol id="file" viewBox="0 0 24 24"><path class="d" d="M6 3h8l5 5v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2z"/><path d="M6 3h8l5 5v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2zM14 3v5h5M9 14l2 2 4-4"/></symbol>
+    <symbol id="lock" viewBox="0 0 24 24"><rect class="d" x="4" y="10" width="16" height="11" rx="3.5"/><rect x="4" y="10" width="16" height="11" rx="3.5"/><path d="M8 10V7a4 4 0 018 0v3M12 15v2.5"/></symbol>
+    <symbol id="link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/></symbol>
+    <symbol id="play" viewBox="0 0 24 24"><circle class="d" cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="9"/><path d="M10 8.5l5 3.5-5 3.5z"/></symbol>
+    <symbol id="pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" stroke-width="2.4"/></symbol>
+    <symbol id="up" viewBox="0 0 24 24"><path class="d" d="M12 3l-1 0"/><path d="M12 16V5M7.5 9.5L12 5l4.5 4.5M5 15v2.5A2.5 2.5 0 007.5 20h9a2.5 2.5 0 002.5-2.5V15"/></symbol>
+    <symbol id="user" viewBox="0 0 24 24"><circle class="d" cx="12" cy="8" r="4"/><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></symbol>
+    <symbol id="cc" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="4"/><path d="M7 11h3M13 11h4M7 15h5M15 15h2"/></symbol>
+    <symbol id="full" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+  </defs>
+</svg>
+
+<!-- Dynamic Multi-layer Liquid Aurora -->
+<div class="aurora" aria-hidden="true">
+  <i></i><i></i><i></i><i></i><i></i>
+</div>
+
+<!-- Floating Navigation Bar -->
+<header class="nav lg">
+  <a class="logo" href="#">
+    <span class="mk"><svg class="ic"><use href="#film"/></svg></span>
+    Cineva
+  </a>
+  <nav class="links" aria-label="Main">
+    <a href="#features">Features</a>
+    <a href="#how">How it works</a>
+    <a href="#join">Join with code</a>
+  </nav>
+  <div class="nav-actions">
+    <button type="button" class="btn g s lg" onclick="openJoinModal()">Join room</button>
+    <button type="button" class="btn w s" onclick="openCreateModal()">Create room</button>
+  </div>
+</header>
+
+<main>
+  <!-- Hero Section -->
+  <div class="hero">
+    <div class="wrap">
+      <span class="pill lg">
+        <b>New</b>
+        <span>Spatial Audio & Multi-Language Sync</span>
+      </span>
+
+      <h1 aria-label="Watch movies together, even when you’re apart.">
+        <span style="animation-delay:.05s">Watch</span>
+        <span style="animation-delay:.12s">movies</span>
+        <span style="animation-delay:.19s">together,</span>
+        <span style="animation-delay:.26s">even</span>
+        <span style="animation-delay:.33s">when</span>
+        <span style="animation-delay:.40s">you’re</span>
+        <span style="animation-delay:.47s">apart.</span>
+      </h1>
+
+      <p class="lead">
+        Upload a movie, send a link, press play. Everyone sees the exact same frame at the same microsecond, and you talk in real time with spatial audio.
+      </p>
+
+      <div class="cta-group">
+        <button type="button" class="btn w lgx" onclick="openCreateModal()">
+          <svg class="ic" style="width:22px;height:22px"><use href="#play"/></svg>
+          <span>Create a room</span>
+        </button>
+        <a class="btn g lgx lg" href="#join">
+          <span>Join with a code</span>
+        </a>
+      </div>
+
+      <div class="proof">
+        <span class="avs">
+          <i style="background:#ffd9a0">A</i>
+          <i style="background:#b8e0f2">M</i>
+          <i style="background:#d8cdee">D</i>
+          <i style="background:#ffc2dc">S</i>
+        </span>
+        <span>Peer-to-peer WebRTC • Zero accounts • 100% in your browser</span>
+      </div>
+
+      <!-- 3D Cinema Player Stage -->
+      <div class="stagewrap" id="sw">
+        <div class="device" id="dev">
+          <div class="film"></div>
+          <div class="sun"></div>
+
+          <div class="dtop lg">
+            <span class="dot"></span>
+            <span id="playerRoomTitle">Friday Movie Night · Interstellar</span>
+          </div>
+
+          <div class="dside lg">
+            <div class="tl">
+              <div class="tile" style="background:linear-gradient(145deg,#ffe3b0,#f0b860)">A<small>You</small></div>
+              <div class="tile sp" style="background:linear-gradient(145deg,#bfe6f7,#6fb0d2)">M<small>Maya</small></div>
+            </div>
+            <div class="chat" id="chatFeed">
+              <p>Is this the docking scene? 🚀</p>
+              <p class="me">Hold on tight, volume up!</p>
+              <p>Cooper, this is no time for caution! 🎶</p>
+            </div>
+          </div>
+
+          <div class="dbar lg">
+            <div class="sk" id="scrubber">
+              <i id="scrubberBar" style="width:44%"></i>
+            </div>
+            <div class="ctl">
+              <button type="button" id="playPauseBtn" aria-label="Play or Pause">
+                <svg class="ic" id="playIcon"><use href="#pause"/></svg>
+              </button>
+              <span id="timecode">41:12 / 2:02:30</span>
+              <span class="s"></span>
+              <button type="button" onclick="cycleAudioTrack()" title="Switch Audio Track">
+                <svg class="ic"><use href="#lang"/></svg>
+              </button>
+              <button type="button" onclick="toggleSubtitles()" title="Toggle Subtitles">
+                <svg class="ic"><use href="#cc"/></svg>
+              </button>
+              <button type="button" onclick="triggerToast('Entered Fullscreen visionOS View')">
+                <svg class="ic"><use href="#full"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Floating interactive chips -->
+        <div class="chip lg c1">
+          <span class="e" style="background:linear-gradient(145deg,#bfe6f7,#6fb0d2);color:#173a4d"><svg class="ic"><use href="#user"/></svg></span>
+          <span>Maya joined</span>
+        </div>
+        <div class="chip lg c2">
+          <span class="dot"></span>
+          <span id="syncLatency">In sync · 18 ms apart</span>
+        </div>
+        <div class="chip lg c3">
+          <span class="e" style="background:linear-gradient(145deg,#4ce0ff,#1796d1);color:#fff"><svg class="ic"><use href="#lang"/></svg></span>
+          <span id="currentAudioChip">Audio: English Dolby Atmos</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bento Features Section -->
+  <section id="features">
+    <div class="wrap">
+      <div class="hd rv">
+        <span class="eyebrow lg">Features</span>
+        <h2>Everything for movie night.<br>Nothing you have to set up.</h2>
+        <p>Built with visionOS-grade micro-physics, peer-to-peer clock synchronization, and privacy by design.</p>
+      </div>
+
+      <div class="bento">
+        <!-- Feature 1: Frame Sync -->
+        <article class="tc s4 rv">
+          <div class="ib i1"><svg class="ic"><use href="#sync"/></svg></div>
+          <h3>Always on the same frame</h3>
+          <p>If someone’s connection slows down, their stream speeds up milliseconds to catch up without pitch artifacts. Anyone can pause or jump, and all viewers follow instantly.</p>
+          <div class="viz">
+            <div class="row2"><b>You</b><div class="bar"><i style="width:72%"></i></div></div>
+            <div class="row2"><b>Maya</b><div class="bar b"><i style="width:71.5%"></i></div></div>
+            <div class="slider-sync-wrap">
+              <span>● Frame Delta: 0.02s</span>
+              <span>Clock offset: 18 ms</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Feature 2: Voice Chat -->
+        <article class="tc s2 rv">
+          <div class="ib i2"><svg class="ic"><use href="#call"/></svg></div>
+          <h3>Talk while you watch</h3>
+          <p>Crystal-clear spatial audio between browsers, with real-time reactions alongside the movie.</p>
+          <div class="ring-wrap">
+            <div class="ring">
+              <i style="background:#ffe3b0">A</i>
+              <i class="speaking" style="background:#bfe6f7">M</i>
+              <i style="background:#d8cdee">D</i>
+            </div>
+            <div class="audio-bars">
+              <span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Feature 3: Subtitles & Languages -->
+        <article class="tc s2 rv">
+          <div class="ib i3"><svg class="ic"><use href="#lang"/></svg></div>
+          <h3>Your language, your subtitles</h3>
+          <p>Each viewer selects their preferred audio track and subtitles without affecting other people in the room.</p>
+          <div class="langs" id="langSelector">
+            <div class="lang-item on" onclick="selectLang(this, 'English 7.1')">
+              <span>English</span><em>Dolby Atmos</em>
+            </div>
+            <div class="lang-item" onclick="selectLang(this, 'Hindi Stereo')">
+              <span>Hindi</span><em>5.1 Surround</em>
+            </div>
+            <div class="lang-item" onclick="selectLang(this, 'Japanese Original')">
+              <span>Japanese</span><em>Subtitles</em>
+            </div>
+          </div>
+        </article>
+
+        <!-- Feature 4: High-Res Conversion -->
+        <article class="tc s2 rv">
+          <div class="ib i4"><svg class="ic"><use href="#file"/></svg></div>
+          <h3>Real movie files</h3>
+          <p>Drop in MKV, MP4, MOV, or WebM up to 5 GB. Cineva handles client-side demuxing with zero quality loss.</p>
+          <div class="conv">
+            <span class="fchip">movie.mkv</span>
+            <span class="cb"><i></i></span>
+            <span class="fchip">mp4 stream</span>
+          </div>
+        </article>
+
+        <!-- Feature 5: Ephemeral Security -->
+        <article class="tc s2 rv">
+          <div class="ib i5"><svg class="ic"><use href="#lock"/></svg></div>
+          <h3>Gone when you leave</h3>
+          <p>Video buffers and memory caches are erased the instant the last participant leaves the room.</p>
+          <div class="gone-box">
+            <span class="ephemeral-chip">
+              <svg class="ic" style="width:16px;height:16px"><use href="#film"/></svg>
+              <span>movie_cache.tmp</span>
+            </span>
+            <span style="color:var(--ok);font:600 13px var(--mono)">● Purged</span>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it Works Section -->
+  <section id="how" style="padding-top:0">
+    <div class="wrap">
+      <div class="hd rv">
+        <span class="eyebrow lg">How it works</span>
+        <h2>Three steps. About two minutes.</h2>
+        <p>No software installations, no logins. Just pure browser-native streaming.</p>
+      </div>
+
+      <div class="steps">
+        <div class="st lg rv">
+          <span class="n">1</span>
+          <div class="ib i4"><svg class="ic"><use href="#up"/></svg></div>
+          <h3>Add your movie</h3>
+          <p>Drop any video file directly into your browser. Cineva prepares the stream locally and provides a shareable party key.</p>
+        </div>
+
+        <div class="st lg rv">
+          <span class="n">2</span>
+          <div class="ib i2"><svg class="ic"><use href="#link"/></svg></div>
+          <h3>Send the link</h3>
+          <p>Copy your unique 6-character room code or instant link. Friends open it on desktop, tablet, or VR headset.</p>
+        </div>
+
+        <div class="st lg rv">
+          <span class="n">3</span>
+          <div class="ib i1"><svg class="ic"><use href="#play"/></svg></div>
+          <h3>Press play</h3>
+          <p>The host starts playback. Every client syncs to within 20 milliseconds, leaving you to enjoy movie night.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Join with Code Band -->
+  <section id="join" style="padding-top:0">
+    <div class="wrap">
+      <div class="band lg rv">
+        <h2>Got a code from a friend?</h2>
+        <p>Enter the six characters to sync up with their theater room instantly.</p>
+
+        <form class="code-form" id="cf" autocomplete="off" onsubmit="event.preventDefault(); handleJoinPin();">
+          <div class="code-cells" id="pinContainer">
+            <input aria-label="Character 1" maxlength="1">
+            <input aria-label="Character 2" maxlength="1">
+            <input aria-label="Character 3" maxlength="1">
+            <input aria-label="Character 4" maxlength="1">
+            <input aria-label="Character 5" maxlength="1">
+            <input aria-label="Character 6" maxlength="1">
+          </div>
+          <button type="submit" class="btn w lgx" style="margin-left:8px">
+            <span>Join room</span>
+          </button>
+        </form>
+        <p class="err" id="pinError" role="alert"></p>
+
+        <div style="margin-top:20px;display:flex;justify-content:center;gap:12px;font-size:13.5px;color:var(--t3)">
+          <span>Quick demo rooms:</span>
+          <a href="#" style="color:#fff;text-decoration:underline" onclick="prefillCode('A7K9PX')">A7K9PX</a>
+          <span>•</span>
+          <a href="#" style="color:#fff;text-decoration:underline" onclick="prefillCode('NEO44X')">NEO44X</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Create Room Modal Sheet -->
+<div class="modal-overlay" id="createModal">
+  <div class="modal-box lg">
+    <button type="button" class="modal-close" onclick="closeModals()">&times;</button>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <div class="ib i1" style="width:40px;height:40px;margin:0"><svg class="ic" style="width:20px;height:20px"><use href="#play"/></svg></div>
+      <h3 style="font-size:22px;color:#fff">Create Watch Room</h3>
+    </div>
+    <p style="font-size:14px;color:var(--t2)">Drop a video or select sample content to open your live theater room.</p>
+
+    <div class="modal-input-wrap">
+      <label for="createHostInput">Your Display Name</label>
+      <input type="text" id="createHostInput" value="Alex" placeholder="e.g. Alex">
+    </div>
+
+    <div class="modal-input-wrap">
+      <label for="createTitleInput">Room Title (Optional)</label>
+      <input type="text" id="createTitleInput" value="Friday Movie Night" placeholder="e.g. Friday Movie Night">
+    </div>
+
+    <div style="margin-top:28px;display:flex;gap:10px">
+      <button type="button" class="btn w" style="flex:1" onclick="launchCreatedRoom()">
+        Launch Room
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Join Room Modal Sheet -->
+<div class="modal-overlay" id="joinModal">
+  <div class="modal-box lg">
+    <button type="button" class="modal-close" onclick="closeModals()">&times;</button>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <div class="ib i2" style="width:40px;height:40px;margin:0"><svg class="ic" style="width:20px;height:20px"><use href="#link"/></svg></div>
+      <h3 style="font-size:22px;color:#fff">Join a Room</h3>
+    </div>
+    <p style="font-size:14px;color:var(--t2)">Enter your name and connect directly to an existing session.</p>
+
+    <div class="modal-input-wrap">
+      <label for="modalJoinName">Your Name</label>
+      <input type="text" id="modalJoinName" value="Maya" placeholder="e.g. Maya">
+    </div>
+
+    <div class="modal-input-wrap">
+      <label for="modalJoinCode">6-Character Code</label>
+      <input type="text" id="modalJoinCode" maxlength="6" value="A7K9PX" style="font-family:var(--mono);letter-spacing:2px;text-transform:uppercase">
+    </div>
+
+    <div style="margin-top:28px;display:flex;gap:10px">
+      <button type="button" class="btn w" style="flex:1" onclick="launchJoinedRoom()">
+        Connect to Theater
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Floating Toast -->
+<div class="toast" id="toastBox">Notification message</div>
+
+<footer>
+  <div class="wrap">
+    <span>Cineva — Designed with Apple Liquid Glass aesthetics & WebRTC Sync.</span>
+    <span>Use only videos you have legal authorization to share.</span>
+  </div>
+</footer>
+
+<script>
+(function() {
+  const d = document;
+
+  // 1. Enable Chromium SVG Displacement Refraction
+  try {
+    if (CSS.supports('backdrop-filter', 'url(#lens)') && !matchMedia('(prefers-reduced-transparency:reduce)').matches) {
+      d.documentElement.classList.add('refract');
+    }
+  } catch(e) {}
+
+  // 2. Real-time Specular Pointer Light Tracking
+  d.addEventListener('pointermove', function(e) {
+    const el = e.target.closest && e.target.closest('.lg, .tc');
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    el.style.setProperty('--mx', (e.clientX - rect.left) + 'px');
+    el.style.setProperty('--my', (e.clientY - rect.top) + 'px');
+  });
+
+  // 3. 3D Perspective Tilt on Cinema Player
+  const sw = d.getElementById('sw');
+  const dev = d.getElementById('dev');
+  if (!matchMedia('(prefers-reduced-motion:reduce)').matches && matchMedia('(hover:hover)').matches && sw && dev) {
+    sw.addEventListener('pointermove', function(e) {
+      const r = sw.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width - 0.5;
+      const y = (e.clientY - r.top) / r.height - 0.5;
+      dev.style.setProperty('--ry', (x * 10) + 'deg');
+      dev.style.setProperty('--rx', (3.5 - y * 8) + 'deg');
+    });
+    sw.addEventListener('pointerleave', function() {
+      dev.style.setProperty('--ry', '0deg');
+      dev.style.setProperty('--rx', '3.5deg');
+    });
+  }
+
+  // 4. Scroll Reveal via Intersection Observer
+  const io = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in');
+        io.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.15 });
+
+  d.querySelectorAll('.rv').forEach(function(el, i) {
+    el.style.transitionDelay = (i % 3) * 90 + 'ms';
+    io.observe(el);
+  });
+
+  // 5. Interactive Scrubber & Player Play/Pause
+  const playPauseBtn = d.getElementById('playPauseBtn');
+  const playIcon = d.getElementById('playIcon');
+  let isPlaying = true;
+  playPauseBtn.addEventListener('click', () => {
+    isPlaying = !isPlaying;
+    playIcon.innerHTML = isPlaying ? '<use href="#pause"/>' : '<use href="#play"/>';
+    triggerToast(isPlaying ? 'Movie resumed (All viewers synced)' : 'Movie paused by Host');
+  });
+
+  const scrubber = d.getElementById('scrubber');
+  const scrubberBar = d.getElementById('scrubberBar');
+  scrubber.addEventListener('click', (e) => {
+    const rect = scrubber.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+    scrubberBar.style.width = pct + '%';
+    triggerToast(`Jumped to ${Math.round(pct)}% (Synced with Maya)`);
+  });
+
+  // 6. 6-Character segmented code inputs
+  const pinInputs = Array.from(d.querySelectorAll('#pinContainer input'));
+  const pinError = d.getElementById('pinError');
+
+  pinInputs.forEach((cell, idx) => {
+    cell.addEventListener('input', () => {
+      cell.value = cell.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      pinError.textContent = '';
+      if (cell.value && pinInputs[idx + 1]) {
+        pinInputs[idx + 1].focus();
+      }
+    });
+
+    cell.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' && !cell.value && pinInputs[idx - 1]) {
+        pinInputs[idx - 1].focus();
+      }
+    });
+
+    cell.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = (e.clipboardData.getData('text') || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 6);
+      text.split('').forEach((char, i) => {
+        if (pinInputs[i]) pinInputs[i].value = char;
+      });
+      const targetFocus = Math.min(text.length, 5);
+      pinInputs[targetFocus].focus();
+    });
+  });
+
+  window.prefillCode = function(code) {
+    code.split('').forEach((c, i) => {
+      if (pinInputs[i]) pinInputs[i].value = c;
+    });
+    pinInputs[5].focus();
+    triggerToast(`Filled demo code: ${code}`);
+  };
+
+  window.handleJoinPin = function() {
+    const code = pinInputs.map(c => c.value).join('');
+    if (code.length < 6) {
+      pinError.textContent = 'Please enter all six characters of the code.';
+      pinInputs.find(c => !c.value)?.focus();
+      return;
+    }
+    triggerToast(`Connecting to room ${code}...`);
+    setTimeout(() => {
+      openJoinModal();
+      d.getElementById('modalJoinCode').value = code;
+    }, 400);
+  };
+
+  // 7. Audio & Subtitles Switchers in Stage & Bento
+  const audioOptions = ['Audio: English Dolby Atmos', 'Audio: Hindi 5.1', 'Audio: Japanese Original'];
+  let audioIndex = 0;
+  window.cycleAudioTrack = function() {
+    audioIndex = (audioIndex + 1) % audioOptions.length;
+    const choice = audioOptions[audioIndex];
+    d.getElementById('currentAudioChip').textContent = choice;
+    triggerToast(`Switched track: ${choice}`);
+  };
+
+  let subsOn = true;
+  window.toggleSubtitles = function() {
+    subsOn = !subsOn;
+    triggerToast(subsOn ? 'Subtitles: English (Full)' : 'Subtitles turned off');
+  };
+
+  window.selectLang = function(el, label) {
+    d.querySelectorAll('#langSelector .lang-item').forEach(item => item.classList.remove('on'));
+    el.classList.add('on');
+    triggerToast(`Personal track set to: ${label}`);
+  };
+
+  // 8. Modals Management
+  const createModal = d.getElementById('createModal');
+  const joinModal = d.getElementById('joinModal');
+
+  window.openCreateModal = function() {
+    closeModals();
+    createModal.classList.add('open');
+  };
+  window.openJoinModal = function() {
+    closeModals();
+    joinModal.classList.add('open');
+  };
+  window.closeModals = function() {
+    createModal.classList.remove('open');
+    joinModal.classList.remove('open');
+  };
+
+  window.launchCreatedRoom = function() {
+    const title = d.getElementById('createTitleInput').value || 'Friday Movie Night';
+    d.getElementById('playerRoomTitle').textContent = `Live · ${title}`;
+    closeModals();
+    triggerToast(`Room "${title}" launched! In perfect sync.`);
+    window.scrollTo({ top: sw.offsetTop - 80, behavior: 'smooth' });
+  };
+
+  window.launchJoinedRoom = function() {
+    const code = d.getElementById('modalJoinCode').value || 'A7K9PX';
+    const name = d.getElementById('modalJoinName').value || 'Guest';
+    closeModals();
+    triggerToast(`Joined room ${code} as ${name}!`);
+    window.scrollTo({ top: sw.offsetTop - 80, behavior: 'smooth' });
+  };
+
+  // 9. Toast Notification System
+  const toastBox = d.getElementById('toastBox');
+  let toastTimer;
+  window.triggerToast = function(msg) {
+    clearTimeout(toastTimer);
+    toastBox.textContent = msg;
+    toastBox.classList.add('active');
+    toastTimer = setTimeout(() => {
+      toastBox.classList.remove('active');
+    }, 2800);
+  };
+
+})();
+</script>
+</body>
+</html>
