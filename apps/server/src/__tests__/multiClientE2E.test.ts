@@ -12,7 +12,7 @@ import {
   calculateExpectedPosition,
   calculateServerOffset,
   DEFAULT_DRIFT_CONFIG,
-} from '@syncwatch/shared';
+} from '@cineva/shared';
 
 describe('Real Multi-Client WebSocket End-to-End Verification Suite', () => {
   let serverPort: number = 4055;

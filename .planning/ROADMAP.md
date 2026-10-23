@@ -1,4 +1,4 @@
-# SyncWatch Project Roadmap
+# Cineva Project Roadmap
 
 ## Phase 1: Core Foundation & Media Pipeline (Completed)
 - [x] Frame-accurate server-authoritative playback synchronization engine (`syncEngine`)

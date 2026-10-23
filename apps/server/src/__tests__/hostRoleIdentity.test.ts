@@ -8,7 +8,7 @@ import {
   SOCKET_EVENTS,
   RoomStateSnapshot,
   PlaybackState,
-} from '@syncwatch/shared';
+} from '@cineva/shared';
 
 describe('Host Identity & Role State Regression Test Suite', () => {
   let serverPort: number = 4059;

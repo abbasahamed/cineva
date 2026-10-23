@@ -17,7 +17,7 @@ import {
   VideoIceCandidateSchema,
   VideoStateUpdateSchema,
   VideoParticipant,
-} from '@syncwatch/shared';
+} from '@cineva/shared';
 import { CONFIG } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { mediaJobQueue } from '../services/media/mediaJobQueue.js';

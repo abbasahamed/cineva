@@ -1,4 +1,4 @@
-import { VideoParticipant } from '@syncwatch/shared';
+import { VideoParticipant } from '@cineva/shared';
 
 export type VideoCallConnectionStatus =
   | 'idle'

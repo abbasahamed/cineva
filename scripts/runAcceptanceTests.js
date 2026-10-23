@@ -169,8 +169,8 @@ async function runAllAcceptanceTests() {
     // 4. Open Watch Room in Chrome tab
     const page1 = await createPage(`http://localhost:5173/`);
     await page1.evaluate(`
-      localStorage.setItem('syncwatch_session_id', '${hostSessionId}');
-      localStorage.setItem('syncwatch_display_name', 'AcceptanceHost');
+      localStorage.setItem('cineva_session_id', '${hostSessionId}');
+      localStorage.setItem('cineva_display_name', 'AcceptanceHost');
     `);
     await page1.navigate(`http://localhost:5173/room/${roomCode}`);
 
@@ -269,8 +269,8 @@ async function runAllAcceptanceTests() {
     // Browser A = HOST
     const pageHost = await createPage(`http://localhost:5173/`);
     await pageHost.evaluate(`
-      localStorage.setItem('syncwatch_session_id', '${room2HostSessionId}');
-      localStorage.setItem('syncwatch_display_name', 'HostAlice');
+      localStorage.setItem('cineva_session_id', '${room2HostSessionId}');
+      localStorage.setItem('cineva_display_name', 'HostAlice');
     `);
     await pageHost.navigate(`http://localhost:5173/room/${room2Code}`);
     await pageHost.waitForExpr(`document.body.innerText.includes('HOST') || document.body.innerText.includes('HostAlice')`, 10000);
@@ -278,8 +278,8 @@ async function runAllAcceptanceTests() {
     // Browser B = GUEST
     const pageGuest = await createPage(`http://localhost:5173/`);
     await pageGuest.evaluate(`
-      localStorage.setItem('syncwatch_session_id', 'guest_sess_t2_${Date.now()}');
-      localStorage.setItem('syncwatch_display_name', 'GuestBob');
+      localStorage.setItem('cineva_session_id', 'guest_sess_t2_${Date.now()}');
+      localStorage.setItem('cineva_display_name', 'GuestBob');
     `);
     await pageGuest.navigate(`http://localhost:5173/room/${room2Code}`);
     await pageGuest.waitForExpr(`document.body.innerText.includes('GuestBob') || document.body.innerText.includes('SYNCED')`, 10000);
@@ -351,16 +351,16 @@ async function runAllAcceptanceTests() {
 
     const page3Host = await createPage(`http://localhost:5173/`);
     await page3Host.evaluate(`
-      localStorage.setItem('syncwatch_session_id', '${room3HostSessionId}');
-      localStorage.setItem('syncwatch_display_name', 'HostAlice3');
+      localStorage.setItem('cineva_session_id', '${room3HostSessionId}');
+      localStorage.setItem('cineva_display_name', 'HostAlice3');
     `);
     await page3Host.navigate(`http://localhost:5173/room/${room3Code}`);
     await page3Host.waitForExpr(`document.body.innerText.includes('HOST')`, 10000);
 
     const page3Guest = await createPage(`http://localhost:5173/`);
     await page3Guest.evaluate(`
-      localStorage.setItem('syncwatch_session_id', 'guest_sess_t3_${Date.now()}');
-      localStorage.setItem('syncwatch_display_name', 'GuestBob3');
+      localStorage.setItem('cineva_session_id', 'guest_sess_t3_${Date.now()}');
+      localStorage.setItem('cineva_display_name', 'GuestBob3');
     `);
     await page3Guest.navigate(`http://localhost:5173/room/${room3Code}`);
     await page3Guest.waitForExpr(`document.body.innerText.includes('GuestBob3')`, 10000);
@@ -415,16 +415,16 @@ async function runAllAcceptanceTests() {
 
     const page4Host = await createPage(`http://localhost:5173/`);
     await page4Host.evaluate(`
-      localStorage.setItem('syncwatch_session_id', '${room4HostSessionId}');
-      localStorage.setItem('syncwatch_display_name', 'HostAlice4');
+      localStorage.setItem('cineva_session_id', '${room4HostSessionId}');
+      localStorage.setItem('cineva_display_name', 'HostAlice4');
     `);
     await page4Host.navigate(`http://localhost:5173/room/${room4Code}`);
     await page4Host.waitForExpr(`document.body.innerText.includes('HOST')`, 10000);
 
     const page4Guest = await createPage(`http://localhost:5173/`);
     await page4Guest.evaluate(`
-      localStorage.setItem('syncwatch_session_id', 'guest_sess_t4_${Date.now()}');
-      localStorage.setItem('syncwatch_display_name', 'GuestBob4');
+      localStorage.setItem('cineva_session_id', 'guest_sess_t4_${Date.now()}');
+      localStorage.setItem('cineva_display_name', 'GuestBob4');
     `);
     await page4Guest.navigate(`http://localhost:5173/room/${room4Code}`);
     await page4Guest.waitForExpr(`document.body.innerText.includes('GuestBob4')`, 10000);
@@ -480,8 +480,8 @@ async function runAllAcceptanceTests() {
 
     const page5Resurrect = await createPage(`http://localhost:5173/`);
     await page5Resurrect.evaluate(`
-      localStorage.setItem('syncwatch_session_id', 'late_guest_${Date.now()}');
-      localStorage.setItem('syncwatch_display_name', 'ResurrectGuest');
+      localStorage.setItem('cineva_session_id', 'late_guest_${Date.now()}');
+      localStorage.setItem('cineva_display_name', 'ResurrectGuest');
     `);
     await page5Resurrect.navigate(`http://localhost:5173/room/${room2Code}`);
 

@@ -1,6 +1,6 @@
-# SyncWatch — Real-Time Synchronized Watch Party Web App
+# Cineva — Real-Time Synchronized Watch Party Web App
 
-**SyncWatch** is a production-grade, real-time video watch party platform built with TypeScript, React, Vite, Node.js, Express, Socket.IO, and Prisma. It guarantees that multiple independent browser clients remain frame-accurate and playback-synchronized to the exact same timeline position regardless of network jitter, seeking, or joining late.
+**Cineva** is a production-grade, real-time video watch party platform built with TypeScript, React, Vite, Node.js, Express, Socket.IO, and Prisma. It guarantees that multiple independent browser clients remain frame-accurate and playback-synchronized to the exact same timeline position regardless of network jitter, seeking, or joining late.
 
 ---
 
@@ -65,8 +65,8 @@
 Clone the repository and install all workspace dependencies:
 
 ```bash
-git clone <repository_url> syncwatch
-cd syncwatch
+git clone <repository_url> cineva
+cd cineva
 npm install
 ```
 
@@ -86,7 +86,7 @@ CLIENT_URL=http://localhost:5173
 DATABASE_URL="file:./dev.db"
 MEDIA_STORAGE_PATH=./uploads
 MAX_FILE_SIZE_MB=5120 # 5 GB per file
-SESSION_SECRET=syncwatch_dev_session_secret_key_123
+SESSION_SECRET=cineva_dev_session_secret_key_123
 ```
 
 ### 3. Database Migration
@@ -94,7 +94,7 @@ SESSION_SECRET=syncwatch_dev_session_secret_key_123
 Generate the Prisma Client and initialize the database schema:
 
 ```bash
-npm run db:push --workspace=@syncwatch/server
+npm run db:push --workspace=@cineva/server
 ```
 
 *(Note: SQLite is configured by default for zero-setup local development. To use PostgreSQL, update `DATABASE_URL` in `.env` and `provider = "postgresql"` in `apps/server/prisma/schema.prisma`).*
@@ -102,7 +102,7 @@ npm run db:push --workspace=@syncwatch/server
 ### 4. Build Shared Package
 
 ```bash
-npm run build --workspace=@syncwatch/shared
+npm run build --workspace=@cineva/shared
 ```
 
 ---
@@ -218,7 +218,7 @@ npm run test
 
 ## 🚢 Production Deployment
 
-SyncWatch is architected for seamless separation between static frontend assets, stateful Node.js WebSocket backend processes, relational database storage, and scalable object storage.
+Cineva is architected for seamless separation between static frontend assets, stateful Node.js WebSocket backend processes, relational database storage, and scalable object storage.
 
 ### 1. Architectural Requirements
 
@@ -233,7 +233,7 @@ SyncWatch is architected for seamless separation between static frontend assets,
 
 ### 2. Database Setup & Migration
 
-SyncWatch supports zero-configuration **SQLite** for development and **PostgreSQL** for production.
+Cineva supports zero-configuration **SQLite** for development and **PostgreSQL** for production.
 
 1. Configure your production connection string in `.env`:
    ```bash
@@ -241,11 +241,11 @@ SyncWatch supports zero-configuration **SQLite** for development and **PostgreSQ
    ```
 2. Push the PostgreSQL schema:
    ```bash
-   npm run db:push:prod --workspace=@syncwatch/server
+   npm run db:push:prod --workspace=@cineva/server
    ```
 3. Generate the Prisma client:
    ```bash
-   npm run db:generate:prod --workspace=@syncwatch/server
+   npm run db:generate:prod --workspace=@cineva/server
    ```
 
 ---
@@ -254,7 +254,7 @@ SyncWatch supports zero-configuration **SQLite** for development and **PostgreSQ
 
 To avoid storing large media files on the application server disk in production:
 
-1. Create a private bucket (e.g., `syncwatch-media-prod`).
+1. Create a private bucket (e.g., `cineva-media-prod`).
 2. Configure bucket CORS policy:
    ```json
    [
@@ -269,11 +269,11 @@ To avoid storing large media files on the application server disk in production:
 3. Supply S3 environment variables:
    ```bash
    STORAGE_DRIVER=s3
-   S3_BUCKET=syncwatch-media-prod
+   S3_BUCKET=cineva-media-prod
    S3_REGION=us-east-1
    S3_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
    S3_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-   # Optional: S3_PUBLIC_BASE_URL=https://media.syncwatch.app
+   # Optional: S3_PUBLIC_BASE_URL=https://media.cineva.app
    ```
 
 ---
@@ -286,7 +286,7 @@ To avoid storing large media files on the application server disk in production:
    ```
 2. Run backend production server:
    ```bash
-   NODE_ENV=production npm run start --workspace=@syncwatch/server
+   NODE_ENV=production npm run start --workspace=@cineva/server
    ```
 3. Verify health status:
    ```bash
@@ -305,7 +305,7 @@ To avoid storing large media files on the application server disk in production:
    ```
 2. Build static artifacts:
    ```bash
-   npm run build --workspace=@syncwatch/web
+   npm run build --workspace=@cineva/web
    ```
 3. Deploy the resulting `apps/web/dist/` directory to your static hosting provider.
 
@@ -330,7 +330,7 @@ If a production deployment requires rollback:
 
 ### 8. Observability & Log Access
 
-SyncWatch streams structured JSON logs to `stdout` / `stderr`:
+Cineva streams structured JSON logs to `stdout` / `stderr`:
 - **Event Log Format**: `{"timestamp":"2026-09-25T18:00:00.000Z","level":"INFO","event":"participant_joined","roomCode":"ABC123","displayName":"User","isHost":false}`
 - **Redaction Policy**: Session tokens, database connection strings, S3 secret access keys, and user chat text are automatically stripped before log output.
 - **Log Aggregation**: Native compatibility with CloudWatch, Datadog, Papertrail, or Railway / Render log viewers.
@@ -339,9 +339,9 @@ SyncWatch streams structured JSON logs to `stdout` / `stderr`:
 
 ### ⚠️ Media & Copyright Compliance
 
-> **SyncWatch is designed for watching user-authorized media with friends. Users are responsible for having the necessary rights to upload and share media.**
+> **Cineva is designed for watching user-authorized media with friends. Users are responsible for having the necessary rights to upload and share media.**
 
-- SyncWatch provides real-time synchronization infrastructure. It does not package, distribute, or host copyrighted movies or television programming.
+- Cineva provides real-time synchronization infrastructure. It does not package, distribute, or host copyrighted movies or television programming.
 - The included sample trailer (`sample_video.mp4`) is provided strictly for demonstration and testing.
 - Users and administrators must upload or stream only media they own or are legally authorized to view and share.
 

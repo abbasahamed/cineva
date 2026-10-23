@@ -15,7 +15,7 @@ describe('Cineva Pre-Deployment Security Regression Tests', () => {
       expect(id1).not.toBe(id2);
       expect(id1.length).toBeGreaterThanOrEqual(21);
       expect(typeof id1).toBe('string');
-      expect(id1.startsWith('sw_sess_')).toBe(true);
+      expect(id1.startsWith('cineva_sess_')).toBe(true);
     });
 
     it('should generate uppercase collision-resistant room codes without ambiguous characters', () => {
@@ -136,7 +136,7 @@ describe('Cineva Pre-Deployment Security Regression Tests', () => {
       const isHost = await roomManager.isHost(created.room.id, created.hostSessionId);
       expect(isHost).toBe(true);
 
-      const isFakeHost = await roomManager.isHost(created.room.id, 'sw_sess_fake_attacker_session');
+      const isFakeHost = await roomManager.isHost(created.room.id, 'cineva_sess_fake_attacker_session');
       expect(isFakeHost).toBe(false);
 
       // Verify guest control restriction

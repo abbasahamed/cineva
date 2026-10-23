@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, ToggleLeft, ToggleRight, Trash2, Edit3, Sliders, Shield } from 'lucide-react';
-import { RoomInfo } from '@syncwatch/shared';
+import { RoomInfo } from '@cineva/shared';
 import { useToast } from './Toast.js';
 
 interface SettingsModalProps {

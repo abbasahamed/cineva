@@ -1,4 +1,4 @@
-import { PlaybackState } from '@syncwatch/shared';
+import { PlaybackState } from '@cineva/shared';
 
 export class SynchronizationEngine {
   private roomStates: Map<string, PlaybackState> = new Map();

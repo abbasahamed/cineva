@@ -10,7 +10,7 @@ import {
   SOCKET_EVENTS,
   calculateExpectedPosition,
   DEFAULT_DRIFT_CONFIG,
-} from '@syncwatch/shared';
+} from '@cineva/shared';
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'ended' | 'error';
 

@@ -1,4 +1,4 @@
-# Project Overview: SyncWatch
+# Project Overview: Cineva
 
 ## Project Goal
 Provide a production-grade, real-time synchronized video watch party platform with sub-second clock drift correction and server-authoritative timeline control.

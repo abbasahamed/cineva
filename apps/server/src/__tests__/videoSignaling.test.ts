@@ -3,7 +3,7 @@ import request from 'supertest';
 import { io as ClientSocket, Socket as ClientSocketType } from 'socket.io-client';
 import { app, server } from '../index.js';
 import { prisma } from '../db.js';
-import { SOCKET_EVENTS } from '@syncwatch/shared';
+import { SOCKET_EVENTS } from '@cineva/shared';
 import { syncEngine } from '../services/syncEngine.js';
 
 describe('WebRTC Video Calling Signaling Test Suite', () => {

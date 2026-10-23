@@ -100,7 +100,7 @@ export const WatchRoomPage: React.FC = () => {
   useEffect(() => {
     if (!code) return;
     const storedName = sessionStorage.getItem(`sw_name_${code}`);
-    const storedSession = sessionStorage.getItem(`sw_session_${code}`);
+    const storedSession = sessionStorage.getItem(`cineva_session_${code}`);
 
     if (storedName && storedSession) {
       setDisplayName(storedName);

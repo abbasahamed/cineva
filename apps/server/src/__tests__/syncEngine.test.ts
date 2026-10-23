@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SynchronizationEngine } from '../services/syncEngine.js';
-import { calculateExpectedPosition, calculateServerOffset, DEFAULT_DRIFT_CONFIG } from '@syncwatch/shared';
+import { calculateExpectedPosition, calculateServerOffset, DEFAULT_DRIFT_CONFIG } from '@cineva/shared';
 
 describe('SynchronizationEngine Unit Tests', () => {
   let engine: SynchronizationEngine;

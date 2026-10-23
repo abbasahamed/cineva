@@ -8,7 +8,7 @@ import {
   ClockSyncPong,
   calculateServerOffset,
   RoomInfo,
-} from '@syncwatch/shared';
+} from '@cineva/shared';
 
 export class SocketService {
   private socket: Socket | null = null;

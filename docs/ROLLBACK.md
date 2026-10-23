@@ -1,4 +1,4 @@
-# SyncWatch — Production Rollback & Incident Recovery Guide
+# Cineva — Production Rollback & Incident Recovery Guide
 
 This document outlines standard operating procedures for rolling back deployments, diagnosing failures, and recovering from production incidents.
 
@@ -10,7 +10,7 @@ If a bad frontend release breaks UI rendering, client routing, or asset loading:
 
 ### Procedure in Vercel:
 1. Open the [Vercel Dashboard](https://vercel.com).
-2. Select your `syncwatch` project $\to$ navigate to the **Deployments** tab.
+2. Select your `cineva` project $\to$ navigate to the **Deployments** tab.
 3. Locate the last known good deployment.
 4. Click the three dots (`...`) on the right side $\to$ select **"Instant Rollback"** (or **"Promote to Production"**).
 5. Vercel will instantly switch edge traffic to the previous build within 5 seconds.
@@ -23,7 +23,7 @@ If a new backend release causes crashes, unhandled exceptions, or broken endpoin
 
 ### Procedure in Railway:
 1. Open the [Railway Dashboard](https://railway.com).
-2. Click your `syncwatch-backend` service $\to$ navigate to the **Deployments** tab.
+2. Click your `cineva-backend` service $\to$ navigate to the **Deployments** tab.
 3. Find the previous stable deployment.
 4. Click the options menu (`...`) $\to$ select **"Rollback to this deployment"**.
 5. Railway restarts the container using the prior verified image.

@@ -1,12 +1,12 @@
-# SyncWatch — Production Architecture & Deployment Guide
+# Cineva — Production Architecture & Deployment Guide
 
-This document specifies the technical architecture, deployment topology, data flows, security boundaries, and scaling strategy for **SyncWatch**.
+This document specifies the technical architecture, deployment topology, data flows, security boundaries, and scaling strategy for **Cineva**.
 
 ---
 
 ## 1. Executive Architecture Summary
 
-SyncWatch implements a **decoupled, server-authoritative watch-party architecture**:
+Cineva implements a **decoupled, server-authoritative watch-party architecture**:
 - **Control Plane**: Lightweight, real-time WebSocket protocol (`Socket.IO`) responsible exclusively for playback synchronization, NTP clock alignment, presence, and chat.
 - **Data Plane**: Direct HTTP/HTTPS byte-range streaming (`HTTP 206 Partial Content`) via local disk or cloud object storage (`AWS S3`, `Cloudflare R2`, `MinIO`). Large media payloads **never** pass through WebSocket channels.
 
@@ -19,7 +19,7 @@ SyncWatch implements a **decoupled, server-authoritative watch-party architectur
           (206 Range Byte Chunks) │             │ (Play, Pause, Seek, NTP Sync, Chat)
                                   ▼             ▼
               ┌─────────────────────┐       ┌──────────────────────┐
-              │ Cloud Object Store  │       │ SyncWatch Node.js    │
+              │ Cloud Object Store  │       │ Cineva Node.js    │
               │  (AWS S3 / R2)      │       │ Authoritative Server │
               └─────────────────────┘       └──────────┬───────────┘
                                                        │
@@ -50,7 +50,7 @@ SyncWatch implements a **decoupled, server-authoritative watch-party architectur
 ## 3. Real-Time Synchronization Architecture
 
 ### Clock Synchronization (NTP Protocol)
-Client device clocks vary significantly due to local skew and timezone differences. SyncWatch establishes a continuous authoritative time reference:
+Client device clocks vary significantly due to local skew and timezone differences. Cineva establishes a continuous authoritative time reference:
 1. Client transmits `sync:ping` containing monotonic timestamp $T_1 = \text{performance.now()}$.
 2. Server responds with `sync:pong` with monotonic timestamp $T_2$ and server wall-clock $T_{\text{server}}$.
 3. Client receives response at $T_3 = \text{performance.now()}$.
@@ -109,7 +109,7 @@ export interface MediaStorage {
 
 ## 5. Database Architecture
 
-SyncWatch uses **Prisma ORM** with parallel schemas for SQLite (dev) and PostgreSQL (prod):
+Cineva uses **Prisma ORM** with parallel schemas for SQLite (dev) and PostgreSQL (prod):
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -196,7 +196,7 @@ For multi-server horizontal scaling across load-balanced Node.js instances:
                  ┌───────────────┴───────────────┐
                  ▼                               ▼
       ┌──────────────────────┐       ┌──────────────────────┐
-      │  SyncWatch Server A  │       │  SyncWatch Server B  │
+      │  Cineva Server A  │       │  Cineva Server B  │
       └──────────┬───────────┘       └──────────┬───────────┘
                  │                              │
                  └───────────────┬──────────────┘
@@ -215,6 +215,6 @@ For multi-server horizontal scaling across load-balanced Node.js instances:
 
 ## 9. Known Operational Caveats
 
-1. **Browser Autoplay Policies**: Modern browsers (Chrome, Safari) reject unmuted autoplay without user interaction. SyncWatch automatically starts video muted to preserve visual synchronization and presents an intuitive *"You're synchronized. Click to enable audio"* overlay.
+1. **Browser Autoplay Policies**: Modern browsers (Chrome, Safari) reject unmuted autoplay without user interaction. Cineva automatically starts video muted to preserve visual synchronization and presents an intuitive *"You're synchronized. Click to enable audio"* overlay.
 2. **Persistent WebSocket Requirement**: Serverless platforms (e.g. AWS Lambda without API Gateway WebSockets, standard Vercel serverless functions) cannot sustain long-lived Socket.IO connections. A stateful runtime (Render, Railway, Fly.io, ECS) is required.
-3. **Media Copyright Notice**: SyncWatch provides synchronization tooling for personal or authorized media. It does not provide licensed video content.
+3. **Media Copyright Notice**: Cineva provides synchronization tooling for personal or authorized media. It does not provide licensed video content.

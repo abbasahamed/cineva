@@ -1,6 +1,6 @@
-# SyncWatch — Manual Test Suite & Verification Runbook
+# Cineva — Manual Test Suite & Verification Runbook
 
-This document details the step-by-step verification and test results for **SyncWatch** multi-client real-time synchronization.
+This document details the step-by-step verification and test results for **Cineva** multi-client real-time synchronization.
 
 ---
 

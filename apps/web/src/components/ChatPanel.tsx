@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send } from 'lucide-react';
-import { ChatMessage } from '@syncwatch/shared';
+import { ChatMessage } from '@cineva/shared';
 
 interface ChatPanelProps {
   messages: ChatMessage[];

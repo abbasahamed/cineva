@@ -3,7 +3,7 @@ import request from 'supertest';
 import { io as ClientSocket, Socket as ClientSocketType } from 'socket.io-client';
 import { app, server } from '../index.js';
 import { prisma } from '../db.js';
-import { SOCKET_EVENTS } from '@syncwatch/shared';
+import { SOCKET_EVENTS } from '@cineva/shared';
 
 describe('Phase 7 Production Audit & Security Test Suite', () => {
   let serverUrl: string;
@@ -97,7 +97,7 @@ describe('Phase 7 Production Audit & Security Test Suite', () => {
   // 4. Upload Security & 5 GB Limit Test
   it('Should enforce upload file extension & MIME whitelisting, sanitize traversal filenames, and enforce 5 GB limit', async () => {
     // A. Verify 5 GB binary constant configuration (5 * 1024 * 1024 * 1024 = 5,368,709,120 bytes)
-    const { MAX_VIDEO_SIZE_BYTES, MAX_VIDEO_SIZE_MB, MAX_VIDEO_SIZE_LABEL } = await import('@syncwatch/shared');
+    const { MAX_VIDEO_SIZE_BYTES, MAX_VIDEO_SIZE_MB, MAX_VIDEO_SIZE_LABEL } = await import('@cineva/shared');
     expect(MAX_VIDEO_SIZE_BYTES).toBe(5 * 1024 * 1024 * 1024);
     expect(MAX_VIDEO_SIZE_BYTES).toBe(5368709120);
     expect(MAX_VIDEO_SIZE_MB).toBe(5120);

@@ -10,7 +10,7 @@ import { roomManager } from '../services/roomManager.js';
 import { mediaStorage } from '../services/mediaStorage.js';
 import { mediaJobQueue } from '../services/media/mediaJobQueue.js';
 import { prisma } from '../db.js';
-import { SOCKET_EVENTS } from '@syncwatch/shared';
+import { SOCKET_EVENTS } from '@cineva/shared';
 import { CONFIG } from '../config.js';
 
 describe('Automatic Media Cleanup on Room Closure Test Suite', () => {

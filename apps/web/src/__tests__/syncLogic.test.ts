@@ -4,7 +4,7 @@ import {
   calculateServerOffset,
   DEFAULT_DRIFT_CONFIG,
   PlaybackState,
-} from '@syncwatch/shared';
+} from '@cineva/shared';
 
 describe('Frontend Synchronization & Drift Logic Tests', () => {
   it('should compute exact expected position when playing at 1.0x speed', () => {

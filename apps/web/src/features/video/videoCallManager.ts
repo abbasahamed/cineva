@@ -2,7 +2,7 @@ import { socketService } from '../../services/socket.js';
 import {
   RTCSessionDescriptionInitLike,
   RTCIceCandidateInitLike,
-} from '@syncwatch/shared';
+} from '@cineva/shared';
 import { getIceServers } from './iceConfig.js';
 
 export interface VideoCallManagerCallbacks {

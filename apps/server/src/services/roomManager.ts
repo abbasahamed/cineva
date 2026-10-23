@@ -13,7 +13,7 @@ import {
   ParticipantInfo,
   RoomStateSnapshot,
   ChatMessage,
-} from '@syncwatch/shared';
+} from '@cineva/shared';
 import { CONFIG } from '../config.js';
 import { logger } from '../utils/logger.js';
 

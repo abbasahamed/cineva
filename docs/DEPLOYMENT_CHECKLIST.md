@@ -1,6 +1,6 @@
-# SyncWatch — Production Deployment Checklist
+# Cineva — Production Deployment Checklist
 
-This document provides a step-by-step checklist to ensure a safe, secure, and fully verified deployment of **SyncWatch**.
+This document provides a step-by-step checklist to ensure a safe, secure, and fully verified deployment of **Cineva**.
 
 ---
 
@@ -17,7 +17,7 @@ This document provides a step-by-step checklist to ensure a safe, secure, and fu
 
 ## 🚀 Infrastructure & Platform Setup
 
-- [ ] **Domain Configuration**: Production domains configured for frontend (e.g., `https://syncwatch.app`) and backend API (e.g., `https://api.syncwatch.app`).
+- [ ] **Domain Configuration**: Production domains configured for frontend (e.g., `https://cineva.app`) and backend API (e.g., `https://api.cineva.app`).
 - [ ] **HTTPS / WSS SSL**: TLS certificates issued and active for all domains (`https://` and `wss://`).
 - [ ] **Frontend Hosting**: Deployed to Vercel, Netlify, Cloudflare Pages, or AWS S3+CloudFront with SPA rewrite to `/index.html`.
 - [ ] **Backend Hosting**: Deployed to long-lived stateful Node.js runtime (Railway, Render, Fly.io, AWS ECS/EC2, DigitalOcean App Platform).

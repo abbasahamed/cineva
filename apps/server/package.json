@@ -1,11 +1,11 @@
 {
-  "name": "@syncwatch/server",
+  "name": "@cineva/server",
   "version": "1.0.0",
   "private": true,
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "npm run build --workspace=@syncwatch/shared && node scripts/generate-prisma.js && tsc",
+    "build": "npm run build --workspace=@cineva/shared && node scripts/generate-prisma.js && tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
@@ -19,7 +19,7 @@
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@prisma/client": "^6.4.1",
-    "@syncwatch/shared": "*",
+    "@cineva/shared": "*",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",

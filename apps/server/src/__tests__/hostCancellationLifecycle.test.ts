@@ -6,7 +6,7 @@ import express from 'express';
 import { setupSocketHandlers } from '../sockets/socketHandler.js';
 import { roomManager } from '../services/roomManager.js';
 import { prisma } from '../db.js';
-import { SOCKET_EVENTS } from '@syncwatch/shared';
+import { SOCKET_EVENTS } from '@cineva/shared';
 
 describe('Host Exit and Room Cancellation Lifecycle Tests', () => {
   let server: http.Server;

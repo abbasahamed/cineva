@@ -1,5 +1,5 @@
 {
-  "name": "syncwatch-monorepo",
+  "name": "cineva",
   "version": "1.0.0",
   "private": true,
   "workspaces": [
@@ -8,8 +8,8 @@
   ],
   "scripts": {
     "dev": "concurrently -n \"server,web\" -c \"blue,magenta\" \"npm run dev:server\" \"npm run dev:web\"",
-    "dev:server": "npm run dev --workspace=@syncwatch/server",
-    "dev:web": "npm run dev --workspace=@syncwatch/web",
+    "dev:server": "npm run dev --workspace=@cineva/server",
+    "dev:web": "npm run dev --workspace=@cineva/web",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",

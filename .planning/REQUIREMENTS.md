@@ -8,6 +8,6 @@
 - [x] **Presence & Chat**: Real-time room participant badges and chat.
 
 ## Technical Requirements
-- Monorepo structure using npm workspaces (`@syncwatch/web`, `@syncwatch/server`, `@syncwatch/shared`).
+- Monorepo structure using npm workspaces (`@cineva/web`, `@cineva/server`, `@cineva/shared`).
 - Unit and integration tests for sync calculation, drift thresholds, and room management.
 - Type-safe communication using Zod schemas and shared event contracts.

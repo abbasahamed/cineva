@@ -1,7 +1,7 @@
 # Onboarding Summary
 
 ## Overview
-SyncWatch has been successfully onboarded into the GSD planning system.
+Cineva has been successfully onboarded into the GSD planning system.
 
 ## Generated Artifacts
 - **Codebase Map**:

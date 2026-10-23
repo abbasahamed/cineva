@@ -1,18 +1,18 @@
 {
-  "name": "@syncwatch/web",
+  "name": "@cineva/web",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run build --workspace=@syncwatch/shared && tsc && vite build",
+    "build": "npm run build --workspace=@cineva/shared && tsc && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "@syncwatch/shared": "*",
+    "@cineva/shared": "*",
     "clsx": "^2.1.1",
     "lucide-react": "^0.475.0",
     "react": "^18.3.1",

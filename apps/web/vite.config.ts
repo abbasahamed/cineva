@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@syncwatch/shared": path.resolve(__dirname, "../../packages/shared/src/index.ts"),
+      "@cineva/shared": path.resolve(__dirname, "../../packages/shared/src/index.ts"),
     },
   },
   server: {

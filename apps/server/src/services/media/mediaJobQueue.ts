@@ -7,7 +7,7 @@ import { syncEngine } from "../syncEngine.js";
 import { analyzeMediaFile } from "./mediaAnalyzer.js";
 import { evaluateMediaCompatibility, validatePlaybackFile } from "./mediaCompatibility.js";
 import { transcodingService } from "./transcodingService.js";
-import { SOCKET_EVENTS } from "@syncwatch/shared";
+import { SOCKET_EVENTS } from "@cineva/shared";
 import { logger } from "../../utils/logger.js";
 import { CONFIG } from "../../config.js";
 import { tempFileLifecycle } from "./tempFileLifecycle.js";

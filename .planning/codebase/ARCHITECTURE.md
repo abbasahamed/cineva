@@ -1,7 +1,7 @@
 # System Architecture
 
 ## Overview
-SyncWatch provides frame-accurate real-time video synchronization across multiple browser clients using a server-authoritative timeline model combined with NTP-style clock drift compensation.
+Cineva provides frame-accurate real-time video synchronization across multiple browser clients using a server-authoritative timeline model combined with NTP-style clock drift compensation.
 
 ## Core Components
 1. **Clock Synchronization (NTP Protocol)**:

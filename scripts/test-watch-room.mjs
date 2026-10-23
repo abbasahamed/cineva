@@ -130,7 +130,7 @@ async function testWatchRoom() {
     ws,
     `
     sessionStorage.setItem('sw_name_${roomCode}', 'Diagnostic Abbas');
-    sessionStorage.setItem('sw_session_${roomCode}', '${sessionId}');
+    sessionStorage.setItem('cineva_session_${roomCode}', '${sessionId}');
     window.location.href = '/room/${roomCode}';
   `
   );

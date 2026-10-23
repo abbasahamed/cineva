@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Terminal, Activity, Zap, Play, Pause, RefreshCw, X, ChevronDown, ChevronUp } from 'lucide-react';
-import { PlaybackState } from '@syncwatch/shared';
+import { PlaybackState } from '@cineva/shared';
 import { ConnectionStatus } from '../hooks/useSyncWatch.js';
 import { socketService } from '../services/socket.js';
-import { calculateExpectedPosition } from '@syncwatch/shared';
+import { calculateExpectedPosition } from '@cineva/shared';
 
 interface DebugPanelProps {
   playback: PlaybackState;

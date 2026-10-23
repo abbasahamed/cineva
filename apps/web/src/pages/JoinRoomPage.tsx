@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, AlertCircle, LogIn, Tv } from 'lucide-react';
 import { joinRoom, getRoomDetails } from '../services/api.js';
-import { RoomInfo } from '@syncwatch/shared';
+import { RoomInfo } from '@cineva/shared';
 import { CinematicBackground } from '../components/CinematicBackground.js';
 
 export const JoinRoomPage: React.FC = () => {
@@ -47,11 +47,11 @@ export const JoinRoomPage: React.FC = () => {
 
     try {
       setIsSubmitting(true);
-      const existingSession = sessionStorage.getItem(`sw_session_${code}`) || undefined;
+      const existingSession = sessionStorage.getItem(`cineva_session_${code}`) || undefined;
 
       const result = await joinRoom(code, name, existingSession);
 
-      sessionStorage.setItem(`sw_session_${code}`, result.sessionId);
+      sessionStorage.setItem(`cineva_session_${code}`, result.sessionId);
       sessionStorage.setItem(`sw_name_${code}`, name);
 
       navigate(`/room/${code}`);

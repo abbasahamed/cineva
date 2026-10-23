@@ -1,7 +1,7 @@
 import { prisma } from "../db.js";
 import { Router, Request, Response } from 'express';
 import { roomManager } from '../services/roomManager.js';
-import { CreateRoomSchema, JoinRoomSchema } from '@syncwatch/shared';
+import { CreateRoomSchema, JoinRoomSchema } from '@cineva/shared';
 
 const router = Router();
 

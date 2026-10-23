@@ -22,7 +22,7 @@ import {
   Upload,
   Crop,
 } from 'lucide-react';
-import { PlaybackState, MediaInfo } from '@syncwatch/shared';
+import { PlaybackState, MediaInfo } from '@cineva/shared';
 
 interface VideoPlayerProps {
   videoRef: React.RefObject<HTMLVideoElement>;

@@ -1,4 +1,4 @@
-# SyncWatch — Live Deployment Verification Checklist
+# Cineva — Live Deployment Verification Checklist
 
 Use this checklist during your live multi-device production testing.
 

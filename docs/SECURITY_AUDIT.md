@@ -1,15 +1,15 @@
-# SyncWatch — Security & Hardening Audit Report
+# Cineva — Security & Hardening Audit Report
 
-This report outlines the **security measures implemented**, threat mitigation controls, secret management policies, and **known security limitations** of **SyncWatch**.
+This report outlines the **security measures implemented**, threat mitigation controls, secret management policies, and **known security limitations** of **Cineva**.
 
 ---
 
 ## 1. Authentication & Session Model
 
-- **Session Identification**: SyncWatch issues cryptographically random, collision-resistant 128-bit session identifiers (`sessionId`) generated via `nanoid` on client initialization.
+- **Session Identification**: Cineva issues cryptographically random, collision-resistant 128-bit session identifiers (`sessionId`) generated via `nanoid` on client initialization.
 - **Host Session Token**: When a user creates a room, their `sessionId` is recorded as `hostSessionId` in the database.
 - **Stateful Verification**: Every state-changing request (play, pause, seek, rate change, settings edit, kick participant, end room) requires passing the user's `sessionId`.
-- **No Third-Party Cookies / Credentials Leakage**: SyncWatch does not store sensitive PII (Personally Identifiable Information), passwords, or third-party OAuth tokens in client cookies.
+- **No Third-Party Cookies / Credentials Leakage**: Cineva does not store sensitive PII (Personally Identifiable Information), passwords, or third-party OAuth tokens in client cookies.
 
 ---
 
@@ -74,6 +74,6 @@ Configured via `helmet`:
 
 While substantial security controls are in place, administrators should be aware of the following design limitations:
 
-1. **Unauthenticated Watch Parties**: SyncWatch is designed as an open private watch-party platform without forced user account registration. Anyone with a valid 6-character room code can join the room unless max capacity is reached.
+1. **Unauthenticated Watch Parties**: Cineva is designed as an open private watch-party platform without forced user account registration. Anyone with a valid 6-character room code can join the room unless max capacity is reached.
 2. **S3 Direct Upload Permissions**: Pre-signed S3 upload URLs grant temporary PUT access to a specific storage key for 15 minutes. Bucket CORS policies must be explicitly restricted to the production frontend domain.
 3. **In-Memory Rate Limiting**: Default rate limiters use in-memory stores. If running multiple backend instances behind a load balancer without Redis, rate limits are enforced per instance rather than globally across the cluster.

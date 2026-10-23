@@ -58,7 +58,7 @@ export const LandingPage: React.FC = () => {
     try {
       setIsCreatingDemo(true);
       const res = await createDemoRoom('Host');
-      sessionStorage.setItem(`sw_session_${res.room.roomCode}`, res.hostSessionId);
+      sessionStorage.setItem(`cineva_session_${res.room.roomCode}`, res.hostSessionId);
       sessionStorage.setItem(`sw_name_${res.room.roomCode}`, 'Host');
       navigate(`/room/${res.room.roomCode}`);
     } catch (err: any) {

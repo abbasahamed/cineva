@@ -116,7 +116,7 @@ export const CreateRoomPage: React.FC = () => {
       // If user opted for demo media and didn't select custom file:
       if (useDemoMedia && !selectedFile) {
         const demoResult = await createDemoRoom(name);
-        sessionStorage.setItem(`sw_session_${demoResult.room.roomCode}`, demoResult.hostSessionId);
+        sessionStorage.setItem(`cineva_session_${demoResult.room.roomCode}`, demoResult.hostSessionId);
         sessionStorage.setItem(`sw_name_${demoResult.room.roomCode}`, name);
         navigate(`/room/${demoResult.room.roomCode}`);
         return;
@@ -135,7 +135,7 @@ export const CreateRoomPage: React.FC = () => {
       activeRoomRef.current = { roomId: result.room.id, sessionId: result.hostSessionId };
 
       // Save Host identity in session
-      sessionStorage.setItem(`sw_session_${result.room.roomCode}`, result.hostSessionId);
+      sessionStorage.setItem(`cineva_session_${result.room.roomCode}`, result.hostSessionId);
       sessionStorage.setItem(`sw_name_${result.room.roomCode}`, name);
 
       // 2. Upload file if selected

@@ -179,7 +179,7 @@ async function main() {
     // Load Host Page with Init Script
     const hostPage = await hostCDP.newPage();
     await hostPage.addInitScript(`
-      sessionStorage.setItem('sw_session_' + '${roomCode}', '${hostSessionId}');
+      sessionStorage.setItem('cineva_session_' + '${roomCode}', '${hostSessionId}');
       sessionStorage.setItem('sw_name_' + '${roomCode}', 'Host User');
     `);
     await hostPage.navigate(`http://localhost:5173/room/${roomCode}`);
@@ -191,7 +191,7 @@ async function main() {
     // Load Guest Page with Init Script
     const guestPage = await guestCDP.newPage();
     await guestPage.addInitScript(`
-      sessionStorage.setItem('sw_session_' + '${roomCode}', '${guestSessionId}');
+      sessionStorage.setItem('cineva_session_' + '${roomCode}', '${guestSessionId}');
       sessionStorage.setItem('sw_name_' + '${roomCode}', 'Guest User');
     `);
     await guestPage.navigate(`http://localhost:5173/room/${roomCode}`);
@@ -355,7 +355,7 @@ async function main() {
 
     const guestPage2 = await guestCDP.newPage();
     await guestPage2.addInitScript(`
-      sessionStorage.setItem('sw_session_' + '${roomCode}', '${guest2SessionId}');
+      sessionStorage.setItem('cineva_session_' + '${roomCode}', '${guest2SessionId}');
       sessionStorage.setItem('sw_name_' + '${roomCode}', 'Guest User 2');
     `);
     await guestPage2.navigate(`http://localhost:5173/room/${roomCode}`);

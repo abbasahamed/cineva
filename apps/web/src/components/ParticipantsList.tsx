@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Crown, MoreVertical, UserX, Shield } from 'lucide-react';
-import { ParticipantInfo } from '@syncwatch/shared';
+import { ParticipantInfo } from '@cineva/shared';
 import { useToast } from './Toast.js';
 
 interface ParticipantsListProps {

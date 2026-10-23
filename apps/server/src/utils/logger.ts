@@ -1,5 +1,5 @@
 /**
- * Structured Logging Utility for SyncWatch.
+ * Structured Logging Utility for Cineva.
  *
  * Logs operational and lifecycle events with timestamps and sanitized context.
  * Complies with Section 18: Never logs private session secrets, tokens, or raw user chat messages.

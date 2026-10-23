@@ -83,7 +83,7 @@ export const CONFIG = {
   // Redis Configuration for horizontal scaling (optional)
   REDIS_URL: process.env.REDIS_URL || undefined,
 
-  SESSION_SECRET: process.env.SESSION_SECRET || "syncwatch_dev_session_secret_key_123",
+  SESSION_SECRET: process.env.SESSION_SECRET || "cineva_dev_session_secret_key_123",
   ROOM_GRACE_PERIOD_MS: 30 * 1000, // 30s before marking participant as offline
   ROOM_EXPIRATION_HOURS: 24, // 24h room lifespan
 };

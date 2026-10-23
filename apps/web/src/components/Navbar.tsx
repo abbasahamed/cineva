@@ -1,6 +1,6 @@
 import React from 'react';
 import { Film, Share2, Users, Settings, LogOut } from 'lucide-react';
-import { RoomInfo, ParticipantInfo } from '@syncwatch/shared';
+import { RoomInfo, ParticipantInfo } from '@cineva/shared';
 import { ConnectionStatus } from '../hooks/useSyncWatch.js';
 import { ThemeSelector } from './ThemeSelector.js';
 

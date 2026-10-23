@@ -10,7 +10,7 @@ export function generateRoomCode(): string {
 }
 
 export function generateSessionId(): string {
-  return 'sw_sess_' + generateToken();
+  return 'cineva_sess_' + generateToken();
 }
 
 export function generateId(prefix: string = 'sw'): string {

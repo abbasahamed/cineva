@@ -8,7 +8,7 @@ import {
   ChatMessage,
   PlaybackActivityPayload,
   RoomStateSnapshot,
-} from '@syncwatch/shared';
+} from '@cineva/shared';
 
 describe('Playback Activity in Cinema Chat Verification Suite', () => {
   let serverUrl = 'http://localhost:4065';

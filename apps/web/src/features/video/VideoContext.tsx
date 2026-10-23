@@ -7,7 +7,7 @@ import {
   RelayedVideoAnswerPayload,
   RelayedVideoIceCandidatePayload,
   RelayedVideoStatePayload,
-} from '@syncwatch/shared';
+} from '@cineva/shared';
 import { VideoCallManager } from './videoCallManager.js';
 import { VideoPeerDisplayState } from './videoCallTypes.js';
 

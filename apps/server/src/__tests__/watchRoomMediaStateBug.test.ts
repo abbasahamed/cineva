@@ -5,7 +5,7 @@ import fs from 'fs';
 import { app, server } from '../index.js';
 import { prisma } from '../db.js';
 import { io as ClientSocket, Socket as ClientSocketType } from 'socket.io-client';
-import { SOCKET_EVENTS } from '@syncwatch/shared';
+import { SOCKET_EVENTS } from '@cineva/shared';
 
 describe('Watch Room Media State Propagation Regression Test Suite', () => {
   let serverUrl: string;

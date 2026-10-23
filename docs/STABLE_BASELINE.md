@@ -11,7 +11,7 @@
 
 | Check | Result | Details |
 | :--- | :---: | :--- |
-| **Typecheck** | **PASS** | `npm run typecheck` passed (0 errors across `@syncwatch/shared`, `@syncwatch/server`, `@syncwatch/web`) |
+| **Typecheck** | **PASS** | `npm run typecheck` passed (0 errors across `@cineva/shared`, `@cineva/server`, `@cineva/web`) |
 | **Unit & Integration Tests** | **PASS** | `npm test` passed (11 test files, 105 tests all passing: 80 server + 25 web) |
 | **Production Build** | **PASS** | `npm run build` passed (Vite + TS compilation clean) |
 | **Security Audit** | **PASS** | Zero CRITICAL, zero HIGH vulnerabilities, regression test suite verified |

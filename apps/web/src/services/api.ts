@@ -1,4 +1,4 @@
-import { CreateRoomInput, JoinRoomInput, RoomInfo, ParticipantInfo } from "@syncwatch/shared";
+import { CreateRoomInput, JoinRoomInput, RoomInfo, ParticipantInfo } from "@cineva/shared";
 
 const RAW_API_URL = (import.meta.env.VITE_API_URL as string | undefined) || "";
 const API_BASE = RAW_API_URL ? `${RAW_API_URL.replace(/\/$/, "")}/api` : "/api";
