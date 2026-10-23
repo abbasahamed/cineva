@@ -104,5 +104,23 @@ Per instructions, the watch room page UI is kept intact and will be redesigned i
   - **What was verified**:
     - `npm run typecheck --workspace=@cineva/web`: 0 errors.
   - **What's next**: Step 2: Shared UI components (Logo, PillLink, Button, Field, Input, Switch, CodeInput, Dropzone, FileRow, ProgressStages).
+- **Step 2: Shared UI components Completed**:
+  - **What changed**:
+    - Created reusable, typed, accessible UI components in `apps/web/src/components/ui/`:
+      - `Logo.tsx`: matches prototype logo with simple and badge variants.
+      - `PillLink.tsx`: glass link with pointer light tracking.
+      - `Button.tsx`: supports primary (gold accent), ghost, white hero, and glass variants with loading spinner.
+      - `Field.tsx` & `Input.tsx`: accessible label, optional hint, aria-invalid states, and polite aria-live error/success message line.
+      - `Switch.tsx`: accessible `role="switch"` with `aria-checked` and smooth sliding thumb.
+      - `CodeInput.tsx`: 6 input boxes with auto-advance, backspace navigation, arrow key navigation, paste handling with alphanumeric uppercase filtering, and `onComplete` trigger.
+      - `Dropzone.tsx`: drag-and-drop, sample video button, keyboard activation with Enter/Space.
+      - `FileRow.tsx`: selected file row with filename, metadata subtitle, and remove button.
+      - `ProgressStages.tsx`: 4-stage pipeline (Uploading, Analyzing, Converting, Ready) with spinning active stage and green checkmark completed states.
+    - Added unit test suite `apps/web/src/__tests__/sharedUiComponents.test.tsx` testing 6-box input rendering, uppercase/alphanumeric filtering, auto-advance, backspace navigation, and paste handling.
+  - **What was verified**:
+    - `npx vitest run src/__tests__/sharedUiComponents.test.tsx`: 5/5 tests passed.
+    - `npm run typecheck`: 0 errors across `@cineva/shared`, `@cineva/server`, `@cineva/web`.
+  - **What's next**: Step 3: Landing page implementation matching `claude/index.html`.
+
 
 
