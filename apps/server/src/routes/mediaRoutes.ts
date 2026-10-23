@@ -8,12 +8,15 @@ import { mediaStorage, S3MediaStorage } from "../services/mediaStorage.js";
 import { mediaJobQueue } from "../services/media/mediaJobQueue.js";
 import { multipartManager } from "../services/media/multipartManager.js";
 import { CONFIG } from "../config.js";
+import { getClientIp } from "../utils/clientIp.js";
+import { checkUploadDiskQuota } from "../utils/diskQuota.js";
 
 const router = express.Router();
 
 const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
+  keyGenerator: (req) => getClientIp(req),
   message: { error: "Too many upload attempts, please try again later" },
   standardHeaders: true,
   legacyHeaders: false,
@@ -104,6 +107,12 @@ router.post("/uploads/multipart/init", uploadLimiter, async (req: Request, res: 
 
     if (numSize > CONFIG.MAX_VIDEO_SIZE_BYTES) {
       res.status(400).json({ error: "Video exceeds the 5GB upload limit" });
+      return;
+    }
+
+    const quota = checkUploadDiskQuota(numSize);
+    if (!quota.allowed) {
+      res.status(507).json({ error: quota.error });
       return;
     }
 
@@ -395,6 +404,13 @@ router.post("/upload", uploadLimiter, (req, res, next) => {
 
     if (!req.file) {
       res.status(400).json({ error: "No video file provided" });
+      return;
+    }
+
+    const quota = checkUploadDiskQuota(req.file.size);
+    if (!quota.allowed) {
+      if (uploadedPath) await fs.promises.unlink(uploadedPath).catch(() => {});
+      res.status(507).json({ error: quota.error });
       return;
     }
 

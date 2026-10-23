@@ -17,8 +17,8 @@ router.post('/', async (req: Request, res: Response) => {
     const result = await roomManager.createRoom(parsed.data);
     res.status(201).json(result);
   } catch (err: any) {
-    console.error('Error creating room:', err);
-    res.status(500).json({ error: err.message || 'Failed to create room' });
+    const status = typeof err.statusCode === 'number' ? err.statusCode : 500;
+    res.status(status).json({ error: err.message || 'Failed to create room' });
   }
 });
 
@@ -29,8 +29,8 @@ router.post('/demo', async (req: Request, res: Response) => {
     const result = await roomManager.createDemoRoom(displayName);
     res.status(201).json(result);
   } catch (err: any) {
-    console.error('Error creating demo room:', err);
-    res.status(500).json({ error: err.message || 'Failed to create demo room' });
+    const status = typeof err.statusCode === 'number' ? err.statusCode : 500;
+    res.status(status).json({ error: err.message || 'Failed to create demo room' });
   }
 });
 

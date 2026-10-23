@@ -22,6 +22,17 @@ export class RoomManager {
    * Creates a new watch room.
    */
   async createRoom(input: CreateRoomInput, hostSessionId?: string): Promise<{ room: RoomInfo; hostSessionId: string; hostParticipantId: string }> {
+    const activeRoomsCount = await prisma.room.count({
+      where: {
+        expiresAt: { gt: new Date() },
+      },
+    });
+    if (activeRoomsCount >= CONFIG.MAX_CONCURRENT_ROOMS) {
+      const err = new Error(`Server capacity reached: maximum concurrent rooms (${CONFIG.MAX_CONCURRENT_ROOMS}) active. Please try again later or join an existing room.`);
+      (err as any).statusCode = 429;
+      throw err;
+    }
+
     const roomCode = generateRoomCode();
     const sessionId = hostSessionId || generateSessionId();
 

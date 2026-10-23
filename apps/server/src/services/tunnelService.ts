@@ -184,34 +184,46 @@ class TunnelService {
       if (pids) return; // Already running
     } catch {}
 
+    let whichBin = '';
     try {
-      const whichBin = execSync('which cloudflared', { encoding: 'utf8', timeout: 1000 }).trim();
-      if (whichBin) {
-        const token = (process.env.CLOUDFLARE_TUNNEL_TOKEN || '').trim();
-        const onChildError = (err: any) => {
-          logger.warn('[TunnelService] cloudflared process error', { error: err?.message });
-          if (this.cloudflaredChild === child) this.cloudflaredChild = null;
-        };
-        const onChildExit = () => {
-          if (this.cloudflaredChild === child) this.cloudflaredChild = null;
-        };
+      whichBin = execSync('which cloudflared', { encoding: 'utf8', timeout: 1000 }).trim();
+    } catch {
+      logger.warn(`[TunnelService] cloudflared not found in PATH. Operating in local mode (http://localhost:${localPort}). Install via 'brew install cloudflared' to enable public tunnels.`);
+      return;
+    }
 
-        let child: any;
-        if (token) {
-          logger.info('[TunnelService] Auto-spawning Cloudflare Named Tunnel process with token...', { bin: whichBin });
-          child = spawn(whichBin, ['tunnel', 'run', '--token', token], {
-            stdio: 'ignore',
-          });
-        } else {
-          logger.info('[TunnelService] Auto-spawning Cloudflare Quick Tunnel process...', { bin: whichBin, localPort });
-          child = spawn(whichBin, ['tunnel', '--url', `http://localhost:${localPort}`, '--metrics', '127.0.0.1:20241'], {
-            stdio: 'ignore',
-          });
-        }
-        child.on('error', onChildError);
-        child.on('exit', onChildExit);
-        this.cloudflaredChild = child;
+    // Check if trycloudflare.com resolves via current DNS
+    dns.lookup('api.trycloudflare.com', (dnsErr) => {
+      if (dnsErr) {
+        logger.warn(`[TunnelService] DNS lookup for api.trycloudflare.com failed (${dnsErr.code || dnsErr.message}). Your ISP/router DNS might be blocking trycloudflare.com. If the tunnel fails to connect, consider manually configuring DNS (e.g. 'networksetup -setdnsservers Wi-Fi 1.1.1.1 8.8.8.8').`);
       }
+    });
+
+    try {
+      const token = (process.env.CLOUDFLARE_TUNNEL_TOKEN || '').trim();
+      const onChildError = (err: any) => {
+        logger.warn('[TunnelService] cloudflared process error', { error: err?.message });
+        if (this.cloudflaredChild === child) this.cloudflaredChild = null;
+      };
+      const onChildExit = () => {
+        if (this.cloudflaredChild === child) this.cloudflaredChild = null;
+      };
+
+      let child: any;
+      if (token) {
+        logger.info('[TunnelService] Auto-spawning Cloudflare Named Tunnel process with token...', { bin: whichBin });
+        child = spawn(whichBin, ['tunnel', 'run', '--token', token], {
+          stdio: 'ignore',
+        });
+      } else {
+        logger.info('[TunnelService] Auto-spawning Cloudflare Quick Tunnel process...', { bin: whichBin, localPort });
+        child = spawn(whichBin, ['tunnel', '--url', `http://localhost:${localPort}`, '--metrics', '127.0.0.1:20241'], {
+          stdio: 'ignore',
+        });
+      }
+      child.on('error', onChildError);
+      child.on('exit', onChildExit);
+      this.cloudflaredChild = child;
     } catch (err: any) {
       logger.warn('[TunnelService] Failed to auto-spawn cloudflared', { error: err?.message });
     }

@@ -18,6 +18,7 @@ import { mediaStorage } from './services/mediaStorage.js';
 import { setupSocketHandlers } from './sockets/socketHandler.js';
 import { logger } from './utils/logger.js';
 import { tunnelService } from './services/tunnelService.js';
+import { getClientIp } from './utils/clientIp.js';
 
 const execFilePromise = util.promisify(execFile);
 
@@ -145,6 +146,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 1000, // 1000 requests per IP
+  keyGenerator: (req) => getClientIp(req),
   message: { error: 'Too many requests. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -155,6 +157,7 @@ app.use('/api', apiLimiter);
 const roomCreationLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
   max: 30, // 30 rooms per IP per 10 mins
+  keyGenerator: (req) => getClientIp(req),
   message: { error: 'Too many rooms created recently. Please wait a few minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -164,6 +167,7 @@ const roomCreationLimiter = rateLimit({
 const roomJoinLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
   max: 60, // 60 join attempts per IP per 5 mins
+  keyGenerator: (req) => getClientIp(req),
   message: { error: 'Too many join attempts. Please wait a few minutes.' },
   standardHeaders: true,
   legacyHeaders: false,

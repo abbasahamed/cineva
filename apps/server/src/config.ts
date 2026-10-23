@@ -52,6 +52,11 @@ export const CONFIG = {
   ALLOWED_ORIGINS: allowedOrigins,
   DATABASE_URL: process.env.DATABASE_URL || "file:./dev.db",
   
+  // Abuse prevention limits & capacity controls
+  MAX_CONCURRENT_ROOMS: parseInt(process.env.MAX_CONCURRENT_ROOMS || (nodeEnv === "test" ? "100" : "3"), 10),
+  MAX_TOTAL_STORAGE_GB: parseInt(process.env.MAX_TOTAL_STORAGE_GB || "20", 10),
+  MAX_TOTAL_STORAGE_BYTES: parseInt(process.env.MAX_TOTAL_STORAGE_GB || "20", 10) * 1024 * 1024 * 1024,
+
   // Media Storage Configuration
   STORAGE_DRIVER: storageDriver,
   MEDIA_STORAGE_PATH: path.resolve(process.cwd(), process.env.MEDIA_STORAGE_PATH || "./uploads"),

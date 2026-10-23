@@ -88,9 +88,23 @@ async function main() {
     console.log(`  Create a room: ${publicUrl}/create`);
   } else {
     console.log(`  Local:         ${base}`);
-    console.log('  (The public tunnel URL did not appear yet. It usually takes a');
-    console.log('   few seconds after cloudflared starts. If it never appears,');
-    console.log('   run: brew install cloudflared, then retry.)');
+    let dnsFailed = false;
+    try {
+      const dns = await import('node:dns/promises');
+      await dns.lookup('api.trycloudflare.com');
+    } catch {
+      dnsFailed = true;
+    }
+    if (dnsFailed) {
+      console.log('  ⚠️  DNS lookup failed for api.trycloudflare.com.');
+      console.log('     Your local Wi-Fi or router DNS cannot resolve Cloudflare quick tunnels.');
+      console.log('     To fix, you can manually switch macOS DNS to 1.1.1.1 / 8.8.8.8:');
+      console.log('     networksetup -setdnsservers Wi-Fi 1.1.1.1 8.8.8.8');
+    } else {
+      console.log('  (The public tunnel URL did not appear yet. It usually takes a');
+      console.log('   few seconds after cloudflared starts. If it never appears,');
+      console.log('   run: brew install cloudflared, then retry.)');
+    }
   }
   console.log('  Room code:    created when you start a screening \u2014 open the');
   console.log('                link above and click "Create a room".');
