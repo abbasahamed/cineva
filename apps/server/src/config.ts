@@ -86,6 +86,13 @@ export const CONFIG = {
   SESSION_SECRET: process.env.SESSION_SECRET || "cineva_dev_session_secret_key_123",
   ROOM_GRACE_PERIOD_MS: 30 * 1000, // 30s before marking participant as offline
   ROOM_EXPIRATION_HOURS: 24, // 24h room lifespan
+
+  // Single-port serving & networking
+  ENABLE_TUNNEL: (process.env.ENABLE_TUNNEL || "false").toLowerCase() === "true",
+  KEEP_AWAKE: (process.env.KEEP_AWAKE || "true").toLowerCase() === "true",
+  // Absolute path to the built web app; served from this process so one
+  // port (and one tunnel) fronts both the site and the sockets.
+  WEB_DIST_PATH: path.resolve(__dirname, "..", "..", "web", "dist"),
 };
 
 // Validate required storage configuration in production when S3 driver is selected

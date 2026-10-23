@@ -202,7 +202,14 @@ describe('Host Identity & Role State Regression Test Suite', () => {
     expect(playResult.playback.position).toBe(10);
   });
 
-  it('8. Guest Cannot Control Playback: Unauthorized playback command from guest is rejected', async () => {
+  it('8. Guest Cannot Control Playback after host disables guest control', async () => {
+    // Default is equal control, so the host explicitly disables it first.
+    const settingsApplied = new Promise<void>((resolve) => {
+      guestSocket.once('room:updated', () => resolve());
+    });
+    hostSocket.emit(SOCKET_EVENTS.ROOM_UPDATE_SETTINGS, { allowGuestControl: false });
+    await settingsApplied;
+
     const errorPromise = new Promise<{ message: string }>((resolve) => {
       guestSocket.once(SOCKET_EVENTS.ERROR, (err: { message: string }) => {
         resolve(err);

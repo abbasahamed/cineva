@@ -48,14 +48,23 @@ class TunnelService {
     }
   }
 
+  private cloudflaredChild: any = null;
+
   /**
    * Forcibly restarts cloudflared to obtain a fresh quick tunnel.
    */
   public restartCloudflared(localPort: number = CONFIG.PORT || 4000): void {
     logger.warn('[TunnelService] Restarting cloudflared process to obtain fresh live tunnel...');
-    try {
-      execSync('pkill -9 -f cloudflared || true', { encoding: 'utf8', timeout: 2000 });
-    } catch {}
+    if (this.cloudflaredChild) {
+      try {
+        this.cloudflaredChild.kill('SIGTERM');
+      } catch {}
+      this.cloudflaredChild = null;
+    } else {
+      try {
+        execSync('pkill -9 -f cloudflared || true', { encoding: 'utf8', timeout: 2000 });
+      } catch {}
+    }
     this.activeTunnelUrl = null;
     this.ensureCloudflaredRunning(localPort);
   }
@@ -167,6 +176,9 @@ class TunnelService {
    * Auto-spawn cloudflared quick tunnel if no cloudflared process is running and binary is available.
    */
   public ensureCloudflaredRunning(localPort: number = CONFIG.PORT || 4000): void {
+    if (this.cloudflaredChild && !this.cloudflaredChild.killed) {
+      return;
+    }
     try {
       const pids = execSync('pgrep -f cloudflared', { encoding: 'utf8', timeout: 1000 }).trim();
       if (pids) return; // Already running
@@ -176,21 +188,29 @@ class TunnelService {
       const whichBin = execSync('which cloudflared', { encoding: 'utf8', timeout: 1000 }).trim();
       if (whichBin) {
         const token = (process.env.CLOUDFLARE_TUNNEL_TOKEN || '').trim();
+        const onChildError = (err: any) => {
+          logger.warn('[TunnelService] cloudflared process error', { error: err?.message });
+          if (this.cloudflaredChild === child) this.cloudflaredChild = null;
+        };
+        const onChildExit = () => {
+          if (this.cloudflaredChild === child) this.cloudflaredChild = null;
+        };
+
+        let child: any;
         if (token) {
           logger.info('[TunnelService] Auto-spawning Cloudflare Named Tunnel process with token...', { bin: whichBin });
-          const child = spawn(whichBin, ['tunnel', 'run', '--token', token], {
-            detached: true,
+          child = spawn(whichBin, ['tunnel', 'run', '--token', token], {
             stdio: 'ignore',
           });
-          child.unref();
         } else {
           logger.info('[TunnelService] Auto-spawning Cloudflare Quick Tunnel process...', { bin: whichBin, localPort });
-          const child = spawn(whichBin, ['tunnel', '--url', `http://localhost:${localPort}`, '--metrics', '127.0.0.1:20241'], {
-            detached: true,
+          child = spawn(whichBin, ['tunnel', '--url', `http://localhost:${localPort}`, '--metrics', '127.0.0.1:20241'], {
             stdio: 'ignore',
           });
-          child.unref();
         }
+        child.on('error', onChildError);
+        child.on('exit', onChildExit);
+        this.cloudflaredChild = child;
       }
     } catch (err: any) {
       logger.warn('[TunnelService] Failed to auto-spawn cloudflared', { error: err?.message });
@@ -358,6 +378,16 @@ class TunnelService {
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
+    }
+  }
+
+  public stop(): void {
+    this.stopDiscovery();
+    if (this.cloudflaredChild) {
+      try {
+        this.cloudflaredChild.kill('SIGTERM');
+      } catch {}
+      this.cloudflaredChild = null;
     }
   }
 }

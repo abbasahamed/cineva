@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Copy, Check, Share2, Link2, Users } from 'lucide-react';
 import { useToast } from './Toast.js';
+import { getPublicUrl } from '../services/api.js';
 
 interface ShareModalProps {
   isOpen: boolean;
@@ -18,10 +19,19 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const { showToast } = useToast();
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [publicUrl, setPublicUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      getPublicUrl().then(setPublicUrl).catch(() => setPublicUrl(null));
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const shareUrl = `${window.location.origin}/join/${roomCode}`;
+  // Prefer the server's active tunnel URL so invite links are never localhost
+  // when a public tunnel is live; otherwise fall back to the current origin.
+  const shareUrl = `${publicUrl || window.location.origin}/join/${roomCode}`;
   const hasNativeShare = typeof navigator !== 'undefined' && !!navigator.share;
 
   const handleCopyLink = () => {

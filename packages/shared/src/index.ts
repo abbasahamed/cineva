@@ -268,7 +268,7 @@ export const CreateRoomSchema = z.object({
   displayName: z.string().trim().min(1, 'Display name is required').max(30, 'Display name too long'),
   roomName: z.string().trim().min(1, 'Room name is required').max(60, 'Room name too long'),
   mediaTitle: z.string().trim().max(100).optional(),
-  allowGuestControl: z.boolean().default(false),
+  allowGuestControl: z.boolean().default(true),
 });
 
 export type CreateRoomInput = z.input<typeof CreateRoomSchema>;

@@ -1,7 +1,7 @@
 import { analyzeMediaFile } from './services/media/mediaAnalyzer.js';
 import { getFfmpegPath, getFfprobePath } from './services/media/binaryResolver.js';
 import express, { Request, Response, NextFunction } from 'express';
-import { execFile, execSync } from 'child_process';
+import { execFile, execSync, spawn, type ChildProcess } from 'child_process';
 import util from 'util';
 import path from 'path';
 import fs from 'fs';
@@ -11,12 +11,13 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { CONFIG, validateStorageConfig } from './config.js';
-import { connectDB } from './db.js';
+import { connectDB, prisma } from './db.js';
 import roomRoutes from './routes/roomRoutes.js';
 import mediaRoutes from './routes/mediaRoutes.js';
 import { mediaStorage } from './services/mediaStorage.js';
 import { setupSocketHandlers } from './sockets/socketHandler.js';
 import { logger } from './utils/logger.js';
+import { tunnelService } from './services/tunnelService.js';
 
 const execFilePromise = util.promisify(execFile);
 
@@ -61,6 +62,9 @@ const isProduction = CONFIG.NODE_ENV === 'production';
 // CORS Origin Check
 function isOriginAllowed(origin: string | undefined): boolean {
   if (!origin) return true; // allow non-browser requests or same-origin
+  // When a quick tunnel is active, the page is served from the (dynamic)
+  // tunnel hostname, so accept any origin; room codes still gate access.
+  if (CONFIG.ENABLE_TUNNEL) return true;
   if (!isProduction) {
     if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
       return true;
@@ -252,6 +256,12 @@ app.get('/api/system/diagnostics', async (_req: Request, res: Response) => {
   });
 });
 
+// Public URL endpoint — the active Cloudflare tunnel URL (or null). The web
+// client uses this to build share links that never expose a localhost address.
+app.get('/api/system/public-url', (_req: Request, res: Response) => {
+  res.json({ publicUrl: tunnelService.getActiveTunnelUrl() });
+});
+
 // REST Routes
 app.use('/api/rooms', roomRoutes);
 app.use('/api/media', mediaRoutes);
@@ -265,6 +275,20 @@ app.get('/media/*', (req: Request, res: Response) => {
   }
   mediaStorage.streamFile(decodeURIComponent(storageKey), req, res);
 });
+
+// Serve the built web app from this same process so a single port (and a
+// single tunnel) fronts both the site and the sockets. engine.io intercepts
+// /socket.io before Express, so the SPA fallback only sees page requests.
+const webIndex = path.join(CONFIG.WEB_DIST_PATH, 'index.html');
+if (fs.existsSync(webIndex)) {
+  app.use(express.static(CONFIG.WEB_DIST_PATH, { index: 'index.html' }));
+  app.get('*', (req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api') || req.path.startsWith('/media')) {
+      return next();
+    }
+    res.sendFile(webIndex);
+  });
+}
 
 import { setMediaSocketIO } from './services/media/mediaJobQueue.js';
 
@@ -286,6 +310,45 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 import { tempFileLifecycle } from './services/media/tempFileLifecycle.js';
+
+let caffeinateProcess: ChildProcess | null = null;
+let shuttingDown = false;
+
+function cleanupCaffeinate() {
+  if (caffeinateProcess) {
+    try {
+      caffeinateProcess.kill('SIGTERM');
+    } catch { /* already gone */ }
+    caffeinateProcess = null;
+  }
+}
+
+function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info('shutting_down', { signal });
+  cleanupCaffeinate();
+  tunnelService.stop();
+  server.close(() => {
+    prisma.$disconnect()
+      .catch(() => undefined)
+      .finally(() => process.exit(0));
+  });
+  // Force-exit if open sockets keep the handle alive past a short grace window.
+  setTimeout(() => process.exit(0), 3000).unref();
+}
+
+process.on('exit', () => {
+  cleanupCaffeinate();
+  tunnelService.stop();
+});
+
+process.on('uncaughtException', (err: any) => {
+  logger.error('uncaught_exception', { message: err?.message, stack: err?.stack });
+  cleanupCaffeinate();
+  tunnelService.stop();
+  process.exit(1);
+});
 
 // Start server
 async function start() {
@@ -323,11 +386,44 @@ async function start() {
     logger.warn('Startup temporary file cleanup error', { message: err.message });
   }
 
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+  // If the port is already taken, exit cleanly without leaking child processes.
+  server.on('error', (err: any) => {
+    logger.error('server_error', { message: err?.message });
+    cleanupCaffeinate();
+    tunnelService.stop();
+    process.exit(1);
+  });
+
   server.listen(CONFIG.PORT, () => {
+    // Spawn the macOS keep-awake guard only after the server has bound its
+    // port, and bind it to the server process pid (-w <pid>) so the OS terminates
+    // it automatically even in abnormal aborts.
+    if (CONFIG.KEEP_AWAKE && process.platform === 'darwin') {
+      try {
+        caffeinateProcess = spawn('caffeinate', ['-dims', '-w', String(process.pid)], { stdio: 'ignore' });
+        caffeinateProcess.on('error', (err: any) => {
+          logger.warn('caffeinate_error', { message: err?.message });
+          caffeinateProcess = null;
+        });
+        logger.info('caffeinate_started', { pid: caffeinateProcess.pid });
+      } catch (err: any) {
+        logger.warn('caffeinate_failed', { message: err?.message });
+      }
+    }
+
+    // Start the Cloudflare quick-tunnel discovery loop when requested.
+    if (CONFIG.ENABLE_TUNNEL) {
+      tunnelService.startDiscovery();
+    }
+
     logger.info('server_started', {
       port: CONFIG.PORT,
       env: CONFIG.NODE_ENV,
       storageDriver: CONFIG.STORAGE_DRIVER,
+      tunnel: CONFIG.ENABLE_TUNNEL ? 'enabled' : 'disabled',
     });
   });
 }

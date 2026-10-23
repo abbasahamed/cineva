@@ -69,6 +69,22 @@ describe('RoomManager Integration Tests', () => {
     expect(canControl).toBe(true);
   });
 
+  it('should allow guests to control playback by default (equal control)', async () => {
+    // allowGuestControl omitted -> defaults to true (equal control).
+    const hostResult = await roomManager.createRoom({
+      displayName: 'Host Person',
+      roomName: 'Equal Control Room',
+    });
+
+    const guestJoin = await roomManager.joinRoom({
+      roomCode: hostResult.room.roomCode,
+      displayName: 'Guest Default',
+    });
+
+    const canControl = await roomManager.canControlPlayback(hostResult.room.id, guestJoin.sessionId);
+    expect(canControl).toBe(true);
+  });
+
   it('should handle rejoining user with existing sessionId without duplicate participants', async () => {
     const hostResult = await roomManager.createRoom({
       displayName: 'Original Host',

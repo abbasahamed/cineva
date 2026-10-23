@@ -31,7 +31,7 @@ export class RoomManager {
         name: input.roomName,
         hostParticipantId: '', // updated right after participant creation
         hostSessionId: sessionId,
-        allowGuestControl: input.allowGuestControl || false,
+        allowGuestControl: input.allowGuestControl ?? true,
         expiresAt: new Date(Date.now() + CONFIG.ROOM_EXPIRATION_HOURS * 3600 * 1000),
       },
     });
@@ -80,7 +80,7 @@ export class RoomManager {
     const result = await this.createRoom({
       displayName,
       roomName: '🎬 Demo Watch Room',
-      allowGuestControl: false,
+      allowGuestControl: true,
     });
 
     // Create or attach demo media

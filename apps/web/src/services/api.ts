@@ -37,6 +37,24 @@ export async function createRoom(data: CreateRoomInput): Promise<CreateRoomRespo
   return res.json();
 }
 
+/**
+ * Fetches the server's active public URL (Cloudflare tunnel) if one is live.
+ * Used for invite links so we never share a localhost address when a tunnel
+ * is active. Returns null when no tunnel is available.
+ */
+export async function getPublicUrl(): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/system/public-url`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { publicUrl?: string | null };
+    const url = typeof data.publicUrl === "string" ? data.publicUrl.trim() : "";
+    return url ? url.replace(/\/+$/, "") : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Normal cancellation or upload failure: issues a standard JSON POST request.

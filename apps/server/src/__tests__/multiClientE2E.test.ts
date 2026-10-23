@@ -258,7 +258,14 @@ describe('Real Multi-Client WebSocket End-to-End Verification Suite', () => {
     expect(res.playback.playbackRate).toBe(1.5);
   });
 
-  it('Step 14: Host Authority Security -> Unauthorized commands by Guest 1 are rejected', async () => {
+  it('Step 14: Host can disable guest control -> unauthorized guest pause is rejected', async () => {
+    // Default is equal control, so the host explicitly disables it first.
+    const settingsApplied = new Promise<void>((resolve) => {
+      guest1Socket.once('room:updated', () => resolve());
+    });
+    hostSocket.emit(SOCKET_EVENTS.ROOM_UPDATE_SETTINGS, { allowGuestControl: false });
+    await settingsApplied;
+
     const guest1ErrorPromise = new Promise<any>((resolve) => {
       guest1Socket.once(SOCKET_EVENTS.ERROR, (err) => resolve(err));
     });

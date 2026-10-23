@@ -181,7 +181,14 @@ describe('Playback Activity in Cinema Chat Verification Suite', () => {
     guestSocket.off(SOCKET_EVENTS.CHAT_MESSAGE, guestHandler);
   });
 
-  it('5. Unauthorized guest control without permission is rejected', async () => {
+  it('5. Unauthorized guest control is rejected after host disables guest control', async () => {
+    // Default is equal control, so the host disables it first.
+    const settingsApplied = new Promise<void>((resolve) => {
+      guestSocket.once('room:updated', () => resolve());
+    });
+    hostSocket.emit(SOCKET_EVENTS.ROOM_UPDATE_SETTINGS, { allowGuestControl: false });
+    await settingsApplied;
+
     const guestReceived: ChatMessage[] = [];
     const guestHandler = (msg: ChatMessage) => {
       if (msg.isSystem && msg.message.includes('Rahul')) guestReceived.push(msg);
