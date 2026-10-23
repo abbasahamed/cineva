@@ -118,6 +118,31 @@ export async function createDemoRoom(displayName: string = "Host"): Promise<Crea
   return res.json();
 }
 
+export interface RoomCheckResult {
+  exists: boolean;
+  joinable: boolean;
+  status: 'active' | 'ended' | 'expired';
+  isFull: boolean;
+}
+
+/**
+ * Privacy-safe room lookup: checks whether a room exists and is joinable
+ * without leaking host identity, room title, or media details.
+ */
+export async function checkRoom(roomCode: string): Promise<RoomCheckResult> {
+  const res = await fetch(`${API_BASE}/rooms/${encodeURIComponent(roomCode.toUpperCase())}?check=true`);
+
+  if (!res.ok) {
+    if (res.status === 404) {
+      throw new Error("Room not found");
+    }
+    const err = await res.json().catch(() => ({ error: "Failed to check room" }));
+    throw new Error(err.error || "Failed to check room");
+  }
+
+  return res.json();
+}
+
 export async function getRoomDetails(roomCode: string): Promise<RoomInfo> {
   const res = await fetch(`${API_BASE}/rooms/${encodeURIComponent(roomCode.toUpperCase())}`);
 

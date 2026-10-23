@@ -159,3 +159,23 @@ Per instructions, the watch room page UI is kept intact and will be redesigned i
     - `npm run typecheck --workspace=@cineva/web`: 0 errors.
     - `npm test --workspace=@cineva/web`: 51/51 tests passed.
   - **What's next**: Step 5: Join room page (`JoinRoomPage.tsx`) matching `claude/join.html`.
+- **Step 5: Join room page Completed**:
+  - **What changed**:
+    - Replaced `JoinRoomPage.tsx` with full port of `claude/join.html`.
+    - Integrated ambient backdrop with blurred color fields and film still.
+    - Added pointer sheen illumination on the glass card (`--mx`, `--my`) via `pointermove`.
+    - Implemented 6-box room code input: auto-advance on keystroke, backspace navigation, arrow key navigation, paste handling with alphanumeric uppercase filtering, auto-focus.
+    - Supported prefill from `?code=` query param and route params; auto-focuses name field when prefilled.
+    - Replaced fake timer with real privacy-safe room lookup (`checkRoom` via `GET /api/rooms/:roomCode?check=true`).
+    - Handled honest error feedback without leaking room/host private details:
+      - Valid joinable room: `Room found. Add your name to join.` (green `ok` status).
+      - Incomplete code: `Enter all six characters of the code.` with `.bad` input border.
+      - Nonexistent room: `That room doesn't exist. Check the code.`
+      - Ended room: `This room has ended.`
+      - Full room: `This room is full.`
+      - Network error: `Network error checking room. Check your connection.`
+    - Retained all existing join logic: `joinRoom` API call, session ID and display name storage in `sessionStorage`, navigation into `/room/:code`.
+  - **What was verified**:
+    - `npm run typecheck`: 0 errors across `@cineva/shared`, `@cineva/server`, `@cineva/web`.
+    - `npm test`: 181/181 tests passed (130 server, 51 web).
+  - **What's next**: Step 6: Clean up old unused landing/create/join components while preserving watch room UI.

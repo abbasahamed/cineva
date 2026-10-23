@@ -34,7 +34,7 @@ router.post('/demo', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/rooms/:roomCode - Get Room Details
+// GET /api/rooms/:roomCode - Get Room Details or Privacy-Safe Check
 router.get('/:roomCode', async (req: Request, res: Response) => {
   try {
     const rawCode = req.params.roomCode;
@@ -42,7 +42,24 @@ router.get('/:roomCode', async (req: Request, res: Response) => {
     const room = await roomManager.getRoomByCode(roomCode);
 
     if (!room) {
-      res.status(404).json({ error: 'Room not found' });
+      res.status(404).json({ error: 'Room not found', exists: false, joinable: false });
+      return;
+    }
+
+    if (req.query.check === 'true') {
+      const isEnded = room.status === 'ended' || room.status === 'expired';
+      const participants = await prisma.participant.count({
+        where: { roomId: room.id, isOnline: true },
+      });
+      const isFull = participants >= room.maxParticipants;
+      const joinable = !isEnded && !isFull;
+
+      res.json({
+        exists: true,
+        joinable,
+        status: room.status,
+        isFull,
+      });
       return;
     }
 
