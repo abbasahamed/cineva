@@ -137,3 +137,25 @@ Per instructions, the watch room page UI is kept intact and will be redesigned i
     - `npm run typecheck --workspace=@cineva/web`: 0 errors.
     - `npm test --workspace=@cineva/web`: 51/51 tests passed.
   - **What's next**: Step 4: Create room page (`CreateRoomPage.tsx`) matching `claude/create.html`.
+- **Step 4: Create room page Completed**:
+  - **What changed**:
+    - Replaced `CreateRoomPage.tsx` with full port of `claude/create.html`.
+    - Integrated ambient background with blurred color fields and film still.
+    - Added pointer sheen illumination on the glass card (`--mx`, `--my`) via `pointermove`.
+    - Implemented dropzone with file picker, sample video button, drag-and-drop states, and keyboard accessibility (`Enter` / `Space`).
+    - Implemented selected file row with filename, formatted file size, and remove button.
+    - Implemented file validation: rejects files > 5 GB with exact message (`This file is over 5 GB. Choose a smaller one.`), detects MKV and displays `Will be converted for browsers`.
+    - Implemented display name validation with alert message (`Enter a name so your friends know who you are.`).
+    - Wired switch "Guests can play, pause and skip" (default checked) to `allowGuestControl` room creation parameter.
+    - Retained all real backend logic: `createRoom` API call, chunked multipart upload via `uploadMedia`, session ID tracking in `sessionStorage`, and `beforeunload` beacon cleanup.
+    - Wired real 4-stage preparing panel:
+      - `Uploading`: tracks multipart upload bytes and percent, calculating live ETA.
+      - `Analyzing`: maps to server's ffprobe inspection / analysis stage.
+      - `Converting`: maps to server's FFmpeg transcoding progress events (`SOCKET_EVENTS.MEDIA_PROGRESS`).
+      - `Ready`: marks all stages complete with green checkmarks, reveals invite link input with "Copy" button (1600ms copied feedback) and "Enter the room" button.
+    - Wired public invite URL to `getPublicUrl()` (`/api/system/public-url`) ensuring tunnel domain is used over localhost when tunnel is live.
+    - Implemented real Cancel button that aborts upload/job on server and cleans up active room resources via `abortRoom`.
+  - **What was verified**:
+    - `npm run typecheck --workspace=@cineva/web`: 0 errors.
+    - `npm test --workspace=@cineva/web`: 51/51 tests passed.
+  - **What's next**: Step 5: Join room page (`JoinRoomPage.tsx`) matching `claude/join.html`.

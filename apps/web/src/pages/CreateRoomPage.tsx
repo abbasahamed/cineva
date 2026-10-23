@@ -1,419 +1,655 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
-  Film,
-  ArrowLeft,
-  UploadCloud,
-  CheckCircle2,
-  Trash2,
-  AlertCircle,
-  Tv,
-} from 'lucide-react';
-import { createRoom, createDemoRoom, uploadMedia, abortRoom, sendAbortBeacon } from '../services/api.js';
-import { CinematicBackground } from '../components/CinematicBackground.js';
+  createRoom,
+  createDemoRoom,
+  uploadMedia,
+  abortRoom,
+  sendAbortBeacon,
+  getPublicUrl,
+} from '../services/api.js';
+import { socketService } from '../services/socket.js';
+import { SOCKET_EVENTS } from '@cineva/shared';
+import { AmbientBackground } from '../components/AmbientBackground.js';
 
 export const CreateRoomPage: React.FC = () => {
   const navigate = useNavigate();
-  const [displayName, setDisplayName] = useState('');
-  const [roomName, setRoomName] = useState('');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [useDemoMedia, setUseDemoMedia] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [uploadDetails, setUploadDetails] = useState<{ uploadedBytes: number; totalBytes: number } | null>(null);
-  const activeRoomRef = useRef<{ roomId: string; sessionId: string } | null>(null);
-  const isCancelledRef = useRef<boolean>(false);
 
-  // Clean up abandoned room if user closes browser during upload
+  // Form state
+  const [displayName, setDisplayName] = useState('');
+  const [roomTitle, setRoomTitle] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isSample, setIsSample] = useState(false);
+  const [allowGuestControl, setAllowGuestControl] = useState(true);
+
+  // Errors & UI states
+  const [nameError, setNameError] = useState('');
+  const [fileError, setFileError] = useState('');
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  // Preparing / Ready state
+  const [isPreparing, setIsPreparing] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+  const [currentStage, setCurrentStage] = useState(0); // 0: Uploading, 1: Analyzing, 2: Converting, 3: Ready, 4: All Done
+  const [progressBarWidth, setProgressBarWidth] = useState(0);
+  const [progressStateText, setProgressStateText] = useState('Uploading');
+  const [etaText, setEtaText] = useState('');
+  const [inviteLink, setInviteLink] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [createdRoomCode, setCreatedRoomCode] = useState<string | null>(null);
+
+  // Refs
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const filePickerRef = useRef<HTMLInputElement>(null);
+  const dropzoneRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLElement>(null);
+  const activeRoomRef = useRef<{ roomId: string; sessionId: string; roomCode: string } | null>(null);
+  const isCancelledRef = useRef<boolean>(false);
+  const uploadStartTimeRef = useRef<number>(0);
+
+  // Pointer sheen tracker on card and pill links
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    const target = e.currentTarget as HTMLElement;
+    const rect = target.getBoundingClientRect();
+    target.style.setProperty('--mx', `${e.clientX - rect.left}px`);
+    target.style.setProperty('--my', `${e.clientY - rect.top}px`);
+  }, []);
+
+  // Cleanup abandoned room on unexpected beforeunload
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if (activeRoomRef.current) {
+      if (activeRoomRef.current && !isReady) {
         const { roomId, sessionId } = activeRoomRef.current;
-        // Dispatches single CORS-simple application/x-www-form-urlencoded beacon to Railway API
         sendAbortBeacon(roomId, sessionId);
       }
     };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, []);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isReady]);
 
-  const formatBytes = (bytes: number): string => {
-    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  // Size helper matching prototype: b >= 1073741824 ? (b/1073741824).toFixed(1)+' GB' : (b/1048576).toFixed(0)+' MB'
+  const formatFileSize = (bytes: number): string => {
+    if (bytes >= 1073741824) {
+      return `${(bytes / 1073741824).toFixed(1)} GB`;
+    }
+    return `${(bytes / 1048576).toFixed(0)} MB`;
   };
 
-  const handleCancelUpload = async () => {
-    isCancelledRef.current = true;
-    if (activeRoomRef.current) {
-      const { roomId, sessionId } = activeRoomRef.current;
-      activeRoomRef.current = null;
-      await abortRoom(roomId, sessionId);
-    }
-    setIsSubmitting(false);
-    setUploadProgress(null);
-    setUploadDetails(null);
-    setError("Upload cancelled by user.");
-  };
-  const [error, setError] = useState<string | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleFileChange = (file: File) => {
-    setError(null);
-    const validExtensions = ['.mp4', '.webm', '.mkv', '.mov', '.ogg', '.ogv'];
-    const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-
-    const isVideoExtension = validExtensions.includes(ext);
-    const isVideoMime =
-      file.type.startsWith('video/') ||
-      file.type === 'application/x-matroska' ||
-      file.type === 'application/mkv' ||
-      file.type === 'application/octet-stream' ||
-      file.type === '';
-
-    if (!isVideoExtension && !isVideoMime) {
-      setError('Please select a valid video format (MP4, WebM, MKV, MOV, OGG).');
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024 * 1024) {
-      setError('Video file exceeds the 5GB upload limit.');
+  const handleSelectFile = (file: File | null, useSampleMedia = false) => {
+    setFileError('');
+    if (file && file.size > 5 * 1073741824) {
+      setFileError('This file is over 5 GB. Choose a smaller one.');
       return;
     }
 
     setSelectedFile(file);
-    setUseDemoMedia(false);
-    if (!roomName.trim()) {
-      const clean = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
-      setRoomName(clean);
+    setIsSample(useSampleMedia);
+
+    if (filePickerRef.current && !file) {
+      filePickerRef.current.value = '';
     }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFileChange(e.dataTransfer.files[0]);
+    setIsDragOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleSelectFile(e.dataTransfer.files[0], false);
     }
   };
 
+  const handleDropzoneKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      filePickerRef.current?.click();
+    }
+  };
+
+  // Cancel action
+  const handleCancel = async () => {
+    isCancelledRef.current = true;
+    if (activeRoomRef.current) {
+      const { roomId, sessionId } = activeRoomRef.current;
+      activeRoomRef.current = null;
+      await abortRoom(roomId, sessionId).catch(() => {});
+    }
+    setIsPreparing(false);
+    setIsReady(false);
+    setCurrentStage(0);
+    setProgressBarWidth(0);
+    setProgressStateText('Uploading');
+    setEtaText('');
+    setCreatedRoomCode(null);
+  };
+
+  // Copy invite link action
+  const handleCopyLink = async () => {
+    if (!inviteLink) return;
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(inviteLink);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Fallback
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    }
+  };
+
+  // Submit Handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    let valid = true;
 
-    const name = displayName.trim();
-    const rName = roomName.trim() || 'Watch Room';
+    const trimmedName = displayName.trim();
+    if (!trimmedName) {
+      setNameError('Enter a name so your friends know who you are.');
+      valid = false;
+    } else {
+      setNameError('');
+    }
 
-    if (!name) {
-      setError('Please enter your display name.');
+    if (!selectedFile && !isSample) {
+      setFileError('Add a movie to start the room.');
+      valid = false;
+    }
+
+    if (!valid) {
+      if (!trimmedName) {
+        nameInputRef.current?.focus();
+      } else {
+        dropzoneRef.current?.focus();
+      }
       return;
     }
 
-    try {
-      setIsSubmitting(true);
+    // Switch to preparing UI
+    setIsPreparing(true);
+    setIsReady(false);
+    setCurrentStage(0);
+    setProgressBarWidth(0);
+    setProgressStateText('Uploading');
+    setEtaText('');
+    isCancelledRef.current = false;
+    uploadStartTimeRef.current = Date.now();
 
-      // If user opted for demo media and didn't select custom file:
-      if (useDemoMedia && !selectedFile) {
-        const demoResult = await createDemoRoom(name);
+    try {
+      // 1. If Sample Video was selected
+      if (isSample) {
+        setCurrentStage(0);
+        setProgressStateText('Uploading');
+        setProgressBarWidth(30);
+
+        const demoResult = await createDemoRoom(trimmedName);
+        if (isCancelledRef.current) return;
+
         sessionStorage.setItem(`cineva_session_${demoResult.room.roomCode}`, demoResult.hostSessionId);
-        sessionStorage.setItem(`sw_name_${demoResult.room.roomCode}`, name);
-        navigate(`/room/${demoResult.room.roomCode}`);
+        sessionStorage.setItem(`sw_name_${demoResult.room.roomCode}`, trimmedName);
+        setCreatedRoomCode(demoResult.room.roomCode);
+
+        // Advance through Analyzing -> Ready
+        setCurrentStage(1);
+        setProgressStateText('Analyzing');
+        setProgressBarWidth(65);
+
+        await new Promise((r) => setTimeout(r, 400));
+        if (isCancelledRef.current) return;
+
+        setCurrentStage(4);
+        setProgressBarWidth(100);
+        setProgressStateText('Ready');
+        setEtaText('');
+        setIsReady(true);
+
+        const publicBase = (await getPublicUrl()) || window.location.origin;
+        setInviteLink(`${publicBase}/room/${demoResult.room.roomCode}`);
         return;
       }
 
-      isCancelledRef.current = false;
+      // 2. Real file upload flow
+      if (!selectedFile) return;
 
-      // 1. Create Room & Host Session
-      const result = await createRoom({
-        displayName: name,
-        roomName: rName,
-        allowGuestControl: false,
+      const title = roomTitle.trim() || selectedFile.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+
+      // Create room on server
+      const roomResult = await createRoom({
+        displayName: trimmedName,
+        roomName: title,
+        allowGuestControl,
       });
 
-      // Track active room for cleanup in case of upload failure or cancellation
-      activeRoomRef.current = { roomId: result.room.id, sessionId: result.hostSessionId };
+      if (isCancelledRef.current) return;
 
-      // Save Host identity in session
-      sessionStorage.setItem(`cineva_session_${result.room.roomCode}`, result.hostSessionId);
-      sessionStorage.setItem(`sw_name_${result.room.roomCode}`, name);
+      activeRoomRef.current = {
+        roomId: roomResult.room.id,
+        sessionId: roomResult.hostSessionId,
+        roomCode: roomResult.room.roomCode,
+      };
 
-      // 2. Upload file if selected
-      if (selectedFile) {
-        setUploadProgress(0);
-        await uploadMedia(
-          result.room.id,
-          result.hostSessionId,
-          selectedFile,
-          selectedFile.name.replace(/\.[^/.]+$/, ''),
-          (pct, info) => {
-            if (isCancelledRef.current) throw new Error("Upload cancelled");
-            setUploadProgress(pct);
-            if (info) {
-              setUploadDetails({ uploadedBytes: info.uploadedBytes, totalBytes: info.totalBytes });
+      sessionStorage.setItem(`cineva_session_${roomResult.room.roomCode}`, roomResult.hostSessionId);
+      sessionStorage.setItem(`sw_name_${roomResult.room.roomCode}`, trimmedName);
+      setCreatedRoomCode(roomResult.room.roomCode);
+
+      // Start socket connection to listen for real server transcode events
+      const socket = socketService.connect();
+      socketService.joinRoom(roomResult.room.roomCode, trimmedName, roomResult.hostSessionId);
+
+      // Listen for server media events
+      const handleMediaProgress = (data: any) => {
+        if (isCancelledRef.current) return;
+        const stageStr = (data.stage || '').toLowerCase();
+        if (stageStr.includes('analyz')) {
+          setCurrentStage(1);
+          setProgressStateText('Analyzing');
+        } else if (stageStr.includes('convert') || stageStr.includes('transcod') || data.progress > 25) {
+          setCurrentStage(2);
+          setProgressStateText('Converting');
+        }
+        if (typeof data.progress === 'number') {
+          // Server conversion progress is between 25% and 99%
+          const pct = Math.max(0, Math.min(100, data.progress));
+          setProgressBarWidth(pct);
+          if (pct < 100) {
+            const minLeft = Math.max(1, Math.round((100 - pct) / 9));
+            setEtaText(`About ${minLeft} min left`);
+          }
+        }
+      };
+
+      const handleMediaReady = async () => {
+        if (isCancelledRef.current) return;
+        setCurrentStage(4);
+        setProgressBarWidth(100);
+        setProgressStateText('Ready');
+        setEtaText('');
+        setIsReady(true);
+        activeRoomRef.current = null; // Successfully prepared, no longer needs abort beacon
+
+        const publicBase = (await getPublicUrl()) || window.location.origin;
+        setInviteLink(`${publicBase}/room/${roomResult.room.roomCode}`);
+      };
+
+      const handleMediaFailed = (errData: any) => {
+        if (isCancelledRef.current) return;
+        setFileError(errData?.error || 'Failed to prepare video for browser playback.');
+        handleCancel();
+      };
+
+      socket.on(SOCKET_EVENTS.MEDIA_PROGRESS, handleMediaProgress);
+      socket.on(SOCKET_EVENTS.MEDIA_READY, handleMediaReady);
+      socket.on(SOCKET_EVENTS.MEDIA_FAILED, handleMediaFailed);
+
+      // Upload file directly via multipart
+      const isMkv = /\.mkv$/i.test(selectedFile.name);
+
+      await uploadMedia(
+        roomResult.room.id,
+        roomResult.hostSessionId,
+        selectedFile,
+        title,
+        (pct, info) => {
+          if (isCancelledRef.current) throw new Error('Upload cancelled');
+          // Scale upload progress: if file needs conversion, upload is 0-50% overall
+          const displayPct = isMkv ? Math.round(pct * 0.45) : pct;
+          setProgressBarWidth(displayPct);
+          setCurrentStage(0);
+          setProgressStateText('Uploading');
+
+          if (info && info.uploadedBytes > 0 && info.totalBytes > info.uploadedBytes) {
+            const elapsedSec = (Date.now() - uploadStartTimeRef.current) / 1000;
+            const bytesPerSec = info.uploadedBytes / Math.max(0.1, elapsedSec);
+            const remainingSec = (info.totalBytes - info.uploadedBytes) / Math.max(1, bytesPerSec);
+            if (remainingSec > 60) {
+              setEtaText(`About ${Math.max(1, Math.round(remainingSec / 60))} min left`);
+            } else {
+              setEtaText(`About ${Math.max(1, Math.round(remainingSec))} sec left`);
             }
           }
-        );
-      }
+        }
+      );
 
-      // Upload completed successfully; disarm cleanup
-      activeRoomRef.current = null;
-      navigate(`/room/${result.room.roomCode}`);
+      if (isCancelledRef.current) return;
+
+      // Upload complete! Now analyzing media
+      setCurrentStage(1);
+      setProgressStateText('Analyzing');
+      setEtaText('Analyzing video streams...');
+
+      if (!isMkv) {
+        // Direct play file (MP4/WebM) - server finishes analysis rapidly
+        // Give a short visual beat so the user clearly sees analyzing stage finish
+        setTimeout(async () => {
+          if (isCancelledRef.current) return;
+          setCurrentStage(4);
+          setProgressBarWidth(100);
+          setProgressStateText('Ready');
+          setEtaText('');
+          setIsReady(true);
+          activeRoomRef.current = null;
+
+          const publicBase = (await getPublicUrl()) || window.location.origin;
+          setInviteLink(`${publicBase}/room/${roomResult.room.roomCode}`);
+        }, 600);
+      }
     } catch (err: any) {
-      // Abort room and active multipart uploads to prevent orphaned rooms in DB and B2
       if (activeRoomRef.current) {
         const { roomId, sessionId } = activeRoomRef.current;
         activeRoomRef.current = null;
-        await abortRoom(roomId, sessionId);
+        await abortRoom(roomId, sessionId).catch(() => {});
       }
-      setError(err.message || 'Failed to create room.');
-      setIsSubmitting(false);
-      setUploadProgress(null);
-      setUploadDetails(null);
+      setIsPreparing(false);
+      setIsReady(false);
+      setFileError(err.message || 'Failed to create room.');
     }
   };
 
+  const STAGES = ['Uploading', 'Analyzing', 'Converting', 'Ready'];
+
   return (
-    <div className="min-h-screen bg-[#05060a] text-slate-100 flex flex-col justify-center items-center p-5 sm:p-8 selection:bg-indigo-600 selection:text-white relative overflow-x-hidden">
-      {/* Blurred Gaussian Ambient Atmosphere from Home Identity */}
-      <CinematicBackground variant="blurred" />
+    <>
+      <AmbientBackground variant="ambient" still={true} />
 
-      <div className="w-full max-w-lg relative z-10 page-enter my-6">
-        {/* Back Link */}
-        <button
-          onClick={() => navigate('/')}
-          className="inline-flex items-center gap-2 text-xs font-medium text-slate-300 hover:text-white mb-6 px-3.5 py-1.5 rounded-xl glass-btn-secondary border border-white/10 hover:border-white/20 transition-all active:scale-95 shadow-sm"
-        >
-          <ArrowLeft className="w-4 h-4 text-brand-300" />
-          <span>Back to Home</span>
-        </button>
+      <div className="wrap">
+        <header className="top">
+          <Link to="/" className="logo" aria-label="Cineva home">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="3" y="4" width="18" height="16" rx="3.5" />
+              <path d="M8 4v16M16 4v16M3 9h5M3 15h5M16 9h5M16 15h5" />
+            </svg>
+            Cineva
+          </Link>
+          <Link to="/join" className="pill glass" onPointerMove={handlePointerMove}>
+            Join a room
+          </Link>
+        </header>
 
-        {/* Ambient Glow behind Panel */}
-        <div
-          className="absolute -inset-2 rounded-3xl bg-brand-500/[0.12] blur-2xl -z-10 pointer-events-none"
-          aria-hidden="true"
-        />
-
-        {/* Floating Glass Workspace */}
-        <div className="glass-card border border-white/[0.12] rounded-3xl p-6 sm:p-9 shadow-glass-elevated glass-reflection bg-[#0a0c16]/85 backdrop-blur-2xl relative overflow-hidden">
-          {/* Subtle top ambient highlight accent */}
-          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-brand-400/35 to-transparent pointer-events-none" />
-
-          {/* Header */}
-          <div className="mb-7">
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white mb-1.5 tracking-tight">
-              Create your watch room
-            </h1>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Set up your room, drop an authorized video, and invite your friends.
+        <main className="page">
+          <div>
+            <h1>Set up your room</h1>
+            <p className="lead">
+              Add a movie and pick a name. You’ll get a link and a code to send to your friends.
             </p>
+            <ul className="facts">
+              <li>
+                <b>MKV, MP4, WebM and MOV</b> files up to 5 GB
+              </li>
+              <li>
+                <b>MKV files are converted</b> for you, with progress shown
+              </li>
+              <li>
+                <b>The file is deleted</b> when the room closes
+              </li>
+            </ul>
           </div>
 
-          {/* Error Alert */}
-          {error && (
-            <div className="mb-5 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs flex items-center gap-2.5 backdrop-blur-xs">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
+          <section
+            className="card glass"
+            id="card"
+            ref={cardRef}
+            aria-live="polite"
+            onPointerMove={handlePointerMove}
+          >
+            {/* Form state */}
+            {!isPreparing ? (
+              <form id="form" noValidate onSubmit={handleSubmit}>
+                <h2>Create a room</h2>
+                <p className="hint">Only people with the link or code can join.</p>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Display Name */}
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Your display name
-              </label>
-              <input
-                type="text"
-                maxLength={30}
-                required
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="e.g. Alex"
-                className="w-full px-4 py-3 rounded-2xl glass-input text-sm text-slate-100 placeholder-slate-500 focus:outline-none"
-              />
-            </div>
-
-            {/* Room Name */}
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Room title (optional)
-              </label>
-              <input
-                type="text"
-                maxLength={60}
-                value={roomName}
-                onChange={(e) => setRoomName(e.target.value)}
-                placeholder="e.g. Friday Movie Night"
-                className="w-full px-4 py-3 rounded-2xl glass-input text-sm text-slate-100 placeholder-slate-500 focus:outline-none"
-              />
-            </div>
-
-            {/* Video Selection / Dropzone */}
-            <div className="pt-1">
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Video source
-              </label>
-
-              {!selectedFile && !useDemoMedia ? (
-                <div
-                  onDrop={handleDrop}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setIsDragging(true);
-                  }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`border-2 border-dashed rounded-2xl p-7 text-center cursor-pointer transition-all duration-200 ${
-                    isDragging
-                      ? 'border-brand-400 bg-brand-500/15 shadow-glass-glow scale-[1.01]'
-                      : 'border-white/[0.12] hover:border-white/[0.24] bg-white/[0.03] hover:bg-white/[0.05]'
-                  }`}
-                >
+                <div className="field">
+                  <label htmlFor="name">Your name</label>
                   <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="video/*,.mkv,.mp4,.webm,.mov,.ogv,.ogg"
-                    className="hidden"
+                    ref={nameInputRef}
+                    className="input"
+                    id="name"
+                    placeholder="Alex"
+                    autoComplete="nickname"
+                    maxLength={30}
+                    value={displayName}
+                    aria-invalid={!!nameError}
                     onChange={(e) => {
-                      if (e.target.files && e.target.files.length > 0) {
-                        handleFileChange(e.target.files[0]);
+                      setDisplayName(e.target.value);
+                      if (nameError) setNameError('');
+                    }}
+                  />
+                  <p className="msg" id="nameErr" role="alert">
+                    {nameError}
+                  </p>
+                </div>
+
+                <div className="field" style={{ marginTop: 6 }}>
+                  <label htmlFor="title">
+                    Room name <small>(optional)</small>
+                  </label>
+                  <input
+                    className="input"
+                    id="title"
+                    placeholder="Friday movie night"
+                    maxLength={60}
+                    value={roomTitle}
+                    onChange={(e) => setRoomTitle(e.target.value)}
+                  />
+                </div>
+
+                <div className="field">
+                  <span className="label" id="mlabel">
+                    Movie
+                  </span>
+
+                  {/* Dropzone */}
+                  {!selectedFile && !isSample ? (
+                    <div
+                      ref={dropzoneRef}
+                      className={`drop ${isDragOver ? 'over' : ''}`.trim()}
+                      id="drop"
+                      tabIndex={0}
+                      role="button"
+                      aria-labelledby="mlabel"
+                      onClick={(e) => {
+                        if ((e.target as HTMLElement).id !== 'sample') {
+                          filePickerRef.current?.click();
+                        }
+                      }}
+                      onKeyDown={handleDropzoneKeyDown}
+                      onDragEnter={(e) => {
+                        e.preventDefault();
+                        setIsDragOver(true);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setIsDragOver(true);
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault();
+                        setIsDragOver(false);
+                      }}
+                      onDrop={handleDrop}
+                    >
+                      <div className="ico">
+                        <svg viewBox="0 0 24 24">
+                          <path d="M12 16V5M7.5 9.5L12 5l4.5 4.5M5 15v2.5A2.5 2.5 0 007.5 20h9a2.5 2.5 0 002.5-2.5V15" />
+                        </svg>
+                      </div>
+                      <strong>Drop a video here, or browse</strong>
+                      <span>MKV, MP4, WebM, MOV</span>
+                      <button
+                        type="button"
+                        id="sample"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSelectFile(null, true);
+                        }}
+                      >
+                        Use the sample video instead
+                      </button>
+                    </div>
+                  ) : (
+                    /* Selected file row */
+                    <div className="file" id="file">
+                      <div className="ico">
+                        <svg viewBox="0 0 24 24">
+                          <rect x="3" y="5" width="18" height="14" rx="3" />
+                          <path d="M10 9.5l5 2.5-5 2.5z" />
+                        </svg>
+                      </div>
+                      <div className="meta">
+                        <div className="name" id="fname">
+                          {isSample ? 'Sample video' : selectedFile?.name}
+                        </div>
+                        <div className="sub" id="fsub">
+                          {isSample
+                            ? 'Ready to play'
+                            : selectedFile
+                            ? `${formatFileSize(selectedFile.size)} · ${
+                                /\.mkv$/i.test(selectedFile.name)
+                                  ? 'Will be converted for browsers'
+                                  : 'Ready to play'
+                              }`
+                            : ''}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="x"
+                        id="remove"
+                        aria-label="Remove file"
+                        onClick={() => handleSelectFile(null, false)}
+                      >
+                        <svg viewBox="0 0 24 24">
+                          <path d="M6 6l12 12M18 6L6 18" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+
+                  <input
+                    ref={filePickerRef}
+                    type="file"
+                    id="picker"
+                    accept="video/*,.mkv"
+                    hidden
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleSelectFile(e.target.files[0], false);
                       }
                     }}
                   />
-                  <div className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/[0.1] flex items-center justify-center text-brand-400 mx-auto mb-3 shadow-glass-sm">
-                    <UploadCloud className="w-6 h-6 drop-shadow" />
-                  </div>
-                  <p className="text-xs font-semibold text-slate-200 mb-1">
-                    Drag & drop your video here
+                  <p className="msg" id="fileErr" role="alert">
+                    {fileError}
                   </p>
-                  <p className="text-[11px] text-surface-muted mb-4">
-                    MP4, WebM, MKV, MOV • up to 5 GB
-                  </p>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setUseDemoMedia(true);
-                      if (!roomName.trim()) setRoomName('🎬 Sample Watch Room');
-                    }}
-                    className="inline-flex items-center gap-1.5 text-[11px] font-medium text-brand-300 hover:text-brand-200 bg-brand-500/10 px-3 py-1.5 rounded-xl border border-brand-500/20 shadow-xs"
-                  >
-                    <Tv className="w-3.5 h-3.5" />
-                    <span>Or use sample HD demo video</span>
-                  </button>
                 </div>
-              ) : selectedFile ? (
-                /* Selected File Card */
-                <div className="space-y-2">
-                  <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between shadow-xs">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30 shadow-xs">
-                        <CheckCircle2 className="w-5 h-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-slate-200 truncate">
-                          {selectedFile.name}
-                        </p>
-                        <p className="text-[10px] font-mono text-surface-muted">
-                          {selectedFile.size >= 1024 * 1024 * 1024
-                            ? `${(selectedFile.size / (1024 * 1024 * 1024)).toFixed(2)} GB`
-                            : `${(selectedFile.size / (1024 * 1024)).toFixed(1)} MB`}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedFile(null)}
-                      className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 transition-colors"
-                      title="Remove file"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  {selectedFile.name.toLowerCase().endsWith('.mkv') && (
-                    <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-300 text-[11px] leading-relaxed flex items-start gap-2.5 backdrop-blur-xs">
-                      <AlertCircle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
-                      <span>
-                        <strong className="font-semibold text-amber-200">MKV format supported for upload (up to 5 GB).</strong> Native browser playback of MKV depends on your browser's supported codecs. MP4 or WebM is recommended for universal compatibility across all devices.
-                      </span>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                /* Selected Demo Media Card */
-                <div className="p-4 rounded-2xl bg-brand-500/10 border border-brand-500/30 flex items-center justify-between shadow-xs">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center shrink-0 border border-brand-500/30 shadow-xs">
-                      <Tv className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-slate-200 truncate">
-                        Big Buck Bunny (Sample HD Video)
-                      </p>
-                      <p className="text-[10px] font-mono text-surface-muted">
-                        Built-in test video (180s 720p)
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setUseDemoMedia(false)}
-                    className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 transition-colors"
-                    title="Remove"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-            </div>
 
-            {/* Upload progress state */}
-            {uploadProgress !== null && (
-              <div className="pt-2">
-                <div className="flex items-center justify-between text-xs font-mono text-slate-300 mb-1.5">
-                  <span>Uploading video directly to storage...</span>
+                <div className="switch">
                   <span>
-                    {uploadDetails
-                      ? `${formatBytes(uploadDetails.uploadedBytes)} / ${formatBytes(uploadDetails.totalBytes)} (${uploadProgress}%)`
-                      : `${uploadProgress}%`}
+                    Guests can play, pause and skip
+                    <small>Turn off to keep the controls to yourself.</small>
                   </span>
-                </div>
-                <div className="w-full h-2 rounded-full bg-white/[0.08] overflow-hidden border border-white/[0.08] p-0.5">
-                  <div
-                    className="h-full bg-gradient-to-r from-brand-500 to-indigo-400 rounded-full transition-all duration-150 shadow-[0_0_10px_rgba(99,102,241,0.6)]"
-                    style={{ width: `${uploadProgress}%` }}
+                  <button
+                    type="button"
+                    className="sw"
+                    id="ctrl"
+                    role="switch"
+                    aria-checked={allowGuestControl}
+                    aria-label="Guests can control playback"
+                    onClick={() => setAllowGuestControl(!allowGuestControl)}
                   />
                 </div>
-                <div className="mt-2 text-right">
-                  <button
-                    type="button"
-                    onClick={handleCancelUpload}
-                    className="text-[11px] text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
-                  >
-                    Cancel upload & discard room
-                  </button>
+
+                <button className="btn" type="submit">
+                  Create room
+                </button>
+              </form>
+            ) : (
+              /* Preparing panel */
+              <div className="prep" id="prep">
+                <h2 id="ptitle">{isReady ? 'Your room is ready' : 'Getting your movie ready'}</h2>
+                <p className="hint" id="pfile">
+                  {isSample ? 'Sample video' : selectedFile?.name}
+                </p>
+
+                <div className="bar">
+                  <i id="pbar" style={{ width: `${progressBarWidth}%` }} />
                 </div>
+
+                <div className="pmeta">
+                  <span id="pstate">{progressStateText}</span>
+                  <span id="peta">{etaText}</span>
+                </div>
+
+                <div className="stages" id="stages">
+                  {STAGES.map((s, n) => {
+                    const c = n < currentStage ? 'done' : n === currentStage ? 'now' : '';
+                    return (
+                      <div key={s} className={`stage ${c}`.trim()}>
+                        <span className="d">
+                          <svg viewBox="0 0 24 24">
+                            <path d="M5 12.5l4.5 4.5L19 7.5" />
+                          </svg>
+                        </span>
+                        {s}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {isReady && (
+                  <div id="ready">
+                    <div className="share">
+                      <input
+                        className="input"
+                        id="link"
+                        readOnly
+                        aria-label="Invite link"
+                        value={inviteLink}
+                      />
+                      <button
+                        className="btn"
+                        type="button"
+                        id="copy"
+                        onClick={handleCopyLink}
+                      >
+                        {copied ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+                    <button
+                      className="btn"
+                      type="button"
+                      style={{ marginTop: 14 }}
+                      onClick={() => {
+                        if (createdRoomCode) {
+                          navigate(`/room/${createdRoomCode}`);
+                        }
+                      }}
+                    >
+                      Enter the room
+                    </button>
+                  </div>
+                )}
+
+                {!isReady && (
+                  <button
+                    className="btn ghost"
+                    type="button"
+                    id="cancel"
+                    onClick={handleCancel}
+                  >
+                    Cancel
+                  </button>
+                )}
               </div>
             )}
-
-            {/* Submit CTA */}
-            <div className="pt-3">
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full py-3.5 rounded-2xl glass-btn-primary hover:shadow-[0_0_24px_rgba(99,102,241,0.4)] text-white font-semibold text-sm shadow-xl transition-all active:scale-98 disabled:opacity-50 cursor-pointer"
-              >
-                {isSubmitting
-                  ? uploadProgress !== null
-                    ? `Uploading (${uploadProgress}%)...`
-                    : 'Creating room...'
-                  : 'Create Room'}
-              </button>
-            </div>
-          </form>
-        </div>
+          </section>
+        </main>
       </div>
-    </div>
+    </>
   );
 };
