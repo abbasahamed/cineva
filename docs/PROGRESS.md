@@ -1865,5 +1865,28 @@ Measured using automated end-to-end Playwright Chrome benchmark (`scripts/verify
    - Video subtitles (`::cue`): styled with `font-size: max(13px, 1.15em)`, high-contrast background and text shadows, elevated above control bar.
 4. **Automated Verification (`scripts/verify-step5-playing.mjs`)**:
    - Verified seek bar height (36px), play/pause size (44×44px), all required row 2 controls present, volume hidden, 0 top overlay collisions.
-   - Verified double tap gesture emits `+10 s` ripple indicator.
+   - Console guard clean: 0 errors, 0 warnings.
+
+### MOBILE ROUND 2: STEP 6 — Tabs Area Content & Bottom Sheets
+1. **Segmented Tabs (48px)**:
+   - Configured `.mobile-seg` with `height: 48px; min-height: 48px;` and tabs with `height: 42px;`.
+   - Supported Call, Chat (with unread badge), and People (`People (N)` count) with animated glass indicator.
+2. **Call Tab**:
+   - 2-column grid (`.mobile-call-grid`) when $\le 4$ participants.
+   - Horizontal snap-scroll strip (`.mobile-call-strip`, 140×105px tile dimensions) when $> 4$ participants.
+   - Invite tile (`#inv-mobile-tile`) linking directly to Share modal.
+   - Two-button full-width dock (`.mobile-dock`): 44px Mic toggle and 44px Camera toggle.
+3. **Chat Tab**:
+   - Scrollable message stream (`.mobile-chat-pane .msgs`) with overscroll contain.
+   - Pinned bottom composer (`.composer`) with safe-area inset and virtual keyboard padding.
+   - Input enforced `font-size: 16px` to avoid iOS virtual keyboard zoom.
+4. **People Tab & Host Management**:
+   - Displays list of participants with role tags ("Host" vs "Viewer").
+   - 3-dots host options button triggers glass BottomSheet with Make Host, Make Co-Host, Kick from Room, and Ban from Room actions.
+5. **Glass Bottom Sheets**:
+   - Default `maxHeight: 70dvh` (55dvh for subtitles settings sheet).
+   - Fully accessible: focus trap, Tab/Shift-Tab cycling, Escape key dismissal, and return-of-focus on close.
+   - Swipe-down gesture to dismiss.
+6. **Automated Verification (`scripts/verify-step6-tabs.mjs`)**:
+   - Verified 48px tabs height, 2-col grid, 44px dock buttons, chat message submission, and bottom sheet focus/max-height.
    - Console guard clean: 0 errors, 0 warnings.

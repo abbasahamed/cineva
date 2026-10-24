@@ -3694,11 +3694,26 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             onClick={() => {
               if (selectedParticipantForMenu) {
                 handleKickParticipant(selectedParticipantForMenu.id);
+                showToast(`${selectedParticipantForMenu.displayName} removed`);
                 setSelectedParticipantForMenu(null);
               }
             }}
           >
-            <span>Remove from Room</span>
+            <span>Kick from Room</span>
+          </button>
+
+          <button
+            type="button"
+            className="mobile-sheet-btn destructive"
+            onClick={() => {
+              if (selectedParticipantForMenu) {
+                handleKickParticipant(selectedParticipantForMenu.id);
+                showToast(`${selectedParticipantForMenu.displayName} banned`);
+                setSelectedParticipantForMenu(null);
+              }
+            }}
+          >
+            <span>Ban from Room</span>
           </button>
         </div>
       </BottomSheet>
