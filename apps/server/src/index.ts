@@ -136,6 +136,7 @@ app.use(
       }
     },
     credentials: true,
+    exposedHeaders: ['Content-Range', 'Content-Length', 'Accept-Ranges'],
   })
 );
 
@@ -271,7 +272,7 @@ app.use('/api/rooms', roomRoutes);
 app.use('/api/media', mediaRoutes);
 
 // Direct media streaming route with byte-range requests
-app.get('/media/*', (req: Request, res: Response) => {
+app.all('/media/*', (req: Request, res: Response) => {
   const storageKey = req.params[0];
   if (!storageKey) {
     res.status(400).json({ error: 'Storage key required' });

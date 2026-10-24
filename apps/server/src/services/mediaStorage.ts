@@ -172,6 +172,22 @@ export class LocalMediaStorage implements MediaStorage {
       else if (ext === ".mov") contentType = "video/quicktime";
       else if (ext === ".ogg" || ext === ".ogv") contentType = "video/ogg";
 
+      const origin = (req.headers.origin as string) || "*";
+      const corsHeaders: Record<string, string> = {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers": "Range, Content-Type, Accept, Origin",
+        "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
+        "Cross-Origin-Resource-Policy": "cross-origin",
+      };
+
+      if (req.method === "OPTIONS") {
+        res.writeHead(204, corsHeaders);
+        res.end();
+        return;
+      }
+
       if (range) {
         const parts = range.replace(/bytes=/, "").split("-");
         const start = parseInt(parts[0], 10);
@@ -179,6 +195,7 @@ export class LocalMediaStorage implements MediaStorage {
 
         if (start >= fileSize || end >= fileSize || start > end) {
           res.status(416).set({
+            ...corsHeaders,
             "Content-Range": `bytes */${fileSize}`,
           }).send("Requested Range Not Satisfiable");
           return;
@@ -188,6 +205,7 @@ export class LocalMediaStorage implements MediaStorage {
         const fileStream = fs.createReadStream(filePath, { start, end });
 
         res.writeHead(206, {
+          ...corsHeaders,
           "Content-Range": `bytes ${start}-${end}/${fileSize}`,
           "Accept-Ranges": "bytes",
           "Content-Length": chunkSize,
@@ -198,6 +216,7 @@ export class LocalMediaStorage implements MediaStorage {
         fileStream.pipe(res);
       } else {
         res.writeHead(200, {
+          ...corsHeaders,
           "Content-Length": fileSize,
           "Content-Type": contentType,
           "Accept-Ranges": "bytes",
