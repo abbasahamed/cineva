@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useSyncWatch, ConnectionStatus } from "../hooks/useSyncWatch.js";
 import { MediaUploadModal } from "../components/MediaUploadModal.js";
@@ -26,6 +26,16 @@ import {
   AudioOption,
   SubtitleOption,
 } from "../utils/trackDisplay.js";
+import {
+  SubtitleSettings,
+  loadSubtitleSettings,
+  saveSubtitleSettings,
+  clampSize,
+  convertSrtToVtt,
+  findActiveCueText,
+} from "../utils/subtitleUtils.js";
+import { SubtitleOverlay } from "../components/SubtitleOverlay.js";
+import { SubtitleSettingsPanel } from "../components/SubtitleSettingsPanel.js";
 
 function formatMediaInfo(media: { title: string; size?: number | string } | null | undefined) {
   if (!media) return { displayTitle: "Friday movie night", size: null, rawTitle: "" };
@@ -321,11 +331,43 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   const [volume, setVolume] = useState(80);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
   const [bufferPercent, setBufferPercent] = useState(0);
-  const [activeMenu, setActiveMenu] = useState<"audio" | "subs" | "speed" | "zoom" | "react" | null>(null);
+  const [activeMenu, setActiveMenu] = useState<"audio" | "subs" | "sub-settings" | "speed" | "zoom" | "react" | null>(null);
   const [menuLeft, setMenuLeft] = useState<number>(0);
   const [speed, setSpeed] = useState<number>(1);
   const [zoom, setZoom] = useState<number>(0);
   const [isIdle, setIsIdle] = useState(false);
+
+  // Subtitle settings, custom layer, and control bar height observer
+  const [subSettings, setSubSettings] = useState<SubtitleSettings>(() => loadSubtitleSettings());
+  const [activeCueText, setActiveCueText] = useState<string | null>(null);
+  const [controlBarHeight, setControlBarHeight] = useState<number>(76);
+
+  useEffect(() => {
+    const updateControlHeight = () => {
+      const el = ctlRef.current || document.getElementById("ctl");
+      if (!el) return;
+      const h = el.getBoundingClientRect().height;
+      if (h > 0) setControlBarHeight(Math.round(h));
+    };
+
+    updateControlHeight();
+    const el = ctlRef.current || document.getElementById("ctl");
+    if (!el || typeof ResizeObserver === "undefined") return;
+
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const h = entry.borderBoxSize?.[0]?.blockSize || entry.target.getBoundingClientRect().height;
+        if (h > 0) setControlBarHeight(Math.round(h));
+      }
+    });
+
+    ro.observe(el);
+    window.addEventListener("resize", updateControlHeight);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", updateControlHeight);
+    };
+  }, [room]);
 
   // Real HTMLMediaElement state tracking
   const [realVideoPaused, setRealVideoPaused] = useState(true);
@@ -356,6 +398,10 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   const [selectedAudioIdx, setSelectedAudioIdx] = useState<number>(0);
   const [selectedSubIdx, setSelectedSubIdx] = useState<number>(-1);
   const [userCustomSubs, setUserCustomSubs] = useState<Array<{ label: string; src: string }>>([]);
+  const supportedSubtitleOptions = useMemo<SubtitleOption[]>(
+    () => subtitleOptions.filter((s) => s.supported && Boolean(s.url)),
+    [subtitleOptions]
+  );
 
   useEffect(() => {
     const el = videoRef.current;
@@ -378,6 +424,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
         lowLatencyMode: false,
         backBufferLength: 90,
       });
+      (hls as any).subtitleDisplay = false;
       hlsRef.current = hls;
 
       hls.loadSource(mediaUrl);
@@ -616,10 +663,82 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   useEffect(() => {
     const v = videoRef.current;
     if (!v || !v.textTracks) return;
-    for (let i = 0; i < v.textTracks.length; i++) {
-      v.textTracks[i].mode = i === selectedSubIdx ? "showing" : "disabled";
+
+    const syncModes = () => {
+      for (let i = 0; i < v.textTracks.length; i++) {
+        v.textTracks[i].mode = i === selectedSubIdx ? "hidden" : "disabled";
+      }
+    };
+
+    syncModes();
+    v.textTracks.addEventListener("addtrack", syncModes);
+    v.textTracks.addEventListener("change", syncModes);
+
+    return () => {
+      v.textTracks.removeEventListener("addtrack", syncModes);
+      v.textTracks.removeEventListener("change", syncModes);
+    };
+  }, [selectedSubIdx, userCustomSubs, videoRef]);
+
+  // Track active subtitle cue with delay shifting for custom subtitle layer
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+
+    const updateCue = () => {
+      if (selectedSubIdx < 0 || !v.textTracks || selectedSubIdx >= v.textTracks.length) {
+        setActiveCueText(null);
+        return;
+      }
+      const track = v.textTracks[selectedSubIdx];
+      if (!track) {
+        setActiveCueText(null);
+        return;
+      }
+
+      // If delay is active, find cues matching (currentTime - delaySeconds)
+      if (subSettings.delaySeconds !== 0 && track.cues && track.cues.length > 0) {
+        const cuesList: Array<{ startTime: number; endTime: number; text: string }> = [];
+        for (let i = 0; i < track.cues.length; i++) {
+          const c = track.cues[i] as any;
+          cuesList.push({ startTime: c.startTime, endTime: c.endTime, text: c.text || "" });
+        }
+        const text = findActiveCueText(cuesList, v.currentTime, subSettings.delaySeconds);
+        setActiveCueText(text);
+      } else if (track.activeCues && track.activeCues.length > 0) {
+        const text = Array.from(track.activeCues)
+          .map((c: any) => c.text || "")
+          .filter(Boolean)
+          .join("\n");
+        setActiveCueText(text || null);
+      } else if (track.cues && track.cues.length > 0) {
+        const cuesList: Array<{ startTime: number; endTime: number; text: string }> = [];
+        for (let i = 0; i < track.cues.length; i++) {
+          const c = track.cues[i] as any;
+          cuesList.push({ startTime: c.startTime, endTime: c.endTime, text: c.text || "" });
+        }
+        const text = findActiveCueText(cuesList, v.currentTime, 0);
+        setActiveCueText(text);
+      } else {
+        setActiveCueText(null);
+      }
+    };
+
+    updateCue();
+
+    const track = (v.textTracks && selectedSubIdx >= 0 && selectedSubIdx < v.textTracks.length) ? v.textTracks[selectedSubIdx] : null;
+    if (track) {
+      track.addEventListener("cuechange", updateCue);
     }
-  }, [selectedSubIdx, videoRef]);
+    v.addEventListener("timeupdate", updateCue);
+
+    return () => {
+      if (track) {
+        track.removeEventListener("cuechange", updateCue);
+      }
+      v.removeEventListener("timeupdate", updateCue);
+    };
+  }, [selectedSubIdx, subSettings.delaySeconds, userCustomSubs, videoRef]);
 
   const handleSelectAudio = useCallback(
     (trackIdx: number) => {
@@ -650,7 +769,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       const v = videoRef.current;
       if (v && v.textTracks) {
         for (let i = 0; i < v.textTracks.length; i++) {
-          v.textTracks[i].mode = i === subIdx ? "showing" : "disabled";
+          v.textTracks[i].mode = i === subIdx ? "hidden" : "disabled";
         }
       }
 
@@ -662,17 +781,17 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
 
       if (subIdx === -1) {
         showToast("Subtitles off");
-      } else if (subIdx < subtitleOptions.length) {
-        const opt = subtitleOptions[subIdx];
+      } else if (subIdx < supportedSubtitleOptions.length) {
+        const opt = supportedSubtitleOptions[subIdx];
         showToast(`Subtitles: ${opt?.label || `Track ${subIdx + 1}`}`);
       } else {
-        const customIdx = subIdx - subtitleOptions.length;
+        const customIdx = subIdx - supportedSubtitleOptions.length;
         const cs = userCustomSubs[customIdx];
         showToast(`Subtitles: ${cs?.label || "Custom"}`);
       }
       setActiveMenu(null);
     },
-    [subtitleOptions, userCustomSubs, roomCode, showToast, videoRef]
+    [supportedSubtitleOptions, userCustomSubs, roomCode, showToast, videoRef]
   );
 
   const wakeControls = useCallback(() => {
@@ -756,13 +875,40 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
         const t = Math.max(0, playback.currentTime - 10);
         handleSeek(t);
         wakeControls();
+      } else if (e.key === "[") {
+        setSubSettings((prev: SubtitleSettings) => {
+          const newSize = clampSize(prev.sizePercent - 10);
+          const updated = { ...prev, sizePercent: newSize };
+          saveSubtitleSettings(updated);
+          showToast(`Subtitle size ${newSize}%`);
+          return updated;
+        });
+      } else if (e.key === "]") {
+        setSubSettings((prev: SubtitleSettings) => {
+          const newSize = clampSize(prev.sizePercent + 10);
+          const updated = { ...prev, sizePercent: newSize };
+          saveSubtitleSettings(updated);
+          showToast(`Subtitle size ${newSize}%`);
+          return updated;
+        });
       } else if (e.key === "Escape" && activeMenu) {
         setActiveMenu(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [playback.isPlaying, playback.duration, playback.currentTime, activeMenu, handlePlay, handlePause, handleSeek, wakeControls]);
+  }, [playback.isPlaying, playback.duration, playback.currentTime, activeMenu, handlePlay, handlePause, handleSeek, wakeControls, showToast]);
+
+  useEffect(() => {
+    (window as any).__cinevaSeek = handleSeek;
+    (window as any).__cinevaPlay = handlePlay;
+    (window as any).__cinevaPause = handlePause;
+    return () => {
+      delete (window as any).__cinevaSeek;
+      delete (window as any).__cinevaPlay;
+      delete (window as any).__cinevaPause;
+    };
+  }, [handleSeek, handlePlay, handlePause]);
 
   const handleCopyInvite = async () => {
     try {
@@ -941,17 +1087,16 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      let txt = String(reader.result || "").replace(/\r/g, "");
-      if (!/^WEBVTT/.test(txt)) {
-        txt = "WEBVTT\n\n" + txt.replace(/(\d+:\d+:\d+),(\d+)/g, "$1.$2");
-      }
+      let txt = String(reader.result || "");
+      txt = convertSrtToVtt(txt);
       const blob = new Blob([txt], { type: "text/vtt" });
       const trackUrl = URL.createObjectURL(blob);
       const label = file.name.replace(/\.[^.]+$/, "");
 
+      const newIdx = supportedSubtitleOptions.length + userCustomSubs.length;
       setUserCustomSubs((prev) => [...prev, { label, src: trackUrl }]);
-      const newIdx = subtitleOptions.length + userCustomSubs.length;
       setSelectedSubIdx(newIdx);
+      localStorage.setItem(`cineva_sub_${roomCode}`, String(newIdx));
 
       handleUploadSubtitle({
         label,
@@ -1129,26 +1274,32 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             onClick={() => (isActuallyPlaying ? handlePause() : handlePlay())}
           >
             {/* Extracted WebVTT subtitle tracks */}
-            {subtitleOptions
-              .filter((s) => s.supported && s.url)
-              .map((s, idx) => {
-                const resolvedUrl =
-                  s.url?.startsWith("http://") || s.url?.startsWith("https://") || s.url?.startsWith("/")
-                    ? s.url
-                    : mediaUrl
-                    ? `${mediaUrl.substring(0, mediaUrl.lastIndexOf("/") + 1)}${s.url}`
-                    : s.url;
-                return (
-                  <track
-                    key={`sub-${s.streamIndex}-${idx}`}
-                    kind="subtitles"
-                    label={s.label}
-                    srcLang={s.language}
-                    src={resolvedUrl}
-                    default={selectedSubIdx === s.id}
-                  />
-                );
-              })}
+            {supportedSubtitleOptions.map((s, idx) => {
+              const resolvedUrl =
+                s.url?.startsWith("http://") || s.url?.startsWith("https://") || s.url?.startsWith("/")
+                  ? s.url
+                  : mediaUrl
+                  ? `${mediaUrl.substring(0, mediaUrl.lastIndexOf("/") + 1)}${s.url}`
+                  : s.url;
+              return (
+                <track
+                  key={`sub-${s.streamIndex}-${idx}`}
+                  kind="subtitles"
+                  label={s.label}
+                  srcLang={s.language}
+                  src={resolvedUrl}
+                  default={selectedSubIdx === idx}
+                  ref={(el) => {
+                    if (el && el.track) {
+                      el.track.mode = selectedSubIdx === idx ? "hidden" : "disabled";
+                    }
+                  }}
+                  onLoad={() => {
+                    videoRef.current?.dispatchEvent(new Event("timeupdate"));
+                  }}
+                />
+              );
+            })}
 
             {/* User-uploaded custom subtitles */}
             {userCustomSubs.map((cs, idx) => (
@@ -1156,14 +1307,40 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                 key={`custom-sub-${idx}`}
                 kind="subtitles"
                 label={cs.label}
-                srcLang="en"
+                srcLang="te"
                 src={cs.src}
-                default={selectedSubIdx === subtitleOptions.length + idx}
+                default={selectedSubIdx === supportedSubtitleOptions.length + idx}
+                ref={(el) => {
+                  if (el && el.track) {
+                    el.track.mode =
+                      selectedSubIdx === supportedSubtitleOptions.length + idx ? "hidden" : "disabled";
+                  }
+                }}
+                onLoad={() => {
+                  videoRef.current?.dispatchEvent(new Event("timeupdate"));
+                }}
               />
             ))}
           </video>
           <div className="scrim t"></div>
           <div className="scrim bt"></div>
+
+          {/* Custom Subtitle Layer (Above control bar, immune to video zoom) */}
+          <SubtitleOverlay
+            cueText={activeCueText}
+            settings={subSettings}
+            controlsVisible={!isIdle}
+            controlBarHeight={controlBarHeight}
+            isSettingsOpen={activeMenu === "sub-settings"}
+            onUpdatePositionOffset={(newOffset) => {
+              setSubSettings((prev: SubtitleSettings) => {
+                const updated = { ...prev, positionOffsetPercent: newOffset };
+                saveSubtitleSettings(updated);
+                return updated;
+              });
+            }}
+            stageElement={stageRef.current}
+          />
 
           {/* Screening States: Empty / Preparing / Failed / Ready */}
           {!room?.media ? (
@@ -1602,29 +1779,33 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                             </svg>
                           )}
                         </button>
-                        {subtitleOptions.map((opt) => (
-                          <button
-                            key={opt.id}
-                            role="menuitemradio"
-                            aria-checked={selectedSubIdx === opt.id}
-                            disabled={!opt.supported}
-                            style={!opt.supported ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
-                            title={opt.unsupportedReason}
-                            onClick={() => {
-                              if (!opt.supported) return;
-                              handleSelectSubtitle(opt.id);
-                            }}
-                          >
-                            <span>{opt.label}</span>
-                            {selectedSubIdx === opt.id && (
-                              <svg className="ck" viewBox="0 0 24 24">
-                                <path d="M5 12.5l4.5 4.5L19 7.5" />
-                              </svg>
-                            )}
-                          </button>
-                        ))}
+                        {subtitleOptions.map((opt) => {
+                          const sIdx = supportedSubtitleOptions.findIndex((s) => s.id === opt.id);
+                          const isSelected = sIdx >= 0 && selectedSubIdx === sIdx;
+                          return (
+                            <button
+                              key={opt.id}
+                              role="menuitemradio"
+                              aria-checked={isSelected}
+                              disabled={!opt.supported}
+                              style={!opt.supported ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+                              title={opt.unsupportedReason}
+                              onClick={() => {
+                                if (!opt.supported || sIdx < 0) return;
+                                handleSelectSubtitle(sIdx);
+                              }}
+                            >
+                              <span>{opt.label}</span>
+                              {isSelected && (
+                                <svg className="ck" viewBox="0 0 24 24">
+                                  <path d="M5 12.5l4.5 4.5L19 7.5" />
+                                </svg>
+                              )}
+                            </button>
+                          );
+                        })}
                         {userCustomSubs.map((cs, idx) => {
-                          const cIdx = subtitleOptions.length + idx;
+                          const cIdx = supportedSubtitleOptions.length + idx;
                           return (
                             <button
                               key={`custom-sub-btn-${idx}`}
@@ -1651,7 +1832,36 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                         >
                           Add subtitle file…
                         </button>
+                        <button
+                          type="button"
+                          id="sub-settings-trigger"
+                          onClick={() => {
+                            setActiveMenu("sub-settings");
+                          }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <span>Subtitle settings…</span>
+                          <svg viewBox="0 0 24 24" style={{ width: 14, height: 14, opacity: 0.7 }} fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M9 18l6-6-6-6" />
+                          </svg>
+                        </button>
                       </>
+                    )}
+
+                    {activeMenu === "sub-settings" && (
+                      <SubtitleSettingsPanel
+                        settings={subSettings}
+                        onChange={(updated) => {
+                          setSubSettings(updated);
+                          saveSubtitleSettings(updated);
+                        }}
+                        onBack={() => setActiveMenu("subs")}
+                        onClose={() => setActiveMenu(null)}
+                      />
                     )}
 
                     {activeMenu === "speed" && (

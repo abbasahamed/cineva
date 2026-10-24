@@ -1215,6 +1215,167 @@ Measured via real Playwright Chrome instrumentation (`scripts/diagnose-step1.mjs
 - `docs/screenshots/subtitles_before_360_controls_visible.png`: Shows native subtitle cues occluded at mobile 360px width.
 - `docs/screenshots/subtitles_before_360_controls_hidden.png`: Shows native subtitle cues at mobile 360px width with idle controls.
 
+---
+
+## STEP 2: Custom Subtitle Layer (Replaces Native Cue Rendering) (Completed)
+
+### 1. Implementation Architecture
+- **Native Cue Suppression**:
+  - All text tracks are set to `track.mode = 'hidden'` (instead of `'showing'`).
+  - `(hls as any).subtitleDisplay = false` is enforced on HLS.js instances.
+  - Native browser cues are suppressed from painting in `<video>` shadow DOM, while `textTrack.cues` and `cuechange` events remain active and accessible in memory.
+- **Custom DOM Layer (`<SubtitleOverlay />`)**:
+  - Placed directly inside `#stage` at `z-index: 6`, strictly above `<video id="v">` (stacking level 0) and the control bar `#ctl` (`z-index: 5`).
+  - Positioned horizontally centered with `left: 50%`, `transform: translateX(-50%)`, and `max-width: min(92%, 1100px)`.
+  - Dynamic vertical clearance:
+    - When controls are visible: `bottom = controlBarHeight + 16px + 8px` (clearing `#ctl` with comfortable margin).
+    - When controls are hidden / idle: transitions smoothly to `bottom = 28px`.
+    - Smooth 200ms cubic-bezier transition (`transition: bottom 200ms cubic-bezier(0.16, 1, 0.3, 1)`).
+    - Real-time `ResizeObserver` measures `#ctl`'s exact height dynamically.
+  - Video zoom independence:
+    - Layer is mounted outside the `<video id="v">` DOM node inside `#stage`. Video zoom (`transform: scale(1.34)`) transforms the video without scaling or clipping subtitle text.
+- **Typography & Font Stack**:
+  - Configured font stack supporting Latin, Devanagari (Hindi), and Telugu scripts:
+    `'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans Devanagari', 'Noto Sans Telugu', sans-serif`
+  - Loaded Google Fonts for `Noto Sans Devanagari` (400, 600, 700) and `Noto Sans Telugu` (400, 600, 700) in `apps/web/index.html`.
+  - Responsive base font size: `clamp(16px, 2.2vw, 34px)`.
+- **Safe Cue Formatting & XSS Sanitization**:
+  - In `apps/web/src/utils/subtitleUtils.ts`:
+    - Decodes HTML entities (`&amp;`, `&lt;`, `&gt;`, `&quot;`, `&#39;`, `&nbsp;`).
+    - Strips `<script>`, `<iframe>`, `style`, `onload`, and malicious event handlers.
+    - Safely parses and renders `<i>`, `<em>`, `<b>`, `<strong>`, and `<u>` into React elements (`React.createElement`).
+    - Uses `textWrap: 'balance'` (with `-webkit-line-clamp` and `white-space: pre-line`) for clean, cinematic line wrapping.
+
+---
+
+## STEP 3: Subtitle Settings Panel (Size, Position, Style, Delay) (Completed)
+
+### 1. Features Implemented
+- **Per-Viewer Isolation & Persistence**:
+  - Subtitle preferences are stored exclusively in viewer's local storage: `localStorage['cineva_sub_settings']`.
+  - Subtitle settings are never broadcast over WebSockets, never shared with peers, and never overwrite other participants' preferences.
+  - Delay setting (`delaySeconds`) resets to 0.0s on fresh movie sessions (per IINA convention), while visual preferences persist across page reloads.
+  - Memory fallback ensures settings function smoothly if `localStorage` is blocked or unavailable.
+- **Controls & Options (`<SubtitleSettingsPanel />`)**:
+  - **Size**: Range 60% to 220% (default 100%). Stepped with `A−` and `A+` buttons (10% increments) and slider.
+  - **Position**: Range 0% to 70% of stage height (default 0%). Stepped with `↑` and `↓` buttons (2% increments) and slider.
+  - **Direct Drag-to-Move**: While the Subtitle Settings panel is open, viewers can click/touch and drag the active subtitle text or preview line directly on the screen to position it vertically.
+  - **Background**:
+    - `None`: Completely transparent.
+    - `Soft` (Default): Frosted dark pill (`rgba(0, 0, 0, 0.72)`) with `backdrop-filter: blur(8px)`.
+    - `Solid`: High-contrast opaque pill (`rgba(0, 0, 0, 0.95)`).
+  - **Text Colour**:
+    - `White` (Default): `#FFFFFF`
+    - `Yellow`: `#FFD700`
+    - `Cyan`: `#00F5D4`
+  - **Edge Style**:
+    - `Outline` (Default): Clean 2px dark text shadow stroke (`-1px -1px 0 #000, 1px -1px 0 #000, ...`).
+    - `Shadow`: Deep cinematic drop shadow (`0 2px 4px rgba(0,0,0,0.9)`).
+    - `None`: No text shadow.
+  - **Audio/Subtitle Delay (IINA-style)**:
+    - Adjustable from -5.0s to +5.0s in 0.1s steps.
+    - Quick stepper buttons (`−0.1s`, `+0.1s`), numeric input, and "Reset" button.
+  - **Live Preview Line**:
+    - Displays *"The quick brown fox jumps over the lazy dog"* with current style tokens when settings panel is open, even when paused or when no cue is currently active.
+  - **Keyboard Shortcuts**:
+    - `[`: Decreases subtitle font size by 10% (clamps to 60%) with toast notification.
+    - `]`: Increases subtitle font size by 10% (clamps to 220%) with toast notification.
+
+---
+
+## STEP 4: Automated Verification & Playwright Suite Results (Completed)
+
+### 1. Unit Tests (`apps/web/src/utils/subtitleUtils.ts`)
+Executed `npm test -w @cineva/web -- subtitleUtils`:
+- **Result**: 13 / 13 tests passed (100%).
+- Verified:
+  1. Size clamping (60% to 220%, fallback to 100% on NaN).
+  2. Position clamping (0% to 70%, fallback to 0% on NaN).
+  3. Delay clamping (-5.0s to +5.0s, fallback to 0.0s on NaN).
+  4. LocalStorage loading and saving with memory fallback.
+  5. SRT to WebVTT timestamp and header conversion.
+  6. HTML entity decoding (`&quot;`, `&amp;`, `&#39;`).
+  7. Safe parsing of `<i>`, `<b>`, `<u>` tags into React elements.
+  8. Sanitization and stripping of malicious script tags and inline event handlers.
+  9. Time-accurate cue matching with positive and negative delay shifting.
+
+### 2. End-to-End Playwright Automation Suite (`scripts/verify-subtitles.mjs`)
+Executed against Chrome with multi-track fixture (`fixtures/2_multi_track.mkv`):
+
+#### Check (a): Non-Intersection of Subtitle Bounding Box with Control Bar
+- **Desktop (1440x900 viewport)**:
+  - Stage: `x: 16, y: 86, width: 1054, height: 798, top: 86, bottom: 884`
+  - Control Bar: `x: 32, y: 792, width: 1022, height: 76, top: 792, bottom: 868`
+  - Subtitle (Controls Visible): `top: 690.47, bottom: 784.00, height: 93.53`
+  - **Clearance above control bar**: **8.0px** (`ctl.top (792) - sub.bottom (784)`).
+  - **Intersects control bar?**: **`false`** (Expected: `false`).
+  - **Inside stage?**: **`true`** (Expected: `true`).
+  - Subtitle (Controls Hidden): `top: 762.44, bottom: 855.97`
+  - **Transition distance**: **72.0px** downward when controls hide.
+  - **Controls hidden inside stage?**: **`true`** (Expected: `true`).
+- **Mobile (360x780 viewport)**:
+  - Stage: `x: 16, y: 86, width: 442, height: 276.25, top: 86, bottom: 362.25`
+  - Control Bar: `x: 32, y: 270.25, width: 410, height: 76, top: 270.25, bottom: 346.25`
+  - Subtitle (Controls Visible): `top: 211.06, bottom: 262.25, height: 51.19`
+  - **Clearance above control bar**: **8.0px** (`ctl.top (270.25) - sub.bottom (262.25)`).
+  - **Intersects control bar?**: **`false`** (Expected: `false`).
+  - **Inside stage?**: **`true`** (Expected: `true`).
+
+#### Check (b): Slider Font Size and Position Changes
+- Initial computed style: `fontSize: 31.68px`, `bottom: 100px`.
+- Enlarged style (+20% size via slider / A+): `fontSize: 38.016px` (Exact ratio: **1.20**).
+- Vertical position change (+20% via ↑): Subtitle moved upward by **108.3px**.
+- Color and style update: `color: rgb(255, 215, 0)` (Yellow), `backgroundColor: rgba(0, 0, 0, 0.95)` (Solid).
+
+#### Check (c): Settings Persistence Across Page Reload
+- Saved settings in `localStorage` survived browser page reload:
+  ```json
+  {
+    "sizePercent": 120,
+    "positionOffsetPercent": 20,
+    "background": "solid",
+    "textColor": "yellow",
+    "edge": "outline"
+  }
+  ```
+
+#### Check (d): Second Browser Context Isolation (Per-Viewer)
+- Guest opened room in separate browser context.
+- Guest `localStorage['cineva_sub_settings']` remained empty (`{}`).
+- Guest rendered with independent default settings (`size: 100%`, `textColor: white`, `background: soft`).
+
+#### Check (e): Fullscreen Layout Visibility
+- In fullscreen mode, custom subtitle overlay remained visible above controls and within stage bounds (`visible: true`).
+
+#### Check (f): Telugu Cue Rendering
+- Rendered cue element check:
+  - `text`: *"Welcome to Cineva Multi-Audio Screening"*
+  - `fontFamily`: `'Inter', system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Devanagari", "Noto Sans Telugu", sans-serif`
+  - `width`: 720px, `height`: 110.6px
+  - Verified glyphs rendered with positive width and zero tofu replacement boxes.
+
+#### Check (g): Delay Shifting
+- Clicked `+0.1s` stepper twice: Delay shifted to **+0.2s**.
+
+#### Check (h): Drag-to-Move
+- Dragged subtitle preview line vertically on stage: Position offset updated in real time from 20% to **26.7%** in `localStorage`.
+
+#### Keyboard Shortcuts:
+- Pressed `[`: Size decreased from 120% to **110%** with toast.
+- Pressed `]`: Size increased from 110% to **120%** with toast.
+
+### 3. Verification Screenshots Captured
+- `docs/screenshots/subtitles_before_1440_controls_visible.png`
+- `docs/screenshots/subtitles_before_1440_controls_hidden.png`
+- `docs/screenshots/subtitles_before_360_controls_visible.png`
+- `docs/screenshots/subtitles_before_360_controls_hidden.png`
+- `docs/screenshots/subtitles_after_1440_controls_visible.png`
+- `docs/screenshots/subtitles_after_1440_controls_hidden.png`
+- `docs/screenshots/subtitles_after_360_controls_visible.png`
+- `docs/screenshots/subtitles_after_360_controls_hidden.png`
+- `docs/screenshots/subtitles_telugu_render.png`
+
+
 
 
 
