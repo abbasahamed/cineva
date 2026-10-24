@@ -2913,11 +2913,11 @@ footer .wrap {
 .tile {
   position: relative;
   aspect-ratio: 4/3;
-  border-radius: 18px;
+  border-radius: 16px;
   overflow: hidden;
-  background: #15151a;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-  transition: box-shadow 0.25s;
+  background: #0c0e17;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: border-color 0.25s, box-shadow 0.25s;
 }
 
 .tile video {
@@ -2926,24 +2926,6 @@ footer .wrap {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-
-.tile.me video {
-  transform: scaleX(-1);
-}
-
-.tile.peer video {
-  filter: hue-rotate(var(--h, 0deg)) saturate(0.85);
-}
-
-.tile.cam video {
-  opacity: 1;
-}
-
-.tile.cam .ph {
-  opacity: 0;
 }
 
 .ph {
@@ -3110,6 +3092,18 @@ footer .wrap {
   display: inline-flex;
   align-items: center;
   line-height: 1;
+}
+
+.dock .b.active {
+  background: rgba(99, 102, 241, 0.24);
+  color: #e0e7ff;
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.45), 0 0 14px rgba(99, 102, 241, 0.25);
+}
+
+.dock .b.err {
+  background: rgba(244, 63, 94, 0.18);
+  color: #fecdd3;
+  box-shadow: inset 0 0 0 1px rgba(244, 63, 94, 0.35);
 }
 
 /* Segmented Tabs (Chat / People) */
@@ -3774,4 +3768,81 @@ footer .wrap {
   .sidebar-col { width: 100%; }
   .sidebar-col.collapsed { display: none; }
 }
+
+/* Subtitle Settings Dock & Sliders */
+.sub-settings-dock {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+.sub-settings-dock::-webkit-scrollbar {
+  width: 6px;
+}
+.sub-settings-dock::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sub-settings-dock::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.sub-settings-panel input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.2);
+}
+.sub-settings-panel input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  border: none;
+}
+.sub-settings-panel input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  border: none;
+}
+
+@media (max-width: 699px) {
+  .sub-settings-dock {
+    left: 8px !important;
+    right: 8px !important;
+    top: auto !important;
+    width: auto !important;
+    max-height: 55% !important;
+  }
+}
+
+/* On-Video Shortcut Indicator */
+@keyframes indicatorFade {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -6px) scale(0.96);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  75% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -6px) scale(0.96);
+  }
+}
+
 

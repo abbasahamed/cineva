@@ -338,8 +338,6 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   });
 });
 
-import { tempFileLifecycle } from './services/media/tempFileLifecycle.js';
-
 let caffeinateProcess: ChildProcess | null = null;
 let shuttingDown = false;
 

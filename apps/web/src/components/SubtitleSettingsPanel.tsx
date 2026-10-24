@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { SubtitleSettings, clampSize, clampPosition, clampDelay, DEFAULT_SUBTITLE_SETTINGS } from '../utils/subtitleUtils.js';
 
 interface SubtitleSettingsPanelProps {
@@ -28,6 +28,33 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
     });
   };
 
+  // Keyboard Escape listener to close panel and return focus
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+        const trigger = document.getElementById('sub-btn');
+        trigger?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  // Track fill percentage calculations
+  const sizePct = Math.max(0, Math.min(100, ((settings.sizePercent - 60) / (220 - 60)) * 100));
+  const posPct = Math.max(0, Math.min(100, (settings.positionOffsetPercent / 70) * 100));
+
+  const trackStyle = (pct: number): React.CSSProperties => ({
+    flex: 1,
+    height: '4px',
+    background: `linear-gradient(to right, #ffffff 0%, #ffffff ${pct}%, rgba(255, 255, 255, 0.25) ${pct}%, rgba(255, 255, 255, 0.25) 100%)`,
+    borderRadius: '2px',
+    cursor: 'pointer',
+    accentColor: '#ffffff',
+  });
+
   return (
     <div
       className="sub-settings-panel"
@@ -36,16 +63,23 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: '12px',
-        width: '310px',
-        maxWidth: 'calc(100vw - 32px)',
-        padding: '8px 10px 12px',
+        gap: '14px',
+        width: '100%',
+        padding: '12px 14px 16px',
         color: '#fff',
         fontSize: '13px',
       }}
     >
-      {/* Top Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>
+      {/* 1. Header: Back on left, title centered on ONE line, ✕ on right, all on one baseline */}
+      <header
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
+          paddingBottom: '10px',
+        }}
+      >
         <button
           type="button"
           onClick={onBack}
@@ -59,20 +93,26 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
             display: 'inline-flex',
             alignItems: 'center',
             gap: '4px',
-            fontSize: '12.5px',
+            fontSize: '13px',
             padding: '4px 6px',
             borderRadius: '6px',
+            lineHeight: 1,
           }}
         >
-          <svg viewBox="0 0 24 24" style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" strokeWidth="2">
+          <svg viewBox="0 0 24 24" style={{ width: 16, height: 16 }} fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M15 18l-6-6 6-6" />
           </svg>
           Back
         </button>
-        <span style={{ fontWeight: 600, fontSize: '13.5px' }}>Subtitle Settings</span>
+        <h3 style={{ margin: 0, fontWeight: 600, fontSize: '13.5px', whiteSpace: 'nowrap', textAlign: 'center', flex: 1, padding: '0 8px' }}>
+          Subtitle Settings
+        </h3>
         <button
           type="button"
-          onClick={onClose}
+          onClick={() => {
+            onClose();
+            document.getElementById('sub-btn')?.focus();
+          }}
           aria-label="Close subtitle settings"
           className="panel-nav-btn"
           style={{
@@ -82,15 +122,15 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
             cursor: 'pointer',
             padding: '4px 8px',
             borderRadius: '6px',
-            fontSize: '14px',
+            fontSize: '16px',
             lineHeight: 1,
           }}
         >
           ✕
         </button>
-      </div>
+      </header>
 
-      {/* 1. Size Slider & A- / A+ buttons */}
+      {/* 2. Size Slider & A- / A+ buttons */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <label htmlFor="sub-size-slider" style={{ fontWeight: 500 }}>
@@ -98,21 +138,26 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
           </label>
           <span style={{ color: 'var(--t2, #aaa)', fontSize: '12px' }}>{settings.sizePercent}%</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', height: '36px' }}>
           <button
             type="button"
             id="sub-size-dec"
             aria-label="Decrease subtitle size by 10%"
             onClick={() => updateSetting('sizePercent', clampSize(settings.sizePercent - 10))}
             style={{
-              padding: '4px 8px',
-              borderRadius: '6px',
+              height: '36px',
+              padding: '0 10px',
+              borderRadius: '8px',
               background: 'rgba(255, 255, 255, 0.1)',
               border: '1px solid rgba(255, 255, 255, 0.15)',
               color: '#fff',
-              fontSize: '12px',
+              fontSize: '13px',
+              fontWeight: 500,
               cursor: 'pointer',
-              minWidth: '32px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minWidth: '36px',
             }}
           >
             A−
@@ -126,7 +171,7 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
             step={1}
             value={settings.sizePercent}
             onChange={(e) => updateSetting('sizePercent', clampSize(Number(e.target.value)))}
-            style={{ flex: 1, accentColor: 'var(--accent, #6366f1)', cursor: 'pointer' }}
+            style={trackStyle(sizePct)}
           />
           <button
             type="button"
@@ -134,14 +179,19 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
             aria-label="Increase subtitle size by 10%"
             onClick={() => updateSetting('sizePercent', clampSize(settings.sizePercent + 10))}
             style={{
-              padding: '4px 8px',
-              borderRadius: '6px',
+              height: '36px',
+              padding: '0 10px',
+              borderRadius: '8px',
               background: 'rgba(255, 255, 255, 0.1)',
               border: '1px solid rgba(255, 255, 255, 0.15)',
               color: '#fff',
-              fontSize: '12px',
+              fontSize: '13px',
+              fontWeight: 500,
               cursor: 'pointer',
-              minWidth: '32px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minWidth: '36px',
             }}
           >
             A+
@@ -149,7 +199,7 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
         </div>
       </div>
 
-      {/* 2. Position Offset (0% - 70%) */}
+      {/* 3. Position Offset (0% - 70%) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <label htmlFor="sub-pos-slider" style={{ fontWeight: 500 }}>
@@ -157,21 +207,26 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
           </label>
           <span style={{ color: 'var(--t2, #aaa)', fontSize: '12px' }}>{Math.round(settings.positionOffsetPercent)}%</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', height: '36px' }}>
           <button
             type="button"
             id="sub-pos-down"
             aria-label="Move subtitle position down"
             onClick={() => updateSetting('positionOffsetPercent', clampPosition(settings.positionOffsetPercent - 2))}
             style={{
-              padding: '4px 8px',
-              borderRadius: '6px',
+              height: '36px',
+              padding: '0 10px',
+              borderRadius: '8px',
               background: 'rgba(255, 255, 255, 0.1)',
               border: '1px solid rgba(255, 255, 255, 0.15)',
               color: '#fff',
-              fontSize: '12px',
+              fontSize: '14px',
+              fontWeight: 500,
               cursor: 'pointer',
-              minWidth: '32px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minWidth: '36px',
             }}
           >
             ↓
@@ -185,7 +240,7 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
             step={1}
             value={Math.round(settings.positionOffsetPercent)}
             onChange={(e) => updateSetting('positionOffsetPercent', clampPosition(Number(e.target.value)))}
-            style={{ flex: 1, accentColor: 'var(--accent, #6366f1)', cursor: 'pointer' }}
+            style={trackStyle(posPct)}
           />
           <button
             type="button"
@@ -193,14 +248,19 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
             aria-label="Move subtitle position up"
             onClick={() => updateSetting('positionOffsetPercent', clampPosition(settings.positionOffsetPercent + 2))}
             style={{
-              padding: '4px 8px',
-              borderRadius: '6px',
+              height: '36px',
+              padding: '0 10px',
+              borderRadius: '8px',
               background: 'rgba(255, 255, 255, 0.1)',
               border: '1px solid rgba(255, 255, 255, 0.15)',
               color: '#fff',
-              fontSize: '12px',
+              fontSize: '14px',
+              fontWeight: 500,
               cursor: 'pointer',
-              minWidth: '32px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minWidth: '36px',
             }}
           >
             ↑
@@ -211,7 +271,7 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
         </small>
       </div>
 
-      {/* 3. Background: None / Soft / Solid */}
+      {/* 4. Background: None / Soft / Solid (Default: None) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <span style={{ fontWeight: 500 }}>Background</span>
         <div role="radiogroup" aria-label="Subtitle background style" style={{ display: 'flex', gap: '6px' }}>
@@ -225,12 +285,13 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
               onClick={() => updateSetting('background', bg)}
               style={{
                 flex: 1,
-                padding: '6px 8px',
+                padding: '7px 8px',
                 borderRadius: '8px',
-                border: settings.background === bg ? '1.5px solid var(--accent, #6366f1)' : '1px solid rgba(255, 255, 255, 0.15)',
-                background: settings.background === bg ? 'rgba(99, 102, 241, 0.25)' : 'rgba(255, 255, 255, 0.06)',
+                border: settings.background === bg ? '1.5px solid #ffffff' : '1px solid rgba(255, 255, 255, 0.15)',
+                background: settings.background === bg ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 255, 255, 0.06)',
                 color: '#fff',
                 fontSize: '12px',
+                fontWeight: settings.background === bg ? 600 : 400,
                 textTransform: 'capitalize',
                 cursor: 'pointer',
                 textAlign: 'center',
@@ -243,7 +304,7 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
         </div>
       </div>
 
-      {/* 4. Text Colour: White / Yellow / Cyan */}
+      {/* 5. Text Colour: White / Yellow / Cyan (Default: White) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <span style={{ fontWeight: 500 }}>Text Colour</span>
         <div role="radiogroup" aria-label="Subtitle text color" style={{ display: 'flex', gap: '6px' }}>
@@ -265,12 +326,13 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '6px',
-                padding: '6px 8px',
+                padding: '7px 8px',
                 borderRadius: '8px',
-                border: settings.textColor === col.id ? '1.5px solid var(--accent, #6366f1)' : '1px solid rgba(255, 255, 255, 0.15)',
-                background: settings.textColor === col.id ? 'rgba(99, 102, 241, 0.25)' : 'rgba(255, 255, 255, 0.06)',
+                border: settings.textColor === col.id ? '1.5px solid #ffffff' : '1px solid rgba(255, 255, 255, 0.15)',
+                background: settings.textColor === col.id ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 255, 255, 0.06)',
                 color: '#fff',
                 fontSize: '12px',
+                fontWeight: settings.textColor === col.id ? 600 : 400,
                 cursor: 'pointer',
                 transition: 'all 0.15s',
               }}
@@ -282,6 +344,7 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
                   borderRadius: '50%',
                   backgroundColor: col.color,
                   display: 'inline-block',
+                  border: '1px solid rgba(0,0,0,0.4)',
                 }}
               />
               {col.label}
@@ -290,7 +353,7 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
         </div>
       </div>
 
-      {/* 5. Edge: Outline / Shadow / None */}
+      {/* 6. Edge Style: Outline / Shadow / None (Default: Outline) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <span style={{ fontWeight: 500 }}>Edge Style</span>
         <div role="radiogroup" aria-label="Subtitle edge style" style={{ display: 'flex', gap: '6px' }}>
@@ -304,12 +367,13 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
               onClick={() => updateSetting('edge', edge)}
               style={{
                 flex: 1,
-                padding: '6px 8px',
+                padding: '7px 8px',
                 borderRadius: '8px',
-                border: settings.edge === edge ? '1.5px solid var(--accent, #6366f1)' : '1px solid rgba(255, 255, 255, 0.15)',
-                background: settings.edge === edge ? 'rgba(99, 102, 241, 0.25)' : 'rgba(255, 255, 255, 0.06)',
+                border: settings.edge === edge ? '1.5px solid #ffffff' : '1px solid rgba(255, 255, 255, 0.15)',
+                background: settings.edge === edge ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 255, 255, 0.06)',
                 color: '#fff',
                 fontSize: '12px',
+                fontWeight: settings.edge === edge ? 600 : 400,
                 textTransform: 'capitalize',
                 cursor: 'pointer',
                 textAlign: 'center',
@@ -322,7 +386,7 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
         </div>
       </div>
 
-      {/* 6. Subtitle Delay (-5s to +5s, 0.1s steps) */}
+      {/* 7. Subtitle Delay (-5s to +5s, 0.1s steps) in one aligned row */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <label htmlFor="sub-delay-input" style={{ fontWeight: 500 }}>
@@ -332,20 +396,25 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
             {settings.delaySeconds > 0 ? `+${settings.delaySeconds.toFixed(1)}s` : `${settings.delaySeconds.toFixed(1)}s`}
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '36px' }}>
           <button
             type="button"
             id="sub-delay-dec"
             aria-label="Decrease subtitle delay by 0.1s"
             onClick={() => updateSetting('delaySeconds', clampDelay(settings.delaySeconds - 0.1))}
             style={{
-              padding: '5px 10px',
-              borderRadius: '6px',
+              height: '36px',
+              padding: '0 10px',
+              borderRadius: '8px',
               background: 'rgba(255, 255, 255, 0.1)',
               border: '1px solid rgba(255, 255, 255, 0.15)',
               color: '#fff',
               fontSize: '13px',
+              fontWeight: 500,
               cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             −0.1s
@@ -361,14 +430,15 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
             onChange={(e) => updateSetting('delaySeconds', clampDelay(parseFloat(e.target.value) || 0))}
             style={{
               flex: 1,
-              width: '65px',
+              height: '36px',
               textAlign: 'center',
               background: 'rgba(255, 255, 255, 0.08)',
               border: '1px solid rgba(255, 255, 255, 0.2)',
-              borderRadius: '6px',
+              borderRadius: '8px',
               color: '#fff',
-              padding: '4px 6px',
+              padding: '0 4px',
               fontSize: '13px',
+              fontWeight: 500,
             }}
           />
           <button
@@ -377,13 +447,18 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
             aria-label="Increase subtitle delay by 0.1s"
             onClick={() => updateSetting('delaySeconds', clampDelay(settings.delaySeconds + 0.1))}
             style={{
-              padding: '5px 10px',
-              borderRadius: '6px',
+              height: '36px',
+              padding: '0 10px',
+              borderRadius: '8px',
               background: 'rgba(255, 255, 255, 0.1)',
               border: '1px solid rgba(255, 255, 255, 0.15)',
               color: '#fff',
               fontSize: '13px',
+              fontWeight: 500,
               cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             +0.1s
@@ -394,13 +469,17 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
             aria-label="Reset subtitle delay to 0"
             onClick={() => updateSetting('delaySeconds', 0)}
             style={{
-              padding: '5px 8px',
-              borderRadius: '6px',
+              height: '36px',
+              padding: '0 10px',
+              borderRadius: '8px',
               background: 'rgba(255, 255, 255, 0.06)',
               border: '1px solid rgba(255, 255, 255, 0.15)',
               color: 'var(--t2, #aaa)',
               fontSize: '12px',
               cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             Reset
@@ -408,8 +487,8 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
         </div>
       </div>
 
-      {/* 7. Reset to Defaults Button */}
-      <div style={{ marginTop: '4px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+      {/* 8. Reset to Defaults Button (Always fully visible at the bottom) */}
+      <div style={{ marginTop: '2px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
         <button
           type="button"
           id="sub-reset-defaults-btn"
@@ -417,14 +496,18 @@ export const SubtitleSettingsPanel: React.FC<SubtitleSettingsPanelProps> = ({
           onClick={handleReset}
           style={{
             width: '100%',
-            padding: '7px 12px',
+            height: '38px',
             borderRadius: '8px',
             background: 'rgba(255, 255, 255, 0.08)',
-            border: '1px solid rgba(255, 255, 255, 0.15)',
+            border: '1px solid rgba(255, 255, 255, 0.18)',
             color: '#fff',
-            fontSize: '12px',
+            fontSize: '13px',
+            fontWeight: 500,
             cursor: 'pointer',
             textAlign: 'center',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
             transition: 'background 0.15s',
           }}
         >

@@ -335,6 +335,12 @@ export class TranscodingService {
     }
     return false;
   }
+
+  cancelAllJobs(): void {
+    for (const jobId of Array.from(this.activeProcesses.keys())) {
+      this.cancelJob(jobId);
+    }
+  }
 }
 
 export const transcodingService = new TranscodingService();

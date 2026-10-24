@@ -17,14 +17,17 @@ import { render } from '@testing-library/react';
 
 describe('subtitleUtils Suite', () => {
   beforeEach(() => {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.clear();
-      Object.defineProperty(globalThis, 'localStorage', {
-        value: window.localStorage,
-        writable: true,
-        configurable: true,
-      });
-    }
+    const store: Record<string, string> = {};
+    const mockStorage = {
+      getItem: (key: string) => store[key] || null,
+      setItem: (key: string, val: string) => { store[key] = String(val); },
+      removeItem: (key: string) => { delete store[key]; },
+      clear: () => { Object.keys(store).forEach((k) => delete store[k]); },
+      length: 0,
+      key: (i: number) => Object.keys(store)[i] || null,
+    };
+    Object.defineProperty(window, 'localStorage', { value: mockStorage, writable: true, configurable: true });
+    Object.defineProperty(globalThis, 'localStorage', { value: mockStorage, writable: true, configurable: true });
   });
 
   describe('1. Clamping Functions', () => {
@@ -79,6 +82,17 @@ describe('subtitleUtils Suite', () => {
       expect(loaded.textColor).toBe('yellow');
       expect(loaded.edge).toBe('shadow');
       expect(loaded.delaySeconds).toBe(0); // Delay always resets to 0 for a new session
+    });
+
+    it('bumps storage key so old v1 saved values (soft/shadow) do not override new defaults', () => {
+      window.localStorage.setItem('cineva_sub_settings', JSON.stringify({
+        background: 'soft',
+        edge: 'shadow'
+      }));
+      const loaded = loadSubtitleSettings();
+      expect(loaded.background).toBe('none');
+      expect(loaded.edge).toBe('outline');
+      expect(loaded.textColor).toBe('white');
     });
   });
 

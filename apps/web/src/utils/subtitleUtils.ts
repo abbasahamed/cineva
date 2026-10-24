@@ -12,13 +12,13 @@ export interface SubtitleSettings {
 export const DEFAULT_SUBTITLE_SETTINGS: SubtitleSettings = {
   sizePercent: 100,
   positionOffsetPercent: 0,
-  background: 'soft',
+  background: 'none',
   textColor: 'white',
   edge: 'outline',
   delaySeconds: 0,
 };
 
-const STORAGE_KEY = 'cineva_sub_settings';
+const STORAGE_KEY = 'cineva_sub_settings_v2';
 
 // In-memory fallback if localStorage is blocked / unavailable
 let memoryStorage: Record<string, string> = {};
