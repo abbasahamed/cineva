@@ -159,12 +159,7 @@ export const CreateRoomPage: React.FC = () => {
       setNameError('');
     }
 
-    if (!selectedFile && !isSample) {
-      setFileError('Add a movie to start the room.');
-      hasError = true;
-    } else {
-      setFileError('');
-    }
+    setFileError('');
 
     if (hasError) return;
 
@@ -173,8 +168,8 @@ export const CreateRoomPage: React.FC = () => {
     isCancelledRef.current = false;
     setCurrentStage(0);
     setProgressBarWidth(5);
-    setProgressStateText('Uploading');
-    setEtaText('Calculating time remaining…');
+    setProgressStateText('Creating room');
+    setEtaText('');
     uploadStartTimeRef.current = Date.now();
 
     try {
@@ -293,6 +288,40 @@ export const CreateRoomPage: React.FC = () => {
         await new Promise((r) => setTimeout(r, 400));
         if (isCancelledRef.current) return;
         setIsReady(true);
+      } else {
+        // Direct room creation without upfront movie upload
+        const roomResult = await createRoom({
+          displayName: trimmedName,
+          roomName: roomTitle.trim() || `${trimmedName}'s Room`,
+          allowGuestControl,
+        });
+        if (isCancelledRef.current) return;
+
+        activeRoomRef.current = {
+          roomId: roomResult.room.id,
+          sessionId: roomResult.hostSessionId,
+          roomCode: roomResult.room.roomCode,
+        };
+        setCreatedRoomCode(roomResult.room.roomCode);
+
+        // Store host credentials
+        sessionStorage.setItem(`cineva_session_${roomResult.room.roomCode}`, roomResult.hostSessionId);
+        sessionStorage.setItem(`sw_name_${roomResult.room.roomCode}`, trimmedName);
+
+        let publicBase = window.location.origin;
+        try {
+          const pubUrl = await getPublicUrl();
+          if (pubUrl) publicBase = pubUrl;
+        } catch {
+          // fallback to origin
+        }
+        setInviteLink(`${publicBase}/join/${roomResult.room.roomCode}`);
+
+        setProgressBarWidth(100);
+        setCurrentStage(3);
+        setProgressStateText('Ready');
+        setEtaText('');
+        setIsReady(true);
       }
     } catch (err: any) {
       if (isCancelledRef.current) return;
@@ -384,7 +413,9 @@ export const CreateRoomPage: React.FC = () => {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Video source</label>
+              <label className="form-label">
+                Video source <span style={{ opacity: 0.6, fontWeight: 400 }}>(optional)</span>
+              </label>
 
               <input
                 ref={filePickerRef}
@@ -435,7 +466,7 @@ export const CreateRoomPage: React.FC = () => {
                     </svg>
                   </div>
                   <div className="dropzone-title">Drag & drop your video here</div>
-                  <div className="dropzone-sub">MP4, WebM, MKV, MOV • up to 5 GB</div>
+                  <div className="dropzone-sub">MP4, WebM, MKV, MOV • up to 5 GB (or add inside room)</div>
                   <button
                     type="button"
                     className="sample-btn"

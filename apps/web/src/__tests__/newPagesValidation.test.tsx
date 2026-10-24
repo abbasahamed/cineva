@@ -27,7 +27,7 @@ afterEach(() => {
 
 describe('New Cineva Pages — Validation & Prefill Tests', () => {
   describe('CreateRoomPage', () => {
-    it('validates empty name and empty video on submit', async () => {
+    it('validates empty name on submit and allows room creation without movie', async () => {
       render(
         <MemoryRouter>
           <CreateRoomPage />
@@ -38,7 +38,48 @@ describe('New Cineva Pages — Validation & Prefill Tests', () => {
       fireEvent.click(submitBtn);
 
       expect(screen.getByText('Enter a name so your friends know who you are.')).toBeTruthy();
-      expect(screen.getByText('Add a movie to start the room.')).toBeTruthy();
+      expect(screen.queryByText('Add a movie to start the room.')).toBeNull();
+    });
+
+    it('successfully creates room without uploading a movie beforehand', async () => {
+      const mockCreateRoom = vi.mocked(api.createRoom);
+      mockCreateRoom.mockResolvedValueOnce({
+        room: {
+          id: 'room-123',
+          roomCode: 'OPT123',
+          name: "Abbas's Room",
+          hostParticipantId: 'part-123',
+          allowGuestControl: true,
+          expiresAt: new Date(Date.now() + 3600000).toISOString(),
+          participants: [],
+        },
+        hostSessionId: 'sess-123',
+        hostParticipantId: 'part-123',
+      });
+
+      render(
+        <MemoryRouter>
+          <CreateRoomPage />
+        </MemoryRouter>
+      );
+
+      const nameInput = screen.getByLabelText(/your display name/i);
+      fireEvent.change(nameInput, { target: { value: 'Abbas' } });
+
+      const submitBtn = screen.getByRole('button', { name: /create room/i });
+      fireEvent.click(submitBtn);
+
+      await waitFor(() => {
+        expect(mockCreateRoom).toHaveBeenCalledWith(
+          expect.objectContaining({
+            displayName: 'Abbas',
+            roomName: "Abbas's Room",
+          })
+        );
+      });
+
+      expect(await screen.findByText('Your Watch Room is Ready!')).toBeTruthy();
+      expect(screen.getByText('OPT123')).toBeTruthy();
     });
 
     it('rejects files larger than 5 GB with exact prototype error message', async () => {

@@ -622,3 +622,42 @@ Executed reproduction script `scripts/reproduce-step1.mjs` using Playwright with
 - **Test Suites & Build**:
   - `npm test`: **199 / 199 tests passed** (134 server, 65 web).
   - `npm run build`: 0 errors.
+
+---
+
+## Room Creation Without Upfront Movie Upload
+
+### 1. Diagnosis & Root Cause
+- **Symptoms Reported by User**:
+  - On `/create`, entering a display name ("Abbas") and clicking "Create Room" displayed a red validation error: `"Add a movie to start the room."`, preventing room creation unless a video file or sample was selected beforehand.
+- **Root Cause**:
+  1. **Frontend Validation Blocking**: `CreateRoomPage.tsx` had an explicit guard `if (!selectedFile && !isSample) { setFileError('Add a movie to start the room.'); hasError = true; }`, even though the backend `POST /api/rooms` and the watch room itself (`WatchRoomPage.tsx`) fully support empty screening rooms where the movie can be uploaded or chosen inside the room after creating it.
+  2. **Styling Issues Discovered**:
+     - `.modal-box` was translucent, allowing the underlying form inputs to bleed through when displaying the "Your Watch Room is Ready!" modal.
+     - In the empty screening state, `.b.p` (the "Choose a file" button) had `background: var(--tx)` which fell back to transparent with dark text (`#0b0b0d`), making the button appear invisible against the black canvas.
+
+### 2. Implementation & Fixes
+- **Create Room Page (`apps/web/src/pages/CreateRoomPage.tsx`)**:
+  - Removed the mandatory file validation requirement in `handleSubmit`.
+  - Added a direct room creation branch when `!selectedFile && !isSample`: calls `api.createRoom({ displayName, roomName, allowGuestControl })`, saves session credentials, and opens the "Your Watch Room is Ready!" modal with "Enter Theater" button.
+  - Updated UI: marked label as `Video source (optional)` and dropzone subtext as `MP4, WebM, MKV, MOV • up to 5 GB (or add inside room)`.
+- **CSS (`apps/web/src/index.css`)**:
+  - Enhanced `.modal-box` with `background: rgba(18, 15, 38, 0.96); border: 1px solid rgba(255, 255, 255, 0.16); box-shadow: 0 24px 70px rgba(0, 0, 0, 0.85);` to eliminate background bleed-through.
+  - Enhanced `.b.p` with `background: linear-gradient(180deg, #ffffff, #e6e3ff); color: #17123d; box-shadow: 0 4px 14px rgba(124, 108, 251, 0.4);` ensuring the "Choose a file" button is crisp and prominent.
+- **Tests (`apps/web/src/__tests__/newPagesValidation.test.tsx`)**:
+  - Updated validation suite to test room creation without movie upfront.
+
+### 3. Verification & Evidence
+- **Playwright Chrome Automation**:
+  - Navigated to `http://localhost:5173/create`, typed `Abbas`, left video source empty, clicked "Create Room".
+  - Verified room was successfully created on server (room code generated e.g. `9XEWA5`).
+  - Verified "Your Watch Room is Ready!" modal appeared with clean dark glass background.
+  - Clicked "Enter Theater" and navigated to `/room/9XEWA5`.
+  - Verified empty screening state displayed with host tile, working chat, working video controls, and visible "Choose a file" / "Try a sample" buttons.
+- **Screenshots Saved**:
+  - `docs/screenshots/create_no_video_form.png`: Create room form with "Video source (optional)".
+  - `docs/screenshots/create_no_video_modal_fixed.png`: Ready modal with room code and zero background ghosting.
+  - `docs/screenshots/room_empty_screening_fixed.png`: Inside watch room with visible "Choose a file" pill and active host session.
+- **Test Suites & Build**:
+  - `npm test`: **200 / 200 tests passed** (134 server, 66 web).
+  - `npm run build`: 0 errors.

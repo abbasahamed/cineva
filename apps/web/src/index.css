@@ -2382,13 +2382,14 @@ footer .wrap {
 }
 
 .b.p {
-  background: var(--tx);
-  color: #0b0b0d;
-  box-shadow: none;
+  background: linear-gradient(180deg, #ffffff, #e6e3ff);
+  color: #17123d;
+  box-shadow: 0 4px 14px rgba(124, 108, 251, 0.4);
 }
 
 .b.p:hover {
-  background: #fff;
+  background: #ffffff;
+  box-shadow: 0 6px 20px rgba(124, 108, 251, 0.6);
 }
 
 .b.off {
@@ -3734,6 +3735,10 @@ footer .wrap {
   text-align: center;
   transform: scale(0.94);
   transition: transform 0.3s var(--ease);
+  background: rgba(18, 15, 38, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 36px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.85), inset 0 1px 1px rgba(255, 255, 255, 0.3);
 }
 .modal-overlay.open .modal-box {
   transform: scale(1);
