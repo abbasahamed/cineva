@@ -141,7 +141,7 @@ export class LocalMediaStorage implements MediaStorage {
   }
 
   getUrl(storageKey: string): string {
-    return `/media/${encodeURIComponent(storageKey)}`;
+    return `/media/${storageKey.split('/').map(encodeURIComponent).join('/')}`;
   }
 
   getLocalPath(storageKey: string): string | null {
@@ -491,7 +491,7 @@ export class S3MediaStorage implements MediaStorage {
       return `${this.publicBaseUrl.replace(/\/$/, "")}/${storageKey}`;
     }
     // Proxied streaming route to keep bucket private and support range requests
-    return `/media/${encodeURIComponent(storageKey)}`;
+    return `/media/${storageKey.split('/').map(encodeURIComponent).join('/')}`;
   }
 
   getLocalPath(_storageKey: string): string | null {

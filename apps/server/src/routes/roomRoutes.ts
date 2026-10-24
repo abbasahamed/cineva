@@ -131,8 +131,10 @@ router.post("/:roomId/abort", async (req: Request, res: Response) => {
       return;
     }
 
-    const room = await prisma.room.findUnique({
-      where: { id: roomId },
+    const room = await prisma.room.findFirst({
+      where: {
+        OR: [{ id: roomId }, { roomCode: roomId }],
+      },
     });
 
     if (!room) {
@@ -148,11 +150,11 @@ router.post("/:roomId/abort", async (req: Request, res: Response) => {
     }
 
     // 1. Clean up media and abort any active B2 multipart uploads
-    await roomManager.cleanupRoomMedia(roomId);
+    await roomManager.cleanupRoomMedia(room.id);
 
     // 2. End room state and delete from DB
     await prisma.room.delete({
-      where: { id: roomId },
+      where: { id: room.id },
     }).catch(() => {});
 
     res.json({ success: true, message: "Room and uploads aborted successfully" });

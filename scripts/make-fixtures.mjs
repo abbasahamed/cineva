@@ -111,8 +111,18 @@ async function main() {
   const srtSpa = path.join(FIXTURES_DIR, '_tmp_spa.srt');
   const supPgs = path.join(FIXTURES_DIR, '_tmp_pgs.sup');
 
-  fs.writeFileSync(srtEng, '1\n00:00:01,000 --> 00:00:04,000\nWelcome to Cineva Multi-Audio Screening\n\n2\n00:00:05,000 --> 00:00:08,000\nEnjoy the movie with your friends!\n\n');
-  fs.writeFileSync(srtSpa, '1\n00:00:01,000 --> 00:00:04,000\nBienvenidos a la proyección Cineva\n\n2\n00:00:05,000 --> 00:00:08,000\n¡Disfruta de la película juntos!\n\n');
+  fs.writeFileSync(
+    srtEng,
+    '1\n00:00:01,000 --> 00:00:08,000\nWelcome to Cineva Multi-Audio Screening\n\n' +
+    '2\n00:00:10,000 --> 00:00:20,000\nEnjoy the movie with your friends!\n\n' +
+    '3\n00:01:25,000 --> 00:01:45,000\nActive scene at 90 seconds (English CC)\n\n'
+  );
+  fs.writeFileSync(
+    srtSpa,
+    '1\n00:00:01,000 --> 00:00:08,000\nBienvenidos a la proyección Cineva\n\n' +
+    '2\n00:00:10,000 --> 00:00:20,000\n¡Disfruta de la película juntos!\n\n' +
+    '3\n00:01:25,000 --> 00:01:45,000\nEscena activa a los 90 segundos (Español)\n\n'
+  );
   fs.writeFileSync(supPgs, createDummyPgsSup());
 
   run('ffmpeg', [
