@@ -1416,6 +1416,145 @@ Tested on 1440x900 viewport with active MP4 media fixture:
 5. **Guest Permission Enforcement**:
    - The arrow key listener did not check `canControl` before dispatching `handleSeek`, missing the user feedback toast ("The host controls playback") when guest control is disabled.
 
+---
+
+## FIX 1: Subtitle Text Transparency & Panel Layout Polish
+
+### 1. FIX 1A: Transparent Subtitles, Text Only
+- **Default Settings Bumped**:
+  - Bumped localStorage storage key to `cineva_sub_settings_v2` in `apps/web/src/utils/subtitleUtils.ts`.
+  - Changed default background to `'none'`, default edge style to `'outline'`, default text color to `'white'`.
+- **Pure Text Overlay (No Box / No Border / No Background)**:
+  - In `apps/web/src/components/SubtitleOverlay.tsx`:
+    - Root `#custom-subtitle-overlay` now has `background: transparent`, `border: none`, `boxShadow: none`, `backdropFilter: none`, `WebkitBackdropFilter: none`, `padding: 0`.
+    - Render text directly without wrapper spans when `settings.background === 'none'`. Inline `<span>` with `box-decoration-break: clone` is only used when `'soft'` or `'solid'` background is chosen.
+  - **Drag Handle & Hint**:
+    - When settings panel is closed: no outline, no padding, no border, and zero hint labels exist.
+    - When settings panel is open: on hover/drag, only a `1px dashed rgba(255, 255, 255, 0.4)` outline is shown.
+    - The "↕ Drag to move (X%)" hint label (`#sub-drag-hint`) is placed strictly **ABOVE** the outline (`bottom: calc(100% + 8px)`), never inside it.
+  - **Crisp Text Outline for Devanagari & Telugu**:
+    - Applied `paint-order: stroke fill`, `-webkit-text-stroke: 1.5px #000`, and layered fallback shadows (`-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 1px 3px rgba(0, 0, 0, 0.9)`), ensuring razor-sharp contrast against bright frames.
+
+### 2. FIX 1B: Subtitle Settings Panel Layout
+- **Single-Baseline Header**:
+  - Semantic `<header>` containing Back button on left, single-line centered title `<h3>` (`whiteSpace: nowrap`), and close button `✕` on the right on one aligned baseline.
+- **Sliders with Visible 4px Tracks**:
+  - Size and Vertical Position sliders now render a 36px-high row: `[A−] [4px track with white fill] [A+]` and `[↓] [4px track with white fill] [↑]`.
+  - Values right-aligned in row headers.
+- **Unified Delay Row**:
+  - Single aligned row: `[−0.1s] [number input] [+0.1s] [Reset]` (all 36px height). "Reset to Defaults" button fully visible at bottom.
+- **Stage Docking & Non-Intersection**:
+  - Docked to `#stage` with `position: absolute; right: 16px; top: 16px; bottom: controlBarHeight + 16px; width: 320px; overflow: auto;`.
+  - When settings panel is open, `#custom-subtitle-overlay` automatically centers in the available space to the left of the dock (`left: calc((100% - 340px) / 2)`, `maxWidth: calc(100% - 360px)`), completely preventing bounding box overlap.
+  - On narrow screens (`< 700px`), transforms into a responsive bottom sheet covering <= 55% of stage height (verified 54.4%), with the subtitle preview floating safely above it (`bottom: calc(55% + 16px)`).
+- **Keyboard Escape Accessibility**:
+  - Pressing `Escape` closes the panel and immediately returns focus to `#sub-btn`.
+
+---
+
+## FIX 2: Global macOS Playback Shortcuts & Multi-Client Sync
+
+### 1. Dedicated `useRoomShortcuts` Hook
+- Mounted a global capture-phase listener on `window` (`apps/web/src/hooks/useRoomShortcuts.ts`):
+  - **Input Guard**: Ignores events when focus is inside text-entry controls (`input:not([type="range"])`, `textarea`, `select`, `contenteditable`).
+  - **Modifier Guard**: Ignores `metaKey` (Command), `ctrlKey`, and `altKey` so browser back/forward and OS navigation work uninterrupted. `shiftKey` is permitted.
+  - **Key Mappings**:
+    - `←` / `→`: seek −10 s / +10 s
+    - `Shift+←` / `Shift+→`: seek −30 s / +30 s
+    - `J` / `L`: seek −10 s / +10 s (YouTube-style)
+    - `↑` / `↓`: volume ±5% (with on-screen pill)
+    - `Space` / `K`: toggle play/pause (calls `preventDefault()` and `blur()` on clicked buttons to eliminate double-activation)
+    - `M`: mute/unmute
+    - `F`: toggle fullscreen
+    - `C`: toggle subtitles on/off
+    - `[` / `]`: subtitle size −10% / +10%
+    - `Home` / `End`: seek to 0% / 100%
+    - `0`–`9`: jump to 0%–90% of duration
+    - `?`: opens glass `<ShortcutsModal />` reference sheet
+  - **Key Repeat Throttling & Socket Batching**:
+    - Local video `currentTime` seeks immediately for instant feedback, throttled to 100 ms.
+    - Outgoing socket seeks are batched every 250 ms or flushed on `keyup`, eliminating socket flood during long key holds.
+  - **Host Permission Enforcement**:
+    - Respects `canControl`. When guests press seek keys while `allowGuestControl === false`, blocks seek and displays toast `"The host controls playback"`.
+  - **On-Video Indicator Pill**:
+    - Displays frosted glass pill (`#stage div:has-text("+10 s")`) at top-center fading after 700 ms.
+
+---
+
+## Empirical Verification & Test Evidence (`scripts/verify-fixes.mjs`)
+
+Executed end-to-end Playwright verification suite across Chromium and real video fixtures:
+
+### 1. Transparent Subtitle Element Assertions (Closed & Open)
+- **Settings Panel Open**:
+  - Computed background: `rgba(0, 0, 0, 0)` (transparent)
+  - Border: `0px none rgb(255, 255, 255)`
+  - Box shadow: `none`
+  - Backdrop filter: `none`
+  - Hover outline: `rgba(255, 255, 255, 0.4) dashed 1px`
+  - Hint text: `"↕ Drag to move (0%)"`
+  - Hint bounding box: `top: 714.2px, bottom: 733.2px` strictly **above** overlay `top: 741.2px` (no overlap).
+- **Settings Panel Closed**:
+  - Overlay and all ancestor elements up to `#stage` have `bgColor: rgba(0, 0, 0, 0)` and `border: none`.
+  - Hint count when closed: **`0`** (strictly removed from DOM).
+- **Contrast & Stroke Rendering**:
+  - `paintOrder`: `'stroke'`
+  - `webkitTextStroke`: `'1.5px rgb(0, 0, 0)'`
+  - `textShadow`: layered 5-point black shadow ring with soft drop.
+  - Saved before/after screenshots:
+    - [subtitles_dark_frame.png](file:///Users/abbas/Desktop/cineva/docs/screenshots/subtitles_dark_frame.png)
+    - [subtitles_bright_frame.png](file:///Users/abbas/Desktop/cineva/docs/screenshots/subtitles_bright_frame.png)
+
+### 2. Panel Layout Assertions (1440px, 1024px, 390px)
+- **1440px Viewport**:
+  - Header height: 35px, single baseline, `isSingleLine: true`.
+  - Size slider row: height 36px, visible 4px track with white fill.
+  - Position slider row: height 36px, visible 4px track with white fill.
+  - Delay row: height 36px, 4 aligned elements (`#sub-delay-dec`, `#sub-delay-input`, `#sub-delay-inc`, `#sub-delay-reset`).
+  - Panel bounding box: `[734, 102] to [1054, 792]`
+  - Overlay bounding box: `[26, 698.4] to [720, 784]`
+  - Control bar bounding box: `[46, 822] to [114.7, 860]`
+  - Bounding box intersection: **`0` intersection** (`overlay right: 720` < `panel left: 734`, `panel bottom: 792` < `controlBar top: 822`).
+  - Controls clipped horizontally: **`0` / 25**.
+  - Saved screenshot: [subtitle_settings_1440.png](file:///Users/abbas/Desktop/cineva/docs/screenshots/subtitle_settings_1440.png).
+- **1024px Viewport**:
+  - Panel bounding box: `[318, 102] to [638, 660]`
+  - Overlay bounding box: `[26, 560.7] to [304, 652]`
+  - Control bar bounding box: `[46, 690] to [80.1, 728]`
+  - Bounding box intersection: **`0` intersection** (`overlay right: 304` < `panel left: 318`).
+  - Saved screenshot: [subtitle_settings_1024.png](file:///Users/abbas/Desktop/cineva/docs/screenshots/subtitle_settings_1024.png).
+- **390px Mobile Viewport**:
+  - Bottom sheet height: 136px / 250px stage height (ratio: **0.544** <= 0.55).
+  - Saved screenshot: [subtitle_settings_390.png](file:///Users/abbas/Desktop/cineva/docs/screenshots/subtitle_settings_390.png).
+
+### 3. Keyboard Shortcuts Verification Across Situations (a) - (g)
+| Situation | Key Pressed | Before (s) | After (s) | Delta (s) | Verified Result |
+|---|---|---|---|---|---|
+| (a) Fresh load, focus on body | `ArrowRight` / `ArrowLeft` | 1.00s | 11.00s / 1.00s | **+10.00s / −10.00s** | **PASS** |
+| (b) Right after clicking play button | `ArrowRight` / `ArrowLeft` | 1.16s | 11.43s / 1.71s | **+10.27s / −9.71s** | **PASS** |
+| (c) Right after clicking ±10s button | `ArrowRight` / `ArrowLeft` | 11.76s | 22.03s / 12.32s | **+10.27s / −9.71s** | **PASS** |
+| (d) After clicking on video | `ArrowRight` / `ArrowLeft` | 12.35s | 22.35s / 12.35s | **+10.00s / −10.00s** | **PASS** |
+| (e) Chat input focused | `ArrowRight` | 12.35s | 12.35s | **0.00s (no seek)** | **PASS** |
+| (e) After leaving chat input (Escape / blur) | `ArrowRight` / `ArrowLeft` | 12.35s | 22.35s / 12.35s | **+10.00s / −10.00s** | **PASS** |
+| (f) With focus on seek bar | `ArrowRight` / `ArrowLeft` | 12.35s | 22.35s / 12.35s | **+10.00s / −10.00s** | **PASS** |
+| Shift + ArrowRight | `Shift+ArrowRight` | 22.35s | 52.35s | **+30.00s** | **PASS** |
+| Cmd + ArrowLeft | `Meta+ArrowLeft` | 52.35s | 52.35s | **0.00s (no seek)** | **PASS** |
+| Space play/pause | `Space` | paused: false | paused: true | **1 toggle (no double-trigger)** | **PASS** |
+| 1-second hold repeat | `ArrowRight` (held) | 52.35s | 129.87s | **+77.52s (bounded seeks)** | **PASS** |
+| Glass Indicator Pill | `ArrowRight` | — | Pill visible | **Appears & fades in 700ms** | **PASS** |
+| `?` Shortcuts Modal | `?` | — | Modal visible | **Opens frosted glass cheat sheet** | **PASS** |
+
+### 4. Multi-Client Guest Synchronization & Permission Isolation
+- **Host Keyboard Seek Follow**:
+  - Host seek: 120.02s
+  - Guest time after 1.5s: 120.00s
+  - Measured drift: **23.2 ms** (strictly below 120 ms target).
+- **Guest Control Disabled (`allowGuestControl = false`)**:
+  - Host disabled guest control.
+  - Guest pressed `ArrowRight`:
+    - Guest seek delta: **0.00s** (completely blocked from seeking).
+    - Guest received toast: `"The host controls playback"`.
+
 
 
 

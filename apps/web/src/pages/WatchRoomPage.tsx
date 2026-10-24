@@ -36,6 +36,8 @@ import {
 } from "../utils/subtitleUtils.js";
 import { SubtitleOverlay } from "../components/SubtitleOverlay.js";
 import { SubtitleSettingsPanel } from "../components/SubtitleSettingsPanel.js";
+import { useRoomShortcuts } from "../hooks/useRoomShortcuts.js";
+import { ShortcutsModal } from "../components/ShortcutsModal.js";
 
 function formatMediaInfo(media: { title: string; size?: number | string } | null | undefined) {
   if (!media) return { displayTitle: "Friday movie night", size: null, rawTitle: "" };
@@ -316,6 +318,13 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       showGlobalToast(permissionError, "error");
     }
   }, [permissionError, showGlobalToast]);
+
+  useEffect(() => {
+    (window as any).__cinevaUpdateSettings = handleUpdateSettings;
+    return () => {
+      delete (window as any).__cinevaUpdateSettings;
+    };
+  }, [handleUpdateSettings]);
 
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
 
@@ -853,51 +862,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     return () => clearInterval(interval);
   }, [videoRef, mediaUrl]);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (/INPUT|TEXTAREA/.test((document.activeElement as HTMLElement)?.tagName || "")) return;
-      if (e.key === " ") {
-        e.preventDefault();
-        playback.isPlaying ? handlePause() : handlePlay();
-        wakeControls();
-      } else if (e.key === "f" || e.key === "F") {
-        handleToggleFullscreen();
-      } else if (e.key === "m" || e.key === "M") {
-        setIsVideoMuted((prev) => !prev);
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        const t = Math.min(playback.duration || 0, playback.currentTime + 10);
-        handleSeek(t);
-        wakeControls();
-      } else if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        const t = Math.max(0, playback.currentTime - 10);
-        handleSeek(t);
-        wakeControls();
-      } else if (e.key === "[") {
-        setSubSettings((prev: SubtitleSettings) => {
-          const newSize = clampSize(prev.sizePercent - 10);
-          const updated = { ...prev, sizePercent: newSize };
-          saveSubtitleSettings(updated);
-          showToast(`Subtitle size ${newSize}%`);
-          return updated;
-        });
-      } else if (e.key === "]") {
-        setSubSettings((prev: SubtitleSettings) => {
-          const newSize = clampSize(prev.sizePercent + 10);
-          const updated = { ...prev, sizePercent: newSize };
-          saveSubtitleSettings(updated);
-          showToast(`Subtitle size ${newSize}%`);
-          return updated;
-        });
-      } else if (e.key === "Escape" && activeMenu) {
-        setActiveMenu(null);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [playback.isPlaying, playback.duration, playback.currentTime, activeMenu, handlePlay, handlePause, handleSeek, wakeControls, showToast]);
+
 
   useEffect(() => {
     (window as any).__cinevaSeek = handleSeek;
@@ -1081,6 +1046,41 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       stageRef.current.requestFullscreen().catch(() => {});
     }
   };
+
+  // Global Keyboard Shortcuts (Attached to window with capture, macOS & key-repeat support)
+  const { indicator, showShortcutsHelp, setShowShortcutsHelp } = useRoomShortcuts({
+    videoRef: videoRef as React.RefObject<HTMLVideoElement>,
+    canControl,
+    curTime,
+    totalDuration,
+    isActuallyPlaying,
+    volume,
+    isVideoMuted,
+    setVolume,
+    setIsVideoMuted,
+    handlePlay,
+    handlePause,
+    handleSeek,
+    handleToggleFullscreen,
+    onToggleSubtitles: () => {
+      if (selectedSubIdx !== null && selectedSubIdx >= 0) {
+        handleSelectSubtitle(-1);
+        showToast("Subtitles off");
+      } else if (supportedSubtitleOptions.length > 0) {
+        handleSelectSubtitle(0);
+        showToast(`Subtitles: ${supportedSubtitleOptions[0].label}`);
+      } else {
+        showToast("No subtitles available");
+      }
+    },
+    subSettings,
+    setSubSettings,
+    saveSubtitleSettings,
+    showToast,
+    wakeControls,
+    activeMenu,
+    setActiveMenu,
+  });
 
   const handleLocalSubChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1342,6 +1342,75 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             stageElement={stageRef.current}
           />
 
+          {/* On-Video Shortcut Indicator */}
+          {indicator && (
+            <div
+              key={indicator.id}
+              className="stage-shortcut-indicator"
+              style={{
+                position: "absolute",
+                top: "24px",
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 15,
+                background: "rgba(15, 17, 23, 0.85)",
+                backdropFilter: "blur(12px)",
+                WebkitBackdropFilter: "blur(12px)",
+                border: "1px solid rgba(255, 255, 255, 0.2)",
+                borderRadius: "24px",
+                padding: "8px 18px",
+                color: "#ffffff",
+                fontSize: "14px",
+                fontWeight: 600,
+                boxShadow: "0 8px 24px rgba(0, 0, 0, 0.6)",
+                pointerEvents: "none",
+                animation: "indicatorFade 700ms ease forwards",
+              }}
+            >
+              {indicator.text}
+            </div>
+          )}
+
+          {/* Docked Subtitle Settings Panel */}
+          {activeMenu === "sub-settings" && (
+            <aside
+              className="sub-settings-dock gl"
+              id="sub-settings-dock"
+              role="dialog"
+              aria-label="Subtitle settings"
+              style={{
+                position: "absolute",
+                right: "16px",
+                top: "16px",
+                bottom: `${!isIdle ? controlBarHeight + 16 : 28}px`,
+                width: "320px",
+                maxWidth: "calc(100% - 32px)",
+                overflowY: "auto",
+                zIndex: 10,
+                background: "rgba(18, 20, 29, 0.92)",
+                backdropFilter: "blur(16px)",
+                WebkitBackdropFilter: "blur(16px)",
+                borderRadius: "16px",
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+                boxShadow: "0 16px 40px rgba(0, 0, 0, 0.7)",
+                transition: "bottom 200ms cubic-bezier(0.16, 1, 0.3, 1)",
+              }}
+            >
+              <SubtitleSettingsPanel
+                settings={subSettings}
+                onChange={(updated) => {
+                  setSubSettings(updated);
+                  saveSubtitleSettings(updated);
+                }}
+                onBack={() => setActiveMenu("subs")}
+                onClose={() => {
+                  setActiveMenu(null);
+                  document.getElementById("sub-btn")?.focus();
+                }}
+              />
+            </aside>
+          )}
+
           {/* Screening States: Empty / Preparing / Failed / Ready */}
           {!room?.media ? (
             <div className="empty" id="empty">
@@ -1539,7 +1608,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                     className="cb pp"
                     id="pp"
                     aria-label={isActuallyPlaying ? "Pause" : "Play"}
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.currentTarget.blur();
                       if (!canControl) {
                         showToast("The host controls playback");
                         return;
@@ -1564,7 +1634,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                     className="cb"
                     id="bk"
                     aria-label="Back 10 seconds"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.currentTarget.blur();
                       if (!canControl) {
                         showToast("The host controls playback");
                         return;
@@ -1583,7 +1654,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                     className="cb"
                     id="fw"
                     aria-label="Forward 10 seconds"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.currentTarget.blur();
                       if (!canControl) {
                         showToast("The host controls playback");
                         return;
@@ -1603,7 +1675,10 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                       className="cb"
                       id="mt"
                       aria-label={isVideoMuted ? "Unmute" : "Mute"}
-                      onClick={() => setIsVideoMuted(!isVideoMuted)}
+                      onClick={(e) => {
+                        e.currentTarget.blur();
+                        setIsVideoMuted(!isVideoMuted);
+                      }}
                     >
                       {isVideoMuted || volume === 0 ? (
                         <svg viewBox="0 0 24 24" id="mti">
@@ -1651,6 +1726,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                   <button
                     type="button"
                     className="cb"
+                    id="sub-btn"
                     data-m="subs"
                     aria-label="Subtitles"
                     aria-expanded={activeMenu === "subs"}
@@ -1704,22 +1780,57 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                     </svg>
                   </button>
 
-                  <button type="button" className="cb" id="pip" aria-label="Picture in picture" onClick={handleTogglePiP}>
+                  <button
+                    type="button"
+                    className="cb"
+                    id="pip"
+                    aria-label="Picture in picture"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      handleTogglePiP();
+                    }}
+                  >
                     <svg viewBox="0 0 24 24">
                       <rect x="3" y="5" width="18" height="14" rx="4" />
                       <rect x="12" y="11" width="6" height="5" rx="1.2" />
                     </svg>
                   </button>
 
-                  <button type="button" className="cb" id="fs" aria-label="Fullscreen" onClick={handleToggleFullscreen}>
+                  <button
+                    type="button"
+                    className="cb"
+                    id="shortcuts-btn"
+                    aria-label="Keyboard shortcuts"
+                    title="Keyboard shortcuts (?)"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      setShowShortcutsHelp(true);
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01" />
+                    </svg>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="cb"
+                    id="fs"
+                    aria-label="Fullscreen"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      handleToggleFullscreen();
+                    }}
+                  >
                     <svg viewBox="0 0 24 24">
                       <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
                     </svg>
                   </button>
                 </div>
 
-                {/* Popover Menu inside Player */}
-                {activeMenu && (
+                {/* Popover Menu inside Player (excluding docked sub-settings) */}
+                {activeMenu && activeMenu !== "sub-settings" && (
                   <div
                     className="mn gl"
                     id="mn"
@@ -1852,17 +1963,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                       </>
                     )}
 
-                    {activeMenu === "sub-settings" && (
-                      <SubtitleSettingsPanel
-                        settings={subSettings}
-                        onChange={(updated) => {
-                          setSubSettings(updated);
-                          saveSubtitleSettings(updated);
-                        }}
-                        onBack={() => setActiveMenu("subs")}
-                        onClose={() => setActiveMenu(null)}
-                      />
-                    )}
+
 
                     {activeMenu === "speed" && (
                       <>
@@ -2159,6 +2260,11 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                   aria-label="Message"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      e.currentTarget.blur();
+                    }
+                  }}
                 />
                 <button type="submit" className="b p i" aria-label="Send">
                   <svg viewBox="0 0 24 24">
@@ -2322,6 +2428,12 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
         onToggleCamera={toggleCamera}
         onToggleMute={toggleMute}
         getStream={getStream}
+      />
+
+      {/* Keyboard Shortcuts Cheat Sheet */}
+      <ShortcutsModal
+        isOpen={showShortcutsHelp}
+        onClose={() => setShowShortcutsHelp(false)}
       />
 
       <WebRTCDebugPanel />
