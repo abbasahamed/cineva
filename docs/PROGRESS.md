@@ -380,3 +380,106 @@ Executed reproduction script `scripts/reproduce-step1.mjs` using Playwright with
    - **CONFIRMED CONTRIBUTING CAUSE**.
    - The UI play/pause button state in `WatchRoomPage.tsx` was derived directly from `playback.isPlaying` (socket state) rather than the actual `<video>` element's real playback state (`paused`, `ended`, `waiting`). If `playback.isPlaying` is true while `video.src` is missing or autoplay is blocked, the button displayed "pause" at 0:00 while the video was stopped.
 
+## STEP 2: Fix Playback Failure (Faststart, Media Binding, CORS & HUD State)
+- **Root Cause Resolution**:
+  - Attached real media `src={mediaUrl}` to `<video id="v">` in `apps/web/src/pages/WatchRoomPage.tsx`. Added `videoRef.current.load()` upon URL changes.
+  - Added full HTMLMediaElement event listeners (`play`, `pause`, `playing`, `waiting`, `timeupdate`, `durationchange`, `loadedmetadata`, `error`, `ended`) tracking real video element state `isActuallyPlaying`.
+  - Disconnected play/pause button `#pp` from optimistic socket state; button glyph and behavior now strictly reflect real video playback state.
+  - Added stage visual states:
+    - `#empty`: Empty screening state when no media is attached.
+    - `#preparingState`: High-clarity progress bar, stage description, and ETA when media is being uploaded/transcoded.
+    - `#failedState`: Error details and retry button if transcoding fails.
+    - Autoplay Blocked overlay: Clear "Press play to start" prompt if browser blocks unmuted/unprompted autoplay.
+  - Wrapped ambient lighting canvas rendering in `try/catch` with guards against hidden document, paused video, or unready video state (`v.readyState < 2`).
+  - Added explicit CORS headers to `apps/server/src/services/mediaStorage.ts` on 206 Partial Content, 200 OK, and OPTIONS requests:
+    - `Access-Control-Allow-Origin: <origin>`
+    - `Access-Control-Allow-Credentials: true`
+    - `Access-Control-Expose-Headers: Content-Range, Content-Length, Accept-Ranges`
+    - `Cross-Origin-Resource-Policy: cross-origin`
+  - Added `app.all('/media/*')` in `apps/server/src/index.ts` to properly service `OPTIONS` preflight requests.
+  - Verified `-movflags +faststart` in `apps/server/src/services/media/transcodingService.ts` for fast progressive streaming.
+- **Evidence & Verification**:
+  - Added automated server tests `apps/server/src/__tests__/mediaRouteHeaders.test.ts` (4/4 passed).
+  - Playwright Chrome test verified playback on `http://localhost:5173`:
+    - MP4: `currentTime = 0.214s`, `duration = 5s`, `readyState = 4`, `paused = false`.
+    - MKV: transcoded to faststart MP4, `currentTime = 0.216s`, `duration = 5.000998s`, `readyState = 4`, `paused = false`.
+  - Playwright Chrome test verified playback on single-port `http://localhost:4000`:
+    - MP4: `currentTime = 0.205s`, `duration = 5s`, `readyState = 4`, `paused = false`.
+
+---
+
+## STEP 3: Remove All Prototype & Fake Demo Artifacts
+- **Changes**:
+  - Removed all mock participant cards ("Maya", "Dev", `<em className="demo">Demo</em>`, hue-rotate clones) from `WatchRoomPage.tsx`.
+  - Replaced hardcoded participant counts (`"3 in the call"`) with live, server-backed participant arrays (`${participants.length} in the call`).
+  - Replaced prototype mock participant tags on `LandingPage.tsx` with neutral labels.
+  - Ensured room code displayed in invite popover is dynamically populated from `roomCode` rather than hardcoded `"A7K9PX"`.
+- **Evidence & Verification**:
+  - Created automated regression suite `apps/web/src/__tests__/noPrototypeArtifacts.test.ts` (5/5 passed).
+  - Enforced that build fails if `"A7K9PX"`, `"Maya"`, or `"Dev (Demo)"` appear in `apps/web/src`.
+
+---
+
+## STEP 4: Deduplicate Participants & Handle Reloads Cleanly
+- **Root Cause Resolution**:
+  - In `apps/server/src/services/roomManager.ts`:
+    - `getParticipants()` filters exclusively for `isOnline: true` and deduplicates by `sessionId`.
+    - Updated `pruneStaleRooms()`: instead of abruptly terminating active rooms after 15 seconds of disconnection, it now respects `CONFIG.ROOM_GRACE_PERIOD_MS` (30s) and preserves newly created rooms younger than the grace period.
+  - In `apps/server/src/config.ts`:
+    - Increased `MAX_CONCURRENT_ROOMS` in development from 3 to 20 to prevent automated integration test suites from tripping capacity rejections.
+  - In `apps/web/src/hooks/useSyncWatch.ts`:
+    - Removed `beforeunload` / `pagehide` beacon that was destroying rooms on browser refresh. Host disconnects now use the server-side 30s grace period.
+    - Added participant deduplication in `onRoomState`, `onParticipantJoined`, and `onParticipantLeft`.
+  - In `apps/web/src/pages/WatchRoomPage.tsx`:
+    - Lazily initialized `displayName` and `sessionId` from `sessionStorage` in `useState` so page reloads do not trigger a transient redirect to `/join`.
+- **Evidence & Verification**:
+  - Playwright test executed 3 consecutive page reloads on Google Chrome:
+    - Initial count: `{ topBar: '1', sideHeader: '1 in the call', tiles: 1 }`
+    - After Reload 1: `{ topBar: '1', sideHeader: '1 in the call', tiles: 1 }`
+    - After Reload 2: `{ topBar: '1', sideHeader: '1 in the call', tiles: 1 }`
+    - After Reload 3: `{ topBar: '1', sideHeader: '1 in the call', tiles: 1 }`
+    - Zero duplicate tiles or phantom participants created.
+
+---
+
+## STEP 5: Fix Empty "Audience" Chat Chips
+- **Root Cause Resolution**:
+  - In `WatchRoomPage.tsx`:
+    - Rendered system lines with `<div className="m sys"><span>{msg.message}</span></div>`.
+    - Rendered current user's messages right-aligned with `<div className="m me"><span>{msg.message}</span></div>`.
+    - Rendered other participants' messages with `<div className="m"><b>{msg.displayName}</b><span>{msg.message}</span></div>`.
+  - Added `.m.sys` styling to `apps/web/src/index.css` for centered, subtle system notices.
+- **Evidence & Verification**:
+  - Created component unit test `apps/web/src/__tests__/chatMessageRendering.test.tsx` (2/2 passed).
+  - Playwright live chat exchange verified between Host ("Abbas") and Guest ("Sarah"):
+    - Guest received Host message: `{ text: 'Movie is starting now!', sender: 'Abbas', isMe: false }`.
+    - Host received Guest reply: `{ text: 'Grabbed my popcorn, let’s go!', sender: 'Sarah', isMe: false }`.
+    - Asserted no empty "Audience" chips in chat on either client.
+
+---
+
+## STEP 6: Full Multi-User Verification & Playwright Screenshots
+- **Automated Verification Script**: `scripts/verify-all-steps.mjs`
+  - Ran against real dev (`:5173`) and single-port (`:4000`) servers using Google Chrome channel `chrome`.
+  - Passed all fake device flags: `--use-fake-ui-for-media-stream`, `--use-fake-device-for-media-stream`, `--autoplay-policy=no-user-gesture-required`.
+  - **Results**:
+    - MP4 Playback on `:5173`: PASSED (video playing, `currentTime = 0.214s`, `readyState = 4`).
+    - MKV Transcoded Playback on `:5173`: PASSED (faststart MP4 streaming, `currentTime = 0.222s`, `readyState = 4`).
+    - MP4 Playback on `:4000`: PASSED (single-port production bundle, `currentTime = 0.203s`, `readyState = 4`).
+    - Reload Deduplication: 3 rapid reloads survived with participant count = 1.
+    - Two-User Join: Host + Guest = 2 participants on both sides.
+    - Real-Time Chat: Bi-directional messaging verified with correct names and alignment.
+    - WebRTC Video Call: Camera feeds toggled on both clients.
+    - Sync Accuracy: Host time = `2.170s`, Guest time = `2.170s`, **Drift = 0.0ms** (well within target <120ms).
+    - Host Pause Sync: Both players paused simultaneously.
+    - Guest Rejoin: Guest reloaded and reconnected; participant count remained exactly 2.
+- **Artifacts & Screenshots**:
+  - `e2e_1_room_ready.png`: Two-user watch room initialized and ready.
+  - `e2e_2_playing_sync.png`: Video playing in exact synchronization (drift 0.0ms).
+  - `e2e_3_video_call_cameras.png`: Active WebRTC peer video camera feeds.
+  - `e2e_4_chat_messages.png`: Real-time chat stream with sender attribution and no empty chips.
+  - `playback_mp4_dev.png`: Direct MP4 playback proof.
+  - `playback_mkv_dev.png`: MKV transcode progressive streaming proof.
+  - `playback_mp4_prod.png`: Single-port production server playback proof.
+
+
