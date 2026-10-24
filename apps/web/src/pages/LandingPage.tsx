@@ -641,23 +641,25 @@ export const LandingPage: React.FC = () => {
           <div className="wrap">
             <div className="band lg rv">
               <h2>Got a code from a friend?</h2>
-              <p>Enter the six characters to join their room.</p>
-              <form className="code" id="cf" onSubmit={handleJoinSubmit} autoComplete="off">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <input
-                    key={i}
-                    ref={(el) => { boxRefs.current[i] = el; }}
-                    aria-label={`Character ${i + 1}`}
-                    maxLength={1}
-                    value={codeBoxes[i]}
-                    onChange={(e) => handleBoxChange(i, e.target.value)}
-                    onKeyDown={(e) => handleBoxKeyDown(i, e)}
-                    onPaste={handleBoxPaste}
-                    onFocus={(e) => e.target.select()}
-                  />
-                ))}
-                <button type="submit" className="btn w lgx" style={{ marginLeft: 10 }}>
-                  Join room &rarr;
+              <p>Enter the six characters to sync up with their theater room instantly.</p>
+              <form className="code-form" id="cf" onSubmit={handleJoinSubmit} autoComplete="off">
+                <div className="code-cells" id="pinContainer">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <input
+                      key={i}
+                      ref={(el) => { boxRefs.current[i] = el; }}
+                      aria-label={`Character ${i + 1}`}
+                      maxLength={1}
+                      value={codeBoxes[i]}
+                      onChange={(e) => handleBoxChange(i, e.target.value)}
+                      onKeyDown={(e) => handleBoxKeyDown(i, e)}
+                      onPaste={handleBoxPaste}
+                      onFocus={(e) => e.target.select()}
+                    />
+                  ))}
+                </div>
+                <button type="submit" className="btn w lgx" style={{ marginLeft: 8 }}>
+                  <span>Join room</span>
                 </button>
               </form>
               <p className="err" id="err" role="alert">

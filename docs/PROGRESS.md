@@ -587,3 +587,38 @@ Executed reproduction script `scripts/reproduce-step1.mjs` using Playwright with
   - `node scripts/verify-seekbar.mjs`: PASSED 100% on MP4 and MKV fixtures (confirmed room seekbar remains intact).
   - `npm test`: **199 / 199 tests passed** (134 server, 65 web).
   - `npm run build`: 0 TypeScript / bundle errors across all workspaces.
+
+---
+
+## Landing Page Join Code Band & Typography Refinement
+
+### 1. Diagnosis & Root Cause
+- **Symptoms Reported by User**:
+  - The "Got a code from a friend?" section looked visually unappealing:
+    1. A dark oblong pill/capsule background wrapped around the 6 input boxes AND the "Join room" button, compressing them together.
+    2. The button inherited `font: 600 17px var(--mono)` and wide letter-spacing (`0.12em`) with an arrow suffix (`Join room &rarr;`).
+    3. The section cards had a blurry text artifact due to `.rv { filter: blur(8px); }` taking 0.9s or remaining blurred during intermediate scroll positions.
+- **Root Cause**:
+  1. **Unscoped `.code` Style**: In `apps/web/src/index.css` (line 3317), the style intended for the watch room invite popover (`.code { background: rgba(0, 0, 0, 0.35); padding: 6px; border-radius: 14px; font: 600 17px var(--mono); ... }`) lacked scoping and was applied to the landing page form `<form className="code">`.
+  2. **Filter Blur Transition**: `.rv { filter: blur(8px); }` caused severe rendering blurriness and GPU lag when scrolling.
+
+### 2. Implementation & Fixes
+- **CSS (`apps/web/src/index.css`)**:
+  - Scoped popover code bar to `.pop .code`.
+  - Added dedicated `.code-form` and `.code-cells` rules matching reference design (`claude/index.html`):
+    - `.code-cells input`: Individual 54x66px rounded glass tiles (`border-radius: 18px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.2); box-shadow: inset 0 2px 6px rgba(0,0,0,0.45);`).
+    - Focus state: `background: rgba(22, 18, 48, 0.7); box-shadow: 0 0 0 4px rgba(124, 108, 251, 0.3), inset 0 2px 6px rgba(0,0,0,0.5); transform: translateY(-2px);`.
+    - `.code-form .btn`: Reset to variable font (`font-family: inherit; font-size: 16.5px; font-weight: 600; letter-spacing: -0.01em;`), 56px height, 32px horizontal padding.
+  - Removed `filter: blur(8px)` from `.rv` and streamlined reveal animation to crisp `opacity` + `translateY` (0.5s duration).
+- **Component (`apps/web/src/pages/LandingPage.tsx`)**:
+  - Updated markup to `<form className="code-form" id="cf">` with inner `<div className="code-cells" id="pinContainer">`.
+  - Updated CTA text to clean `<span>Join room</span>`.
+  - Updated copy to `"Enter the six characters to sync up with their theater room instantly."`.
+
+### 3. Verification & Evidence
+- **Screenshots Saved**:
+  - `docs/screenshots/join_band_crisp.png`: Crystal clear glass cards with glowing Join room CTA.
+  - `docs/screenshots/join_band_typed_crisp.png`: Active character input state (`C I N E V A`) with glowing focus indicator.
+- **Test Suites & Build**:
+  - `npm test`: **199 / 199 tests passed** (134 server, 65 web).
+  - `npm run build`: 0 errors.
