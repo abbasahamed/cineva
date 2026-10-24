@@ -1375,6 +1375,48 @@ Executed against Chrome with multi-track fixture (`fixtures/2_multi_track.mkv`):
 - `docs/screenshots/subtitles_after_360_controls_hidden.png`
 - `docs/screenshots/subtitles_telugu_render.png`
 
+---
+
+# Playback Keyboard Shortcuts (Arrow Keys ±10s) Fix & Subtitle Polish
+
+## STEP 1: Keyboard Shortcuts Diagnosis (Situations a - g) (Completed)
+
+### 1. Empirical Diagnosis Results via Playwright Chrome (`scripts/diagnose-shortcuts.mjs`)
+Tested on 1440x900 viewport with active MP4 media fixture:
+
+| Situation | Active Element | Before (s) | After (s) | Delta (s) | event.defaultPrevented | Seek Worked? |
+|---|---|---|---|---|---|---|
+| (a) Fresh load, focus on body | `<BODY id="null">` | 0 | 0 | 0 | `true` | **NO** |
+| (b) Right after clicking play button | `<BUTTON id="pp">` | 0.176s | 0.176s | 0 | `true` | **NO** |
+| (c) Right after clicking +10s button | `<BUTTON id="fw">` | 5.000s | 5.000s | 0 | `true` | **NO** |
+| (d) After clicking on video | `<VIDEO id="v">` | 5.000s | 5.000s | 0 | `true` | **NO** |
+| (e) With focus on chat input | `<INPUT id="null">` | 5.000s | 5.000s | 0 | `false` | **NO** (Bailed out properly) |
+| (f) With focus on seek bar | `<DIV id="seek">` | 5.000s | 5.000s | 0 | `true` | **NO** |
+| (g) With focus on volume slider | `<INPUT id="vr">` | 5.000s | 5.000s | 0 | `false` | **NO** (Bailed out properly) |
+
+### 2. Root Cause Analysis
+1. **Primary Bug (`NaN` Seek Target)**:
+   - In `apps/web/src/pages/WatchRoomPage.tsx:870-876`:
+     ```ts
+     const t = Math.min(playback.duration || 0, playback.currentTime + 10);
+     handleSeek(t);
+     ```
+   - In Cineva's data model (`@cineva/shared`), `PlaybackState` has `position: number`, `isPlaying: boolean`, `lastUpdatedAt: number`, `playbackRate: number`, `version: number`.
+   - `playback.currentTime` and `playback.duration` are **`undefined`**!
+   - `playback.currentTime + 10` evaluates to `NaN`.
+   - `Math.min(0, NaN)` evaluates to `NaN`.
+   - In `useSyncWatch.ts:581`, `handleSeek(newPosition)` starts with `if (!Number.isFinite(newPosition)) return;`.
+   - Result: `handleSeek` aborted silently on every single ArrowRight / ArrowLeft keypress!
+2. **Missing Global Capture & Button Focus Trapping**:
+   - When users click controls (`#pp`, `#fw`, `#bk`), focus remains on `<button>`. Without `blur()` or capture-level shortcut handling, subsequent `Space` keypresses trigger native HTML button activation in addition to or instead of global hotkeys.
+3. **Missing Modifier Checks & macOS Compatibility**:
+   - `window.onKeyDown` did not guard against `metaKey` (Command on macOS) or `altKey` (Option on macOS), causing browser-native back/forward navigation or system hotkeys to collide with seek events.
+4. **Key Repeat & Socket Flooding**:
+   - Holding down arrow keys fired unthrottled seeks without batching, risking socket saturation.
+5. **Guest Permission Enforcement**:
+   - The arrow key listener did not check `canControl` before dispatching `handleSeek`, missing the user feedback toast ("The host controls playback") when guest control is disabled.
+
+
 
 
 
