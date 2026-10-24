@@ -1888,5 +1888,19 @@ Measured using automated end-to-end Playwright Chrome benchmark (`scripts/verify
    - Fully accessible: focus trap, Tab/Shift-Tab cycling, Escape key dismissal, and return-of-focus on close.
    - Swipe-down gesture to dismiss.
 6. **Automated Verification (`scripts/verify-step6-tabs.mjs`)**:
-   - Verified 48px tabs height, 2-col grid, 44px dock buttons, chat message submission, and bottom sheet focus/max-height.
+   - Console guard clean: 0 errors, 0 warnings.
+
+### MOBILE ROUND 2: STEP 7 — Landscape Phone & Tablet Responsive Layouts
+1. **Landscape Phone (< 500px height)**:
+   - Evaluated under `@media (max-width: 899px) and (max-height: 499px) and (orientation: landscape)`.
+   - Stage occupies full screen: `position: fixed; inset: 0; width: 100vw; height: 100dvh; max-height: 100dvh !important; aspect-ratio: unset !important; border-radius: 0;`.
+   - Side panel transformed into slide-over drawer (`.mobile-tabs-area`, `position: fixed; top: 0; right: 0; bottom: 0; width: 320px; max-width: 80vw;`).
+   - Floating toggle button (`.landscape-drawer-toggle`, 44×44px, bottom-right) renders exclusively on landscape phones to open/close the drawer.
+2. **Tablet (600px – 899px width, height >= 500px)**:
+   - Configured stacked layout without desktop sidebar (`aside.side` hidden, single-column flow).
+   - Stage max-height set to `45dvh !important;`.
+   - Video call tile grid expands to 3 columns (`grid-template-columns: repeat(3, 1fr) !important;`).
+3. **Automated Verification (`scripts/verify-step7-landscape-tablet.mjs`)**:
+   - iPhone 15 Landscape (844×390): Stage measured 844×390px (100dvh), toggle button visible, slide-over drawer toggles to 320px width.
+   - Tablet (768×1024): Stacked layout, 0 desktop aside, stage height 423px <= 45dvh (460.8px), 3-column call grid verified.
    - Console guard clean: 0 errors, 0 warnings.

@@ -4091,11 +4091,13 @@ footer .wrap {
     pointer-events: none;
   }
   .stage {
-    position: fixed;
-    inset: 0;
-    width: 100vw;
-    height: 100dvh;
-    border-radius: 0;
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    aspect-ratio: unset !important;
+    border-radius: 0 !important;
     z-index: 10;
   }
   /* Slide-over panel toggled by button */
@@ -4128,6 +4130,17 @@ footer .wrap {
     display: grid;
     place-items: center;
     box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  }
+}
+
+/* Tablet Layout (600px - 899px width, stacked, stage max-height 45dvh, 3-col grid) */
+@media (min-width: 600px) and (max-width: 899px) and (min-height: 500px) {
+  .stage {
+    max-height: 45dvh !important;
+  }
+
+  .mobile-call-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
   }
 }
 
