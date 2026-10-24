@@ -385,7 +385,7 @@ export const LandingPage: React.FC = () => {
                       A<small>You</small>
                     </div>
                     <div className="tile sp" style={{ background: 'linear-gradient(145deg,#bfe6f7,#6fb0d2)' }}>
-                      M<small>Maya</small>
+                      F<small>Friend</small>
                     </div>
                   </div>
                   <div className="chat">
@@ -445,7 +445,7 @@ export const LandingPage: React.FC = () => {
                     <use href="#user" />
                   </svg>
                 </span>
-                Maya joined
+                Friend joined
               </div>
               <div className="chip lg c2">
                 <span className="dot" />In sync · 38 ms apart
@@ -512,7 +512,7 @@ export const LandingPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="row2">
-                    <b>Maya</b>
+                    <b>Friend</b>
                     <div className="bar b">
                       <i />
                     </div>
