@@ -1160,6 +1160,62 @@ To verify in your own browser right now:
    - Open the Subtitles Menu (speech bubble icon or `C` key).
    - Select **English** to display subtitles extracted from stream 3.
 
+---
+
+# Subtitle Occlusion Fix & Subtitle Settings Feature
+
+## STEP 1: Diagnosis of Subtitles Hidden Behind Control Bar (Completed)
+
+### 1. How Subtitles Are Rendered Today
+- **Mechanism**: Native browser text tracks (`<track kind="subtitles">` rendered inside `<video id="v">`).
+- **Mode Setting**: In `apps/web/src/pages/WatchRoomPage.tsx:616-622`, the chosen text track is set to `mode = 'showing'`.
+- **Rendering Engine**: The browser's native user-agent shadow DOM layout engine paints the cues at the bottom of the `<video>` element frame.
+
+### 2. Measured Bounding Rectangles (Chrome at 1440x900 Viewport)
+Measured via real Playwright Chrome instrumentation (`scripts/diagnose-step1.mjs`):
+- **Stage Container (`#stage`)**:
+  - `x: 16px`, `y: 86px`, `width: 1054px`, `height: 798px`, `top: 86px`, `bottom: 884px`
+- **Video Element (`#v`)**:
+  - `x: 16px`, `y: 86px`, `width: 1054px`, `height: 798px`, `top: 86px`, `bottom: 884px`
+- **Control Bar (`#ctl`)**:
+  - `x: 32px`, `y: 792px`, `width: 1022px`, `height: 76px`, `top: 792px`, `bottom: 868px`
+  - Position: `absolute`, `bottom: 16px`, `z-index: 5`
+- **Bottom Scrim (`.scrim.bt`)**:
+  - `x: 16px`, `y: 714px`, `width: 1054px`, `height: 170px`, `top: 714px`, `bottom: 884px`
+  - Position: `absolute`, `bottom: 0px`, `z-index: 2`
+- **Visible Native Cue Area**:
+  - Rendered by Chrome's UA shadow DOM inside `#v` within the bottom ~50px of the video viewport (`y ≈ 820px` to `y ≈ 875px`).
+
+### 3. Stacking Order & Overlap Evidence
+- Center point hit test at the control bar center (`x = 543px, y = 830px`):
+  ```json
+  [
+    "button.cb",
+    "div.cr",
+    "div#ctl.ctl.gl",
+    "video#v",
+    "section#stage.stage.",
+    "div#main.main.",
+    "div.room-shell"
+  ]
+  ```
+- `#ctl` has `z-index: 5` and `.scrim.bt` has `z-index: 2`.
+- `#v` has `z-index: auto` (effective stacking context 0).
+- **Result**: The control bar `#ctl` (and its frosted glass background) is directly **ON TOP** of `#v`.
+
+### 4. Root Cause
+- Native `<track>` cues are rendered inside the `<video>` element's shadow tree at stacking level 0.
+- Because the floating glass control bar sits at `bottom: 16px` of `#stage` (spanning `y = 792px` to `y = 868px`) with `z-index: 5`, it physically overlays the bottom 76px of `#v` where native cues are placed.
+- CSS `::cue` cannot break out of `#v`'s stacking context, cannot be repositioned above `#ctl`'s z-index, and cannot be dynamically offset based on control bar presence or user settings.
+- When controls are visible, the subtitle text is partly obscured and cut off behind the frosted glass control bar.
+
+### 5. Captured Evidence Screenshots
+- `docs/screenshots/subtitles_before_1440_controls_visible.png`: Shows native subtitle cues partially covered by control bar at 1440px width.
+- `docs/screenshots/subtitles_before_1440_controls_hidden.png`: Shows native subtitle cues positioned at bottom edge when controls are idle at 1440px width.
+- `docs/screenshots/subtitles_before_360_controls_visible.png`: Shows native subtitle cues occluded at mobile 360px width.
+- `docs/screenshots/subtitles_before_360_controls_hidden.png`: Shows native subtitle cues at mobile 360px width with idle controls.
+
+
 
 
 
