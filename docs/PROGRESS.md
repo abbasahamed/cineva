@@ -661,3 +661,162 @@ Executed reproduction script `scripts/reproduce-step1.mjs` using Playwright with
 - **Test Suites & Build**:
   - `npm test`: **200 / 200 tests passed** (134 server, 66 web).
   - `npm run build`: 0 errors.
+
+---
+
+## CINEVA Room Invites & WhatsApp Sharing Fix
+
+### 1. Diagnosis & Root Cause
+- **Symptoms Reported by User**:
+  - Clicking "Copy link" in the CINEVA watch room copied a `localhost:5173` URL instead of a shareable public URL.
+  - Users could not share room invitations through WhatsApp or any external messaging app.
+- **Root Cause Analysis**:
+  1. **Scattered and Inconsistent URL Generation**: Room link generation was performed ad-hoc across `WatchRoomPage.tsx`, `ShareModal.tsx`, and `CreateRoomPage.tsx` using `window.location.origin` or `window.location.href`, which resolves to `localhost` in local development or local LAN environments.
+  2. **No Centralized Public URL Utility**: There was no unified utility checking the authoritative deployed domain (`VITE_APP_URL` or `VITE_PUBLIC_URL`) with protection against leaking private dev addresses (`localhost`, `127.0.0.1`, `0.0.0.0`, `192.168.*`, `10.*`, `172.16-31.*`, `.local`, `.internal`).
+  3. **No Direct WhatsApp Sharing Action**: Users had no one-click WhatsApp sharing action constructed with `https://wa.me/?text=...` and pre-filled invitation copy.
+  4. **Watch Room Topbar Stacking Context Bug**: The watch room top header had lower z-index than certain theater sidebar elements, preventing click events from reaching popover actions reliably without explicit elevation.
+
+### 2. Implementation & Fixes
+- **Centralized Invitation Utility (`apps/web/src/utils/inviteUtils.ts`)**:
+  - `isPrivateAddress(urlOrHost)`: Detects localhost, 127.0.0.1, 0.0.0.0, private IPv4 subnets, `.local`, and `.internal`.
+  - `normalizeBaseUrl(rawUrl)`: Ensures valid HTTPS protocol and strips trailing slashes.
+  - `getPublicBaseUrl(options)`: Strict resolution priority:
+    1. Explicit environment variable `VITE_APP_URL` or `VITE_PUBLIC_URL`.
+    2. In-memory cached non-private URL.
+    3. Active backend tunnel via `GET /api/system/public-url` (Cloudflare tunnel or reverse proxy).
+    4. Valid public `window.location.origin` (when running on production domains e.g. Vercel, Render).
+    5. In development: falls back to localhost; in production: strictly throws error without silent fallback to localhost.
+  - `getRoomInviteUrl(roomCode, options)`: Generates `${baseUrl}/room/${roomCode}` preserving room code formatting.
+  - `getWhatsAppShareUrl(inviteUrl, customMessage)`: Formats `https://wa.me/?text=${encodeURIComponent(message)}`.
+  - `shareOnWhatsApp(inviteUrl, customMessage)`: Opens safely in new window with `_blank, noopener, noreferrer`.
+  - `copyToClipboard(text)`: Implements `navigator.clipboard.writeText` with textarea `execCommand('copy')` fallback for robust cross-browser and mobile support.
+- **Backend Dynamic Public URL (`apps/server/src/index.ts`)**:
+  - Enhanced `/api/system/public-url` to resolve `tunnelService.getAuthoritativePublicUrl(req)`, returning active tunnel or reverse proxy URL.
+- **Component Integrations**:
+  - `apps/web/src/pages/WatchRoomPage.tsx`:
+    - Header `.top` elevated to `z-index: 90`, popover `.pop` elevated to `z-index: 1000`.
+    - Added "Share on WhatsApp" (`#waShareBtn`) action alongside "Copy link" (`#cp`) in the invite popover.
+    - Wired `handleCopyInvite` and `handleShareWhatsApp` with toast feedback and error handling.
+  - `apps/web/src/components/ShareModal.tsx`:
+    - Replaced ad-hoc URL generation with `getRoomInviteUrl(roomCode)`.
+    - Added dedicated WhatsApp share button (`#handleWhatsAppShare`) and wired `copyToClipboard`.
+  - `apps/web/src/pages/CreateRoomPage.tsx`:
+    - Added "Copy Link" (`#createCopyLinkBtn`) and "WhatsApp" (`#createWaShareBtn`) actions to the ready modal.
+- **Environment & Type Definitions**:
+  - Updated `apps/web/src/vite-env.d.ts` with `VITE_APP_URL` and `VITE_PUBLIC_URL`.
+  - Updated `.env.example`, `apps/web/.env.example`, `.env.production.example`, and `.env`.
+
+### 3. Verification & Evidence
+- **Automated Unit Tests**:
+  - Created `apps/web/src/__tests__/inviteUtils.test.ts` (17 tests) verifying private address detection, env precedence, WhatsApp share formatting, production error throwing on localhost, and clipboard fallbacks.
+  - Total test suite: **217 / 217 tests passed** (134 server, 83 web).
+- **Full End-to-End Browser Flow (`scripts/verify-invite-and-whatsapp.mjs`)**:
+  1. Host created room on `/create` (code `FY8VFA`).
+  2. Modal displayed "Copy link" and "WhatsApp" actions.
+  3. Host entered theater, opened invite popover in topbar.
+  4. Host clicked "Share on WhatsApp": verified popup opened to `https://api.whatsapp.com/send/?text=Join+my+CINEVA+watch+room%21+Watch+together+in+sync%3A+http%3A%2F%2Flocalhost%3A5173%2Froom%2FFY8VFA`.
+  5. Guest opened invite link in an isolated browser context: navigated to `/room/FY8VFA`, automatically redirected to `/join/FY8VFA`, verified room status ("Room found. Add your name to join."), entered name "Bob Guest", and entered theater.
+  6. Verified both host and guest synchronized: both see 2 participants.
+- **Production Build**:
+  - `npm run build`: built `@cineva/shared`, `@cineva/server`, and `@cineva/web` with 0 errors.
+
+---
+
+## Critical Bug Fix: Elimination of Localhost Invite & WhatsApp Links
+
+### 1. Root Cause Diagnosis
+1. **Silent Fallback in Development / Unconfigured Mode**:
+   - `getPublicBaseUrl` in `apps/web/src/utils/inviteUtils.ts` had a line:
+     `return origin ? normalizeBaseUrl(origin) : 'http://localhost:5173'` when running in non-production mode without `VITE_APP_URL` or tunnel.
+   - When running on localhost, this silently leaked `http://localhost:5173/room/CODE` as the copied invitation and WhatsApp share URL.
+2. **Stale Cache / Stale State**:
+   - `WatchRoomPage`, `ShareModal`, and `CreateRoomPage` called `getRoomInviteUrl(code)` on component mount inside `useEffect` and set a local `inviteUrl` / `shareUrl` state.
+   - If that initial call occurred while the backend tunnel was booting or absent, it permanently locked in `http://localhost:5173`.
+   - When the user clicked "Copy link" or "Share on WhatsApp", handlers did:
+     `const url = inviteUrl || (await getRoomInviteUrl(roomCode));`
+     which immediately used the stale localhost URL without re-resolving or awaiting the public tunnel URL.
+3. **Hardcoded Fallbacks in `CreateRoomPage`**:
+   - `CreateRoomPage` had three `try...catch` blocks setting:
+     `setInviteLink(`${window.location.origin}/room/${roomCode}`)` on error, which wrote `http://localhost:5173` to the ready modal.
+
+### 2. Implementation & Fixes
+1. **Strict 3-Tier Resolution in `inviteUtils.ts`**:
+   - **Priority 1**: Validated, non-private `VITE_APP_URL` or `VITE_PUBLIC_URL`.
+   - **Priority 2**: Live public HTTPS tunnel URL from backend `/api/system/public-url` (with async discovery retry).
+   - **Priority 3**: Browser `window.location.origin` ONLY if already a verified non-private public domain (`!isPrivateAddress(window.location.origin)`).
+   - **Zero Localhost Fallback**: Never silently falls back to localhost or private IPs. If no public domain or tunnel exists, strictly throws:
+     `"No public invitation URL available. CINEVA requires a deployed domain (VITE_APP_URL) or an active public tunnel ('npm run start:share') to generate shareable invitations."`
+   - **WhatsApp Guard**: `getWhatsAppShareUrl` rejects private or localhost URLs with an explicit error to make sharing a localhost URL impossible.
+2. **Dynamic On-Demand Fresh Resolution**:
+   - `WatchRoomPage.tsx`, `ShareModal.tsx`, and `CreateRoomPage.tsx`:
+     - Never store private addresses in local state.
+     - On clicking "Copy link" or "Share on WhatsApp", always execute fresh async resolution with `forceRefresh: true`.
+     - If public resolution fails because no public domain or tunnel is live:
+       - Displays clear error feedback explaining the requirement to start a tunnel or configure `VITE_APP_URL`.
+       - Never writes localhost to the clipboard or reports success on an unusable invitation.
+3. **ISP / DNS Discovery Warning**:
+   - Documented that certain regional ISPs block `api.trycloudflare.com` via SNI reset. Setting `CINEVA_PUBLIC_URL` or `CLOUDFLARE_TUNNEL_DOMAIN` in `.env` provides a clean fallback when running with existing reverse proxies or custom domains.
+
+### 3. Verification & Evidence
+- **Automated Regression Tests (`apps/web/src/__tests__/inviteUtils.test.ts`)**:
+  - Regression test 1: Browser on `localhost:5173` + backend provides public tunnel URL -> Copied room invitation strictly uses `https://<tunnel>/room/<CODE>`.
+  - Regression test 2: Browser on `localhost:5173` + no public tunnel/domain -> Rejects and throws descriptive error; refuses silent localhost fallback.
+  - Regression test 3: `getWhatsAppShareUrl` throws error on any attempt to generate a link with a private or localhost address.
+  - Total test suite: **221 / 221 tests passed** (134 server, 87 web).
+- **Playwright End-to-End Real Browser Proof (`scripts/verify-real-sharing-flow.mjs`)**:
+  - **Scenario 1 (No Public Tunnel/Domain)**:
+    - Clicked "Copy Link" on Create Room modal: Verified modal error appeared: `"No public invitation URL available..."`.
+    - Clicked "Copy Link" in Watch Room: Verified error toast appeared; clipboard remained untouched and did NOT contain localhost.
+    - Clicked "Share on WhatsApp" in Watch Room: Verified error toast appeared; WhatsApp did NOT open with localhost.
+  - **Scenario 2 (Active Public Tunnel via backend)**:
+    - Backend returned `https://patients-tuesday-tomorrow-whereas.trycloudflare.com`.
+    - Clicked "Copy Link" on Create Room modal: Copied exact tunnel URL: `https://patients-tuesday-tomorrow-whereas.trycloudflare.com/room/VV4TUK`.
+    - Clicked "Copy Link" in Watch Room: Copied exact tunnel URL: `https://patients-tuesday-tomorrow-whereas.trycloudflare.com/room/VV4TUK`.
+    - Clicked "Share on WhatsApp": Launched popup with encoded URL containing `https://patients-tuesday-tomorrow-whereas.trycloudflare.com/room/VV4TUK`.
+    - Guest opened the room link in clean browser context: redirected to `/join/VV4TUK`, entered display name, joined room theater, and synchronized (2 participants).
+- **Production Build**:
+  - `npm run build`: built `@cineva/shared`, `@cineva/server`, and `@cineva/web` with 0 errors.
+
+---
+
+## Real Audio Languages & Subtitle Switching (HLS fMP4 Pipeline)
+
+### STEP 1: Prove the Cause (Findings & Evidence)
+
+1. **FFprobe Stream Analysis on Uploaded Movie**:
+   - Movie path: `apps/server/uploads/cmvmjabig0000tiwvzyudh1r8/1792854540055_The_Paradise_2026_1080p_NF_WEB-DL_Hindi_DD5_1-Telugu_DD5_1_x264-1VeGamovies_tw.mkv` (3.7 GB)
+   - Real command executed:
+     ```bash
+     ffprobe -v error -print_format json -show_streams "$FILE"
+     ```
+   - Stream breakdown:
+     - **Stream #0 [VIDEO]**: `codec=h264`, `pix_fmt=yuv420p`, resolution `1920x804`, default=`true`
+     - **Stream #1 [AUDIO]**: `codec=aac`, `channels=2`, sample_rate=`48000`, `language="hin"`, `title="1Vegamovies.tw"`, default=`true`
+     - **Stream #2 [AUDIO]**: `codec=aac`, `channels=2`, sample_rate=`48000`, `language="tel"`, `title="1Vegamovies.tw"`, default=`false`
+     - **Stream #3 [SUBTITLE]**: `codec=subrip` (text SRT), `language="eng"`, `title="1Vegamovies.tw"`, default=`false`
+
+2. **Browser Investigation in Chrome on macOS**:
+   - Evaluated `HTMLVideoElement` in Google Chrome (channel 'chrome'):
+     ```js
+     const v = document.createElement("video");
+     v.audioTracks // => undefined
+     "audioTracks" in v // => false
+     ```
+   - Blink/Chromium does not implement the standard `HTMLVideoElement.audioTracks` API for progressive MP4/WebM files without non-standard experimental flags. Browsers only expose a single default audio track when playing progressive files.
+   - Identified the source of `"English 5.1 / Stereo"` in `apps/web/src/pages/WatchRoomPage.tsx:493-502`:
+     ```tsx
+     const aTracks: string[] = [];
+     if ((el as any).audioTracks && (el as any).audioTracks.length > 0) {
+       const list = (el as any).audioTracks;
+       for (let i = 0; i < list.length; i++) {
+         aTracks.push(list[i].label || list[i].language || `Track ${i + 1}`);
+       }
+     } else {
+       aTracks.push("English 5.1 / Stereo");
+     }
+     setAudioTracks(aTracks);
+     ```
+   - Because `el.audioTracks` is `undefined`, the application fell into the `else` branch, displaying the hardcoded string `"English 5.1 / Stereo"` regardless of the actual file contents.
+
+
+
