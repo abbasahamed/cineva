@@ -4,6 +4,7 @@ import { useSyncWatch, ConnectionStatus } from "../hooks/useSyncWatch.js";
 import { MediaUploadModal } from "../components/MediaUploadModal.js";
 import { DebugPanel } from "../components/DebugPanel.js";
 import { useToast } from "../components/Toast.js";
+import { useMediaQuery, MOBILE_MEDIA_QUERY, LANDSCAPE_DRAWER_MEDIA_QUERY } from "../hooks/useMediaQuery.js";
 import { RefreshCw, AlertCircle, Maximize2, Volume2, VolumeX } from "lucide-react";
 import {
   VideoProvider,
@@ -126,6 +127,389 @@ export const WatchRoomPage: React.FC = () => {
   }
 
   return <WatchRoomInner roomCode={code} displayName={displayName} sessionId={sessionId} />;
+};
+
+interface CallTilesProps {
+  participants: any[];
+  sessionId: string;
+  currentParticipantId?: string;
+  currentDisplayName?: string;
+  displayName?: string;
+  isHost: boolean;
+  isMuted: boolean;
+  isCameraOn: boolean;
+  getStream: (participantId: string, isLocal?: boolean) => MediaStream | null;
+  allPeers: any[];
+  participantVolumes: Map<string, number>;
+  participantMutedLocally: Map<string, boolean>;
+  setParticipantVolume: (id: string, vol: number) => void;
+  toggleParticipantLocalMute: (id: string) => void;
+  onInvite: () => void;
+  isMobile?: boolean;
+}
+
+const CallTiles: React.FC<CallTilesProps> = ({
+  participants,
+  sessionId,
+  currentParticipantId,
+  currentDisplayName,
+  displayName,
+  isHost,
+  isMuted,
+  isCameraOn,
+  getStream,
+  allPeers,
+  participantVolumes,
+  participantMutedLocally,
+  setParticipantVolume,
+  toggleParticipantLocalMute,
+  onInvite,
+  isMobile = false,
+}) => {
+  const containerClass = isMobile
+    ? participants.length <= 4
+      ? "mobile-call-grid"
+      : "mobile-call-strip"
+    : "grid";
+
+  return (
+    <div className={containerClass} id={isMobile ? undefined : "grid"}>
+      {/* Local user tile */}
+      <div className="tile" id={isMobile ? "t-me-m" : "t-me"}>
+        <VideoTile
+          participantId={currentParticipantId}
+          displayName={currentDisplayName || displayName || "You"}
+          stream={getStream(currentParticipantId || "", true)}
+          isLocal={true}
+          isHost={isHost}
+          isMuted={isMuted}
+          isCameraOff={!isCameraOn}
+          getStream={getStream}
+          showVolumeControl={false}
+        />
+      </div>
+
+      {/* Remote participant tiles */}
+      {participants
+        .filter((p) => p.sessionId !== sessionId)
+        .map((p) => {
+          const peer = allPeers.find((cp) => cp.participantId === p.id);
+          const isPeerCameraOff = peer ? peer.isCameraOff : true;
+          const peerStream = peer?.stream || getStream(p.id, false);
+          const vol = participantVolumes.get(p.id) ?? 100;
+          const isLocMuted = participantMutedLocally.get(p.id) ?? false;
+
+          return (
+            <div key={`tile-${p.id}`} className="tile">
+              <VideoTile
+                participantId={p.id}
+                displayName={p.displayName}
+                stream={peerStream}
+                isLocal={false}
+                isHost={p.isHost}
+                isMuted={peer?.isMuted ?? false}
+                isCameraOff={isPeerCameraOff}
+                connectionState={peer?.connectionState}
+                volume={vol}
+                isLocallyMuted={isLocMuted}
+                onVolumeChange={(newVol) => setParticipantVolume(p.id, newVol)}
+                onToggleLocalMute={() => toggleParticipantLocalMute(p.id)}
+                getStream={getStream}
+                showVolumeControl={true}
+              />
+            </div>
+          );
+        })}
+
+      {/* Invite Tile */}
+      <button
+        type="button"
+        className="tile add"
+        id={isMobile ? "inv-mobile-tile" : "inv2"}
+        aria-label="Invite someone"
+        onClick={onInvite}
+      >
+        <svg viewBox="0 0 24 24">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        <span>Invite</span>
+      </button>
+    </div>
+  );
+};
+
+interface CallDockProps {
+  isMuted: boolean;
+  toggleMute: () => void;
+  isCameraOn: boolean;
+  toggleCamera: () => void;
+  isConnecting: boolean;
+  permissionError: string | null;
+  isMobile?: boolean;
+}
+
+const CallDock: React.FC<CallDockProps> = ({
+  isMuted,
+  toggleMute,
+  isCameraOn,
+  toggleCamera,
+  isConnecting,
+  permissionError,
+  isMobile = false,
+}) => {
+  return (
+    <div className={isMobile ? "mobile-dock" : "dock"}>
+      <button
+        type="button"
+        className={`b ${isMuted ? "off" : ""}`}
+        id={isMobile ? "dMic-mobile" : "dMic"}
+        onClick={toggleMute}
+        aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
+      >
+        {isMuted ? (
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="9" y="3" width="6" height="11" rx="3" />
+            <path d="M5 11a7 7 0 0014 0M12 18v3M4 4l16 16" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="9" y="3" width="6" height="11" rx="3" />
+            <path d="M5 11a7 7 0 0014 0M12 18v3" />
+          </svg>
+        )}
+        <span>{isMuted ? "Muted" : "Mic"}</span>
+      </button>
+
+      <button
+        type="button"
+        className={`b ${isCameraOn ? "active" : ""} ${permissionError ? "err" : ""}`}
+        id={isMobile ? "dCam-mobile" : "dCam"}
+        onClick={toggleCamera}
+        disabled={isConnecting}
+        title={permissionError || (isCameraOn ? "Turn camera off" : "Turn camera on")}
+        aria-label={permissionError || (isCameraOn ? "Turn camera off" : "Turn camera on")}
+      >
+        {isConnecting ? (
+          <RefreshCw className="w-4 h-4 animate-spin text-brand-300" />
+        ) : (
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="6" width="12" height="12" rx="3.5" />
+            <path d="M15 10.5l5.5-3v9l-5.5-3" />
+          </svg>
+        )}
+        <span>{isConnecting ? "Starting..." : isCameraOn ? "Camera on" : "Camera"}</span>
+      </button>
+    </div>
+  );
+};
+
+interface ChatPaneProps {
+  chatMessages: any[];
+  participants: any[];
+  currentParticipantId?: string;
+  sessionId: string;
+  chatInput: string;
+  setChatInput: (val: string) => void;
+  handleChatSubmit: (e: React.FormEvent) => void;
+  streamRef: React.RefObject<HTMLDivElement>;
+  isMobile?: boolean;
+  keyboardPadding?: number;
+}
+
+const ChatPane: React.FC<ChatPaneProps> = ({
+  chatMessages,
+  participants,
+  currentParticipantId,
+  sessionId,
+  chatInput,
+  setChatInput,
+  handleChatSubmit,
+  streamRef,
+  isMobile = false,
+  keyboardPadding = 0,
+}) => {
+  return (
+    <div
+      className={isMobile ? "mobile-chat-pane" : "pane"}
+      id={isMobile ? "m-pane-chat" : "pc"}
+      role={isMobile ? "tabpanel" : undefined}
+      aria-labelledby={isMobile ? "m-tab-chat" : undefined}
+      style={isMobile && keyboardPadding ? { paddingBottom: `${keyboardPadding}px` } : undefined}
+    >
+      <div ref={streamRef} className="msgs" id={isMobile ? "ms-mobile" : "ms"}>
+        {chatMessages.length === 0 ? (
+          <div className="none" id="no">
+            <b>No messages yet</b>Say something while the movie loads.
+          </div>
+        ) : (
+          chatMessages.map((msg, idx) => {
+            if (msg.isSystem) {
+              return (
+                <div key={msg.id || idx} className="m sys">
+                  <span>{msg.message}</span>
+                </div>
+              );
+            }
+            const myParticipant = participants.find((p) => p.sessionId === sessionId);
+            const isMe =
+              msg.participantId === myParticipant?.id ||
+              msg.participantId === currentParticipantId ||
+              (msg as any).senderId === currentParticipantId ||
+              (msg as any).senderSessionId === sessionId ||
+              (myParticipant && msg.displayName === myParticipant.displayName);
+            return (
+              <div key={msg.id || idx} className={`m ${isMe ? "me" : ""}`}>
+                {!isMe && <b>{msg.displayName || "Audience"}</b>}
+                <span>{msg.message || (msg as any).text || ""}</span>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <form className="cmp composer" id={isMobile ? "fm-mobile" : "fm"} onSubmit={handleChatSubmit}>
+        <input
+          id={isMobile ? "mi-mobile" : "mi"}
+          placeholder="Message"
+          autoComplete="off"
+          aria-label="Message"
+          value={chatInput}
+          onChange={(e) => setChatInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.currentTarget.blur();
+            }
+          }}
+        />
+        <button type="submit" className="b p i" aria-label="Send" id={isMobile ? "send-mobile-btn" : "send-btn"}>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M21 3L10 14M21 3l-7 18-4-7-7-4z" />
+          </svg>
+        </button>
+      </form>
+    </div>
+  );
+};
+
+interface PeoplePaneProps {
+  participants: any[];
+  sessionId: string;
+  isHost: boolean;
+  participantVolumes: Map<string, number>;
+  participantMutedLocally: Map<string, boolean>;
+  setParticipantVolume: (id: string, vol: number) => void;
+  toggleParticipantLocalMute: (id: string) => void;
+  onSelectParticipant?: (p: any) => void;
+  onKickParticipant?: (id: string) => void;
+  isMobile?: boolean;
+}
+
+const PeoplePane: React.FC<PeoplePaneProps> = ({
+  participants,
+  sessionId,
+  isHost,
+  participantVolumes,
+  participantMutedLocally,
+  setParticipantVolume,
+  toggleParticipantLocalMute,
+  onSelectParticipant,
+  onKickParticipant,
+  isMobile = false,
+}) => {
+  return (
+    <div
+      className={isMobile ? "mobile-people-pane" : "pane"}
+      id={isMobile ? "m-pane-people" : "pp2"}
+      role={isMobile ? "tabpanel" : undefined}
+      aria-labelledby={isMobile ? "m-tab-people" : undefined}
+    >
+      {participants.map((p) => {
+        const isMe = p.sessionId === sessionId;
+        const initial = (p.displayName || "A").charAt(0).toUpperCase();
+        const userVol = participantVolumes.get(p.id) ?? 100;
+        const isLocMuted = participantMutedLocally.get(p.id) ?? false;
+
+        return (
+          <div key={`p-${p.id}`} className="row flex-col items-stretch gap-2 py-2.5 border-b border-white/[0.06]">
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="av">
+                  <i style={{ background: isMe ? "rgba(99, 102, 241, 0.25)" : "rgba(255, 255, 255, 0.1)" }}>{initial}</i>
+                </span>
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className="text-sm font-medium text-white truncate max-w-[130px]">
+                    {p.displayName}
+                  </span>
+                  {isMe && <span className="text-[10px] text-brand-300 font-bold uppercase">(You)</span>}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {p.isHost ? (
+                  <span className="r">Host</span>
+                ) : isHost && !isMe && !isMobile ? (
+                  <button
+                    type="button"
+                    className="b"
+                    style={{ height: "26px", fontSize: "11px", padding: "0 8px" }}
+                    onClick={() => onKickParticipant && onKickParticipant(p.id)}
+                  >
+                    Remove
+                  </button>
+                ) : (
+                  <span className="r">Viewer</span>
+                )}
+                {isHost && !isMe && isMobile && (
+                  <button
+                    type="button"
+                    className="b"
+                    style={{ width: "36px", height: "36px", padding: 0, display: "grid", placeItems: "center" }}
+                    onClick={() => onSelectParticipant && onSelectParticipant(p)}
+                    aria-label={`Options for ${p.displayName}`}
+                  >
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                      <circle cx="12" cy="5" r="2" />
+                      <circle cx="12" cy="12" r="2" />
+                      <circle cx="12" cy="19" r="2" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {!isMe && (
+              <div className="flex items-center gap-2 px-1 pt-1 text-xs text-slate-300">
+                <button
+                  type="button"
+                  className={`p-1 rounded-md transition-colors ${
+                    isLocMuted ? "text-rose-400 bg-rose-500/20" : "text-slate-400 hover:text-white"
+                  }`}
+                  aria-label={`Mute or unmute ${p.displayName}`}
+                  onClick={() => toggleParticipantLocalMute(p.id)}
+                >
+                  {isLocMuted || userVol === 0 ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                </button>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={isLocMuted ? 0 : userVol}
+                  disabled={isLocMuted}
+                  onChange={(e) => setParticipantVolume(p.id, parseInt(e.target.value, 10))}
+                  className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-500"
+                  aria-label={`${p.displayName} volume`}
+                />
+                <span className="w-9 text-right font-mono text-[11px] text-slate-400">
+                  {isLocMuted ? "Muted" : `${userVol}%`}
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 };
 
 interface WatchRoomInnerProps {
@@ -367,6 +751,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   const [controlBarHeight, setControlBarHeight] = useState<number>(76);
 
   // Mobile layout state (< 900px)
+  const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
+  const isLandscapePhone = useMediaQuery(LANDSCAPE_DRAWER_MEDIA_QUERY);
   const [mobileTab, setMobileTab] = useState<"call" | "chat" | "participants">("call");
   const [unreadChatCount, setUnreadChatCount] = useState<number>(0);
   const [isTopOverflowOpen, setIsTopOverflowOpen] = useState(false);
@@ -433,7 +819,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     }
   }, [chatMessages, mobileTab]);
 
-  // Visual Viewport Listener to keep composer pinned above virtual keyboard on mobile
+  // Visual Viewport Listener to keep composer pinned above virtual keyboard on mobile and set --vvh
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
@@ -441,13 +827,16 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     const handleViewportChange = () => {
       const offset = window.innerHeight - (vv.height + vv.offsetTop);
       setKeyboardPadding(Math.max(0, offset));
+      document.documentElement.style.setProperty("--vvh", `${vv.height}px`);
     };
 
+    handleViewportChange();
     vv.addEventListener("resize", handleViewportChange);
     vv.addEventListener("scroll", handleViewportChange);
     return () => {
       vv.removeEventListener("resize", handleViewportChange);
       vv.removeEventListener("scroll", handleViewportChange);
+      document.documentElement.style.removeProperty("--vvh");
     };
   }, []);
 
@@ -2563,590 +2952,218 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
           ))}
         </section>
 
-        {/* Mobile Tabbed Area (< 900px) */}
-        <div className={`mobile-tabs-area ${isLandscapeDrawerOpen ? "open" : ""}`} id="mobile-tabs-area">
-          <div className="mobile-seg" data-t={mobileTab} role="tablist">
-            <span className="mobile-seg-indicator" aria-hidden="true" />
-            <button
-              type="button"
-              role="tab"
-              id="m-tab-call"
-              aria-controls="m-pane-call"
-              aria-selected={mobileTab === "call"}
-              onClick={() => setMobileTab("call")}
-            >
-              Call
-            </button>
-            <button
-              type="button"
-              role="tab"
-              id="m-tab-chat"
-              aria-controls="m-pane-chat"
-              aria-selected={mobileTab === "chat"}
-              onClick={() => setMobileTab("chat")}
-            >
-              Chat
-              {unreadChatCount > 0 && <span className="unread-badge">{unreadChatCount}</span>}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              id="m-tab-people"
-              aria-controls="m-pane-people"
-              aria-selected={mobileTab === "participants"}
-              onClick={() => setMobileTab("participants")}
-            >
-              People ({participants.length})
-            </button>
-          </div>
+        {isMobile ? (
+          /* Mobile Tabbed Area (< 900px) */
+          <div className={`mobile-tabs-area ${isLandscapeDrawerOpen ? "open" : ""}`} id="mobile-tabs-area">
+            <div className="mobile-seg" data-t={mobileTab} role="tablist">
+              <span className="mobile-seg-indicator" aria-hidden="true" />
+              <button
+                type="button"
+                role="tab"
+                id="m-tab-call"
+                aria-controls="m-pane-call"
+                aria-selected={mobileTab === "call"}
+                onClick={() => setMobileTab("call")}
+              >
+                Call
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="m-tab-chat"
+                aria-controls="m-pane-chat"
+                aria-selected={mobileTab === "chat"}
+                onClick={() => setMobileTab("chat")}
+              >
+                Chat
+                {unreadChatCount > 0 && <span className="unread-badge">{unreadChatCount}</span>}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="m-tab-people"
+                aria-controls="m-pane-people"
+                aria-selected={mobileTab === "participants"}
+                onClick={() => setMobileTab("participants")}
+              >
+                People ({participants.length})
+              </button>
+            </div>
 
-          {/* Call Pane */}
-          {mobileTab === "call" && (
-            <div className="mobile-call-pane" id="m-pane-call" role="tabpanel" aria-labelledby="m-tab-call">
-              <div className={participants.length <= 4 ? "mobile-call-grid" : "mobile-call-strip"}>
-                {/* Local user tile */}
-                <div className="tile" id="t-me-m">
-                  <VideoTile
-                    participantId={currentParticipantId}
-                    displayName={currentDisplayName || displayName || "You"}
-                    stream={getStream(currentParticipantId || "", true)}
-                    isLocal={true}
+            <div className="tabs-panel">
+              {mobileTab === "call" && (
+                <div className="mobile-call-pane" id="m-pane-call" role="tabpanel" aria-labelledby="m-tab-call">
+                  <CallTiles
+                    participants={participants}
+                    sessionId={sessionId}
+                    currentParticipantId={currentParticipantId}
+                    currentDisplayName={currentDisplayName}
+                    displayName={displayName}
                     isHost={isHost}
                     isMuted={isMuted}
-                    isCameraOff={!isCameraOn}
+                    isCameraOn={isCameraOn}
                     getStream={getStream}
-                    showVolumeControl={false}
+                    allPeers={allPeers}
+                    participantVolumes={participantVolumes}
+                    participantMutedLocally={participantMutedLocally}
+                    setParticipantVolume={setParticipantVolume}
+                    toggleParticipantLocalMute={toggleParticipantLocalMute}
+                    onInvite={() => setIsInviteOpen(true)}
+                    isMobile={true}
+                  />
+                  <CallDock
+                    isMuted={isMuted}
+                    toggleMute={toggleMute}
+                    isCameraOn={isCameraOn}
+                    toggleCamera={toggleCamera}
+                    isConnecting={isConnecting}
+                    permissionError={permissionError}
+                    isMobile={true}
                   />
                 </div>
+              )}
 
-                {/* Remote participant tiles */}
-                {participants
-                  .filter((p) => p.sessionId !== sessionId)
-                  .map((p) => {
-                    const peer = allPeers.find((cp) => cp.participantId === p.id);
-                    const isPeerCameraOff = peer ? peer.isCameraOff : true;
-                    const peerStream = peer?.stream || getStream(p.id, false);
-                    const vol = participantVolumes.get(p.id) ?? 100;
-                    const isLocMuted = participantMutedLocally.get(p.id) ?? false;
-
-                    return (
-                      <div key={`m-tile-${p.id}`} className="tile">
-                        <VideoTile
-                          participantId={p.id}
-                          displayName={p.displayName}
-                          stream={peerStream}
-                          isLocal={false}
-                          isHost={p.isHost}
-                          isMuted={peer?.isMuted ?? false}
-                          isCameraOff={isPeerCameraOff}
-                          connectionState={peer?.connectionState}
-                          volume={vol}
-                          isLocallyMuted={isLocMuted}
-                          onVolumeChange={(newVol) => setParticipantVolume(p.id, newVol)}
-                          onToggleLocalMute={() => toggleParticipantLocalMute(p.id)}
-                          getStream={getStream}
-                          showVolumeControl={true}
-                        />
-                      </div>
-                    );
-                  })}
-
-                {/* Invite Tile */}
-                <button
-                  type="button"
-                  className="tile add"
-                  id="inv-mobile-tile"
-                  aria-label="Invite someone"
-                  onClick={() => setIsInviteOpen(true)}
-                >
-                  <svg viewBox="0 0 24 24">
-                    <path d="M12 5v14M5 12h14" />
-                  </svg>
-                  <span>Invite</span>
-                </button>
-              </div>
-
-              {/* Full-width two-button dock */}
-              <div className="mobile-dock">
-                <button
-                  type="button"
-                  className={`b ${isMuted ? "off" : ""}`}
-                  id="dMic-mobile"
-                  onClick={toggleMute}
-                  aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
-                >
-                  {isMuted ? (
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="9" y="3" width="6" height="11" rx="3" />
-                      <path d="M5 11a7 7 0 0014 0M12 18v3M4 4l16 16" />
-                    </svg>
-                  ) : (
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="9" y="3" width="6" height="11" rx="3" />
-                      <path d="M5 11a7 7 0 0014 0M12 18v3" />
-                    </svg>
-                  )}
-                  <span>{isMuted ? "Muted" : "Mic"}</span>
-                </button>
-
-                <button
-                  type="button"
-                  className={`b ${isCameraOn ? "active" : ""}`}
-                  id="dCam-mobile"
-                  onClick={toggleCamera}
-                  disabled={isConnecting}
-                  aria-label={isCameraOn ? "Turn camera off" : "Turn camera on"}
-                >
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="6" width="12" height="12" rx="3.5" />
-                    <path d="M15 10.5l5.5-3v9l-5.5-3" />
-                  </svg>
-                  <span>{isCameraOn ? "Camera on" : "Camera"}</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Chat Pane */}
-          {mobileTab === "chat" && (
-            <div
-              className="mobile-chat-pane"
-              id="m-pane-chat"
-              role="tabpanel"
-              aria-labelledby="m-tab-chat"
-              style={{ paddingBottom: keyboardPadding ? `${keyboardPadding}px` : undefined }}
-            >
-              <div ref={mobileMsgStreamRef} className="msgs" id="ms-mobile">
-                {chatMessages.length === 0 ? (
-                  <div className="none">
-                    <b>No messages yet</b>Say something while the movie loads.
-                  </div>
-                ) : (
-                  chatMessages.map((msg, idx) => {
-                    if (msg.isSystem) {
-                      return (
-                        <div key={msg.id || idx} className="m sys">
-                          <span>{msg.message}</span>
-                        </div>
-                      );
-                    }
-                    const myParticipant = participants.find((p) => p.sessionId === sessionId);
-                    const isMe =
-                      msg.participantId === myParticipant?.id ||
-                      msg.participantId === currentParticipantId ||
-                      (msg as any).senderId === currentParticipantId ||
-                      (msg as any).senderSessionId === sessionId ||
-                      (myParticipant && msg.displayName === myParticipant.displayName);
-                    return (
-                      <div key={msg.id || idx} className={`m ${isMe ? "me" : ""}`}>
-                        {!isMe && <b>{msg.displayName || "Audience"}</b>}
-                        <span>{msg.message || (msg as any).text || ""}</span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              <form className="cmp" id="fm-mobile" onSubmit={handleChatSubmit}>
-                <input
-                  id="mi-mobile"
-                  placeholder="Message"
-                  autoComplete="off"
-                  aria-label="Message"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
+              {mobileTab === "chat" && (
+                <ChatPane
+                  chatMessages={chatMessages}
+                  participants={participants}
+                  currentParticipantId={currentParticipantId}
+                  sessionId={sessionId}
+                  chatInput={chatInput}
+                  setChatInput={setChatInput}
+                  handleChatSubmit={handleChatSubmit}
+                  streamRef={msgStreamRef}
+                  isMobile={true}
+                  keyboardPadding={keyboardPadding}
                 />
-                <button type="submit" className="b p i" aria-label="Send" id="send-mobile-btn">
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                    <path d="M21 3L10 14M21 3l-7 18-4-7-7-4z" />
-                  </svg>
-                </button>
-              </form>
-            </div>
-          )}
+              )}
 
-          {/* People Pane */}
-          {mobileTab === "participants" && (
-            <div className="mobile-people-pane" id="m-pane-people" role="tabpanel" aria-labelledby="m-tab-people">
-              {participants.map((p) => {
-                const isMe = p.sessionId === sessionId;
-                const initial = (p.displayName || "A").charAt(0).toUpperCase();
-                const userVol = participantVolumes.get(p.id) ?? 100;
-                const isLocMuted = participantMutedLocally.get(p.id) ?? false;
-
-                return (
-                  <div key={`m-p-${p.id}`} className="row flex-col items-stretch gap-2 py-2.5 border-b border-white/[0.06]">
-                    <div className="flex items-center justify-between w-full">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="av">
-                          <i style={{ background: isMe ? "rgba(99, 102, 241, 0.25)" : "rgba(255, 255, 255, 0.1)" }}>{initial}</i>
-                        </span>
-                        <div className="flex items-center gap-1.5 truncate">
-                          <span className="text-sm font-medium text-white truncate max-w-[130px]">
-                            {p.displayName}
-                          </span>
-                          {isMe && <span className="text-[10px] text-brand-300 font-bold uppercase">(You)</span>}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        {p.isHost ? (
-                          <span className="r">Host</span>
-                        ) : (
-                          <span className="r">Viewer</span>
-                        )}
-                        {isHost && !isMe && (
-                          <button
-                            type="button"
-                            className="b"
-                            style={{ width: "36px", height: "36px", padding: 0, display: "grid", placeItems: "center" }}
-                            onClick={() => setSelectedParticipantForMenu(p)}
-                            aria-label={`Options for ${p.displayName}`}
-                          >
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                              <circle cx="12" cy="5" r="2" />
-                              <circle cx="12" cy="12" r="2" />
-                              <circle cx="12" cy="19" r="2" />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {!isMe && (
-                      <div className="flex items-center gap-2 px-1 pt-1 text-xs text-slate-300">
-                        <button
-                          type="button"
-                          className={`p-1 rounded-md transition-colors ${
-                            isLocMuted ? "text-rose-400 bg-rose-500/20" : "text-slate-400 hover:text-white"
-                          }`}
-                          aria-label={`Mute or unmute ${p.displayName}`}
-                          onClick={() => toggleParticipantLocalMute(p.id)}
-                        >
-                          {isLocMuted || userVol === 0 ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
-                        </button>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          step="5"
-                          value={isLocMuted ? 0 : userVol}
-                          disabled={isLocMuted}
-                          onChange={(e) => setParticipantVolume(p.id, parseInt(e.target.value, 10))}
-                          className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-500"
-                          aria-label={`${p.displayName} volume`}
-                        />
-                        <span className="w-9 text-right font-mono text-[11px] text-slate-400">
-                          {isLocMuted ? "Muted" : `${userVol}%`}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Sidebar */}
-        <aside className="side gl" aria-label="Call, chat and people">
-          {/* Video Call Card */}
-          <div className="call">
-            <div className="rh flex items-center justify-between">
-              <h3>Video call</h3>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
-                  title="Fullscreen participant gallery"
-                  aria-label="Fullscreen participant gallery"
-                  onClick={() => setIsGalleryOpen(true)}
-                >
-                  <Maximize2 className="w-4 h-4" />
-                </button>
-                <span className="live">
-                  <i></i>
-                  <span id="inc">{participants.length} in the call</span>
-                </span>
-              </div>
-            </div>
-
-            <div className="grid" id="grid">
-              {/* Local User Tile */}
-              <div className="tile" id="t-me">
-                <VideoTile
-                  participantId={currentParticipantId}
-                  displayName={currentDisplayName || displayName || "You"}
-                  stream={getStream(currentParticipantId || "", true)}
-                  isLocal={true}
+              {mobileTab === "participants" && (
+                <PeoplePane
+                  participants={participants}
+                  sessionId={sessionId}
                   isHost={isHost}
-                  isMuted={isMuted}
-                  isCameraOff={!isCameraOn}
-                  getStream={getStream}
-                  showVolumeControl={false}
+                  participantVolumes={participantVolumes}
+                  participantMutedLocally={participantMutedLocally}
+                  setParticipantVolume={setParticipantVolume}
+                  toggleParticipantLocalMute={toggleParticipantLocalMute}
+                  onSelectParticipant={(p) => setSelectedParticipantForMenu(p)}
+                  onKickParticipant={handleKickParticipant}
+                  isMobile={true}
                 />
-              </div>
-
-              {/* Real Remote Participants */}
-              {participants
-                .filter((p) => p.sessionId !== sessionId)
-                .map((p) => {
-                  const peer = allPeers.find((cp) => cp.participantId === p.id);
-                  const isPeerCameraOff = peer ? peer.isCameraOff : true;
-                  const peerStream = peer?.stream || getStream(p.id, false);
-                  const vol = participantVolumes.get(p.id) ?? 100;
-                  const isLocMuted = participantMutedLocally.get(p.id) ?? false;
-
-                  return (
-                    <div key={p.id} className="tile">
-                      <VideoTile
-                        participantId={p.id}
-                        displayName={p.displayName}
-                        stream={peerStream}
-                        isLocal={false}
-                        isHost={p.isHost}
-                        isMuted={peer?.isMuted ?? false}
-                        isCameraOff={isPeerCameraOff}
-                        connectionState={peer?.connectionState}
-                        volume={vol}
-                        isLocallyMuted={isLocMuted}
-                        onVolumeChange={(newVol) => setParticipantVolume(p.id, newVol)}
-                        onToggleLocalMute={() => toggleParticipantLocalMute(p.id)}
-                        getStream={getStream}
-                        showVolumeControl={true}
-                      />
-                    </div>
-                  );
-                })}
-
-              {/* Invite Tile */}
-              <button
-                type="button"
-                className="tile add"
-                id="inv2"
-                aria-label="Invite someone"
-                onClick={() => setIsInviteOpen(true)}
-              >
-                <svg viewBox="0 0 24 24">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-                <span>Invite</span>
-              </button>
-            </div>
-
-            {/* Bottom Dock for Audio/Video */}
-            <div className="dock">
-              <button
-                type="button"
-                className={`b ${isMuted ? "off" : ""}`}
-                id="dMic"
-                onClick={toggleMute}
-              >
-                {isMuted ? (
-                  <svg viewBox="0 0 24 24" id="dMicI">
-                    <rect x="9" y="3" width="6" height="11" rx="3" />
-                    <path d="M5 11a7 7 0 0014 0M12 18v3M4 4l16 16" />
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 24 24" id="dMicI">
-                    <rect x="9" y="3" width="6" height="11" rx="3" />
-                    <path d="M5 11a7 7 0 0014 0M12 18v3" />
-                  </svg>
-                )}
-                <span>{isMuted ? "Muted" : "Mic"}</span>
-              </button>
-
-              <button
-                type="button"
-                className={`b ${isCameraOn ? "active" : ""} ${permissionError ? "err" : ""}`}
-                id="dCam"
-                onClick={toggleCamera}
-                disabled={isConnecting}
-                title={permissionError || (isCameraOn ? "Turn camera off" : "Turn camera on")}
-                aria-label={permissionError || (isCameraOn ? "Turn camera off" : "Turn camera on")}
-              >
-                {isConnecting ? (
-                  <RefreshCw className="w-4 h-4 animate-spin text-brand-300" />
-                ) : !isCameraOn ? (
-                  <svg viewBox="0 0 24 24" id="dCamI">
-                    <rect x="3" y="6" width="12" height="12" rx="3.5" />
-                    <path d="M15 10.5l5.5-3v9l-5.5-3M4 4l16 16" />
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 24 24" id="dCamI">
-                    <rect x="3" y="6" width="12" height="12" rx="3.5" />
-                    <path d="M15 10.5l5.5-3v9l-5.5-3" />
-                  </svg>
-                )}
-                <span>{isConnecting ? "Starting..." : isCameraOn ? "Camera on" : "Camera"}</span>
-              </button>
+              )}
             </div>
           </div>
-
-          {/* Segmented Tab (Chat / People) */}
-          <div
-            className="seg"
-            id="seg"
-            data-t={activeTab === "chat" ? "chat" : "people"}
-            role="tablist"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "chat"}
-              data-t="chat"
-              onClick={() => setActiveTab("chat")}
-            >
-              Chat
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "participants"}
-              data-t="people"
-              onClick={() => setActiveTab("participants")}
-            >
-              People
-            </button>
-          </div>
-
-          {/* Chat Pane */}
-          {activeTab === "chat" ? (
-            <div className="pane" id="pc">
-              <div ref={msgStreamRef} className="msgs" id="ms">
-                {chatMessages.length === 0 ? (
-                  <div className="none" id="no">
-                    <b>No messages yet</b>Say something while the movie loads.
-                  </div>
-                ) : (
-                  chatMessages.map((msg, idx) => {
-                    if (msg.isSystem) {
-                      return (
-                        <div key={msg.id || idx} className="m sys">
-                          <span>{msg.message}</span>
-                        </div>
-                      );
-                    }
-                    const myParticipant = participants.find((p) => p.sessionId === sessionId);
-                    const isMe =
-                      msg.participantId === myParticipant?.id ||
-                      msg.participantId === currentParticipantId ||
-                      (msg as any).senderId === currentParticipantId ||
-                      (msg as any).senderSessionId === sessionId ||
-                      (myParticipant && msg.displayName === myParticipant.displayName);
-                    return (
-                      <div key={msg.id || idx} className={`m ${isMe ? "me" : ""}`}>
-                        {!isMe && <b>{msg.displayName || "Audience"}</b>}
-                        <span>{msg.message || (msg as any).text || ""}</span>
-                      </div>
-                    );
-                  })
-                )}
+        ) : (
+          /* Desktop Sidebar (>= 900px) */
+          <aside className="side gl" aria-label="Call, chat and people">
+            {/* Video Call Card */}
+            <div className="call">
+              <div className="rh flex items-center justify-between">
+                <h3>Video call</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+                    title="Fullscreen participant gallery"
+                    aria-label="Fullscreen participant gallery"
+                    onClick={() => setIsGalleryOpen(true)}
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                  </button>
+                  <span className="live">
+                    <i></i>
+                    <span id="inc">{participants.length} in the call</span>
+                  </span>
+                </div>
               </div>
 
-              <form className="cmp" id="fm" onSubmit={handleChatSubmit}>
-                <input
-                  id="mi"
-                  placeholder="Message"
-                  autoComplete="off"
-                  aria-label="Message"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") {
-                      e.currentTarget.blur();
-                    }
-                  }}
-                />
-                <button type="submit" className="b p i" aria-label="Send">
-                  <svg viewBox="0 0 24 24">
-                    <path d="M21 3L10 14M21 3l-7 18-4-7-7-4z" />
-                  </svg>
-                </button>
-              </form>
+              <CallTiles
+                participants={participants}
+                sessionId={sessionId}
+                currentParticipantId={currentParticipantId}
+                currentDisplayName={currentDisplayName}
+                displayName={displayName}
+                isHost={isHost}
+                isMuted={isMuted}
+                isCameraOn={isCameraOn}
+                getStream={getStream}
+                allPeers={allPeers}
+                participantVolumes={participantVolumes}
+                participantMutedLocally={participantMutedLocally}
+                setParticipantVolume={setParticipantVolume}
+                toggleParticipantLocalMute={toggleParticipantLocalMute}
+                onInvite={() => setIsInviteOpen(true)}
+                isMobile={false}
+              />
+
+              <CallDock
+                isMuted={isMuted}
+                toggleMute={toggleMute}
+                isCameraOn={isCameraOn}
+                toggleCamera={toggleCamera}
+                isConnecting={isConnecting}
+                permissionError={permissionError}
+                isMobile={false}
+              />
             </div>
-          ) : (
-            /* People Pane */
-            <div className="pane" id="pp2">
-              {participants.map((p) => {
-                const isMe = p.sessionId === sessionId;
-                const initial = (p.displayName || "A").charAt(0).toUpperCase();
-                const userVol = participantVolumes.get(p.id) ?? 100;
-                const isLocMuted = participantMutedLocally.get(p.id) ?? false;
 
-                return (
-                  <div key={p.id} className="row flex-col items-stretch gap-2 py-2.5 border-b border-white/[0.06]">
-                    <div className="flex items-center justify-between w-full">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="av">
-                          <i style={{ background: isMe ? "rgba(99, 102, 241, 0.25)" : "rgba(255, 255, 255, 0.1)" }}>{initial}</i>
-                        </span>
-                        <div className="flex items-center gap-1.5 truncate">
-                          <span className="text-sm font-medium text-white truncate max-w-[130px]">
-                            {p.displayName}
-                          </span>
-                          {isMe && <span className="text-[10px] text-brand-300 font-bold uppercase">(You)</span>}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        {p.isHost ? (
-                          <span className="r">Host</span>
-                        ) : isHost ? (
-                          <button
-                            type="button"
-                            className="b"
-                            style={{ height: "26px", fontSize: "11px", padding: "0 8px" }}
-                            onClick={() => handleKickParticipant(p.id)}
-                          >
-                            Remove
-                          </button>
-                        ) : (
-                          <span className="r">Viewer</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Independent Volume Slider for Remote Participants */}
-                    {!isMe && (
-                      <div className="flex items-center gap-2 px-1 pt-1 text-xs text-slate-300">
-                        <button
-                          type="button"
-                          className={`p-1 rounded-md transition-colors ${
-                            isLocMuted ? "text-rose-400 bg-rose-500/20" : "text-slate-400 hover:text-white"
-                          }`}
-                          title={isLocMuted ? `Unmute ${p.displayName}` : `Mute ${p.displayName}`}
-                          aria-label={`Mute or unmute ${p.displayName}`}
-                          onClick={() => toggleParticipantLocalMute(p.id)}
-                        >
-                          {isLocMuted || userVol === 0 ? (
-                            <VolumeX className="w-3.5 h-3.5" />
-                          ) : (
-                            <Volume2 className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          step="5"
-                          value={isLocMuted ? 0 : userVol}
-                          disabled={isLocMuted}
-                          onChange={(e) => setParticipantVolume(p.id, parseInt(e.target.value, 10))}
-                          className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-500"
-                          aria-label={`${p.displayName} volume`}
-                        />
-                        <span className="w-9 text-right font-mono text-[11px] text-slate-400">
-                          {isLocMuted ? "Muted" : `${userVol}%`}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            {/* Segmented Tab (Chat / People) */}
+            <div
+              className="seg"
+              id="seg"
+              data-t={activeTab === "chat" ? "chat" : "people"}
+              role="tablist"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "chat"}
+                data-t="chat"
+                onClick={() => setActiveTab("chat")}
+              >
+                Chat
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "participants"}
+                data-t="people"
+                onClick={() => setActiveTab("participants")}
+              >
+                People
+              </button>
             </div>
-          )}
-        </aside>
+
+            {/* Chat Pane / People Pane */}
+            {activeTab === "chat" ? (
+              <ChatPane
+                chatMessages={chatMessages}
+                participants={participants}
+                currentParticipantId={currentParticipantId}
+                sessionId={sessionId}
+                chatInput={chatInput}
+                setChatInput={setChatInput}
+                handleChatSubmit={handleChatSubmit}
+                streamRef={msgStreamRef}
+                isMobile={false}
+              />
+            ) : (
+              <PeoplePane
+                participants={participants}
+                sessionId={sessionId}
+                isHost={isHost}
+                participantVolumes={participantVolumes}
+                participantMutedLocally={participantMutedLocally}
+                setParticipantVolume={setParticipantVolume}
+                toggleParticipantLocalMute={toggleParticipantLocalMute}
+                onSelectParticipant={(p) => setSelectedParticipantForMenu(p)}
+                onKickParticipant={handleKickParticipant}
+                isMobile={false}
+              />
+            )}
+          </aside>
+        )}
       </div>
 
       {/* Floating Toast Notification */}
@@ -3686,17 +3703,19 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
         </div>
       </BottomSheet>
 
-      {/* Floating Button for Landscape Slide-over Drawer */}
-      <button
-        type="button"
-        className="landscape-drawer-toggle"
-        aria-label="Toggle chat & video panel"
-        onClick={() => setIsLandscapeDrawerOpen((prev) => !prev)}
-      >
-        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
-          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-        </svg>
-      </button>
+      {/* Floating Button for Landscape Slide-over Drawer (Only on landscape phones) */}
+      {isLandscapePhone && (
+        <button
+          type="button"
+          className="landscape-drawer-toggle"
+          aria-label="Toggle chat & video panel"
+          onClick={() => setIsLandscapeDrawerOpen((prev) => !prev)}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+          </svg>
+        </button>
+      )}
 
       <WebRTCDebugPanel />
     </div>

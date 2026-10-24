@@ -1802,3 +1802,17 @@ Measured using automated end-to-end Playwright Chrome benchmark (`scripts/verify
    - Created `scripts/verify-console-guards.mjs` exporting `attachConsoleGuard(page)` which fails any test on `console.error`, `pageerror`, or unexpected `console.warn`.
    - Executed 2-minute test suite covering empty room load, tab switching, chat messages, sample attachment, playing room load, playback toggles, and seek operations.
    - **Result**: ZERO console errors, ZERO console warnings, ZERO page errors (`✅ ALL CONSOLE GUARDS PASSED`).
+
+### MOBILE ROUND 2: STEP 2 — Single Sidebar & Shared Components
+1. **DOM Redundancy & Double Stream Removal**:
+   - Diagnosed that both `div.mobile-tabs-area` and desktop `aside.side` were mounted simultaneously in the DOM, creating duplicate IDs (`#dMic`, `#dCam`, `#fm`, `#mi`, `#ms`, `#grid`), duplicated WebRTC streams, and duplicate event listeners.
+   - Created `apps/web/src/hooks/useMediaQuery.ts` with `MOBILE_BREAKPOINT_PX = 900`, `MOBILE_MEDIA_QUERY = '(max-width: 899px)'`, and `LANDSCAPE_DRAWER_MEDIA_QUERY = '(orientation: landscape) and (max-height: 500px)'`.
+   - Extracted shared subcomponents (`CallTiles`, `CallDock`, `ChatPane`, `PeoplePane`) parameterized with `isMobile`.
+   - Implemented strict conditional branching `{isMobile ? <MobileTabsArea /> : <aside className="side gl">}` so exactly one sidebar is mounted at any time.
+   - Wrapped `.landscape-drawer-toggle` in `{isLandscapePhone && ...}` so it never appears in mobile portrait or desktop mode.
+   - Added `visualViewport` listener in `WatchRoomInner` setting/cleaning up `--vvh` CSS property for virtual keyboard support.
+2. **Verification via Playwright (`scripts/verify-step2-sidebar.mjs`)**:
+   - **Mobile Portrait (Pixel 9 412×924)**: Exactly 1 `div.mobile-tabs-area`, 0 `aside.side`, 0 `landscape-drawer-toggle`, 1 video tile per participant, 1 chat form, 0 duplicate IDs.
+   - **Desktop (1280×800)**: Exactly 0 `div.mobile-tabs-area`, 1 `aside.side`, 0 `landscape-drawer-toggle`, 1 video tile, 1 chat form, 0 duplicate IDs.
+   - **Landscape Phone (844×390)**: Exactly 1 `div.mobile-tabs-area`, 0 `aside.side`, 1 `landscape-drawer-toggle`, 0 duplicate IDs.
+   - **Console Guard**: 0 console errors, 0 console warnings, 0 page errors.
