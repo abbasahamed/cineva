@@ -263,9 +263,7 @@ export const LandingPage: React.FC = () => {
             <path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1" />
           </symbol>
           <symbol id="play" viewBox="0 0 24 24">
-            <circle className="d" cx="12" cy="12" r="9" />
-            <circle cx="12" cy="12" r="9" />
-            <path d="M10 8.5l5 3.5-5 3.5z" />
+            <polygon points="7 4 19 12 7 20 7 4" fill="currentColor" />
           </symbol>
           <symbol id="up" viewBox="0 0 24 24">
             <path className="d" d="M12 3l-1 0" />
@@ -377,7 +375,7 @@ export const LandingPage: React.FC = () => {
                 <div className="film" />
                 <div className="sun" />
                 <div className="dtop lg">
-                  <span className="dot" />Friday movie night
+                  <span className="dot" />Friday Movie Night · Interstellar
                 </div>
                 <div className="dside lg">
                   <div className="tl">
@@ -389,9 +387,9 @@ export const LandingPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="chat">
-                    <p>Is this the part you meant?</p>
-                    <p className="me">Wait for the next scene</p>
-                    <p>Okay okay 👀</p>
+                    <p>Is this the docking scene? 🚀</p>
+                    <p className="me">Hold on tight, volume up!</p>
+                    <p>Cooper, this is no time for caution! 🎶</p>
                   </div>
                 </div>
 
@@ -418,22 +416,30 @@ export const LandingPage: React.FC = () => {
                     />
                   </div>
                   <div className="ctl">
-                    <svg className="ic">
-                      <use href="#pause" />
-                    </svg>
+                    <button type="button" aria-label="Play or Pause" onClick={() => setIsSeeking(!isSeeking)}>
+                      <svg className="ic">
+                        <use href="#pause" />
+                      </svg>
+                    </button>
                     <span>
                       {formatTime(currentSec)} / 2:02:30
                     </span>
                     <span className="s" />
-                    <svg className="ic">
-                      <use href="#lang" />
-                    </svg>
-                    <svg className="ic">
-                      <use href="#cc" />
-                    </svg>
-                    <svg className="ic">
-                      <use href="#full" />
-                    </svg>
+                    <button type="button" title="Switch Audio Track">
+                      <svg className="ic">
+                        <use href="#lang" />
+                      </svg>
+                    </button>
+                    <button type="button" title="Toggle Subtitles">
+                      <svg className="ic">
+                        <use href="#cc" />
+                      </svg>
+                    </button>
+                    <button type="button" title="Fullscreen">
+                      <svg className="ic">
+                        <use href="#full" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -445,18 +451,19 @@ export const LandingPage: React.FC = () => {
                     <use href="#user" />
                   </svg>
                 </span>
-                Friend joined
+                <span>Friend joined</span>
               </div>
               <div className="chip lg c2">
-                <span className="dot" />In sync · 38 ms apart
+                <span className="dot" />
+                <span>In sync · 18 ms apart</span>
               </div>
               <div className="chip lg c3">
-                <span className="e" style={{ background: 'linear-gradient(145deg,#4fe0ff,#1d9bd6)', color: '#fff' }}>
+                <span className="e" style={{ background: 'linear-gradient(145deg,#4ce0ff,#1796d1)', color: '#fff' }}>
                   <svg className="ic">
                     <use href="#lang" />
                   </svg>
                 </span>
-                Audio: Hindi
+                <span>Audio: English Dolby Atmos</span>
               </div>
 
               {/* Skip Toast Alert */}

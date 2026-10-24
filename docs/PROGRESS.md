@@ -538,3 +538,52 @@ Executed reproduction script `scripts/reproduce-step1.mjs` using Playwright with
   - `npm run build`: built `@cineva/shared`, `@cineva/server`, and `@cineva/web` with 0 errors.
 
 
+---
+
+## Landing Page Hero Device & UI Alignment Enhancement
+
+### 1. Diagnosis & Root Cause
+- **Symptoms Reported by User**:
+  - The hero device mockup on the landing page had severe layout distortion:
+    1. `.dtop` ("Friday movie night") stretched across the entire width of `.device` touching both edges like an empty banner instead of a compact floating pill on the top-left.
+    2. `.dside` (the video call tiles "A" and "F" and chat bubbles) was on the *left* side below `.dtop` in vertical flow, pushing other elements down, instead of floating on the *right* side (28% width).
+    3. `.dbar` (player timeline and control bar) stretched across the bottom/middle and sliced directly across the left chat panel.
+    4. Inside `.dbar .ctl`, the timecode ("41:12 / 2:02:30") and media buttons were floating aimlessly in the middle of the sky canvas in a vertical column.
+    5. The CTA play icon inside "Create a room" appeared as an odd black circle instead of a crisp dark triangle.
+- **Root Cause**:
+  1. **CSS Cascade & Relative Override**: `.lg` had a general rule (`position: relative; isolation: isolate; ...`) at line 1922 in `apps/web/src/index.css`. Because `.dtop`, `.dside`, and `.dbar` elements also carried the `lg` class, the later `.lg` rule overrode their `position: absolute` styling, collapsing the absolute coordinate layout into standard vertical block flow.
+  2. **Class Namespace Collision**: Both the watch room player bar and the landing page hero preview shared `.ctl` and `.cb`. The watch room's column flex layout and 1000px width applied to the landing page `.ctl`, forcing the timecode and buttons into a vertical column floating in the sky.
+  3. **SVG Icon Symbol**: The `#play` SVG symbol had an outer circular path that rendered as an odd dark circle rather than a solid play arrow polygon.
+
+### 2. Implementation & Fixes
+- **CSS (`apps/web/src/index.css`)**:
+  - Scoped watch room player control bar styles to `.room-shell .ctl, #ctl.ctl` and `.room-shell .cb, #ctl .cb`, eliminating cross-contamination with the landing page preview.
+  - Added high-specificity scoped rules for the hero device:
+    - `.device .dtop`: `position: absolute !important; top: 18px !important; left: 18px !important; width: auto !important; height: 44px !important;`
+    - `.device .dside`: `position: absolute !important; top: 18px !important; right: 18px !important; bottom: 18px !important; width: 28% !important;`
+    - `.device .dbar`: `position: absolute !important; left: 18px !important; right: calc(28% + 36px) !important; bottom: 18px !important;`
+    - `.device .dbar .ctl`: `position: static !important; display: flex !important; flex-direction: row !important; align-items: center !important; gap: 8px !important;`
+    - Scoped `.conv .cb` to preserve conversion animations without collision.
+  - Enhanced `.hero .pill` to wrap gracefully on narrow viewports without clipping (`min-height: 36px; height: auto; max-width: 92%;`).
+- **Component (`apps/web/src/pages/LandingPage.tsx`)**:
+  - Replaced `#play` SVG definition with a crisp `<polygon points="7 4 19 12 7 20 7 4" fill="currentColor" />`.
+  - Accessible button wrappers for interactive media preview buttons.
+  - Replaced prototype references with compliant, regression-tested labels ("Friend" instead of "Maya").
+
+### 3. Verification & Evidence
+- **Automated Chrome Headless & Playwright Verification**:
+  - Full desktop (1440x900, 1440x1600) and mobile (375x812) screenshots captured.
+  - Verified `.dtop` floats at top-left with green status indicator.
+  - Verified `.dside` floats on the right (28% width) with video tiles and chat messages cleanly positioned at the bottom.
+  - Verified `.dbar` is positioned on the bottom-left with scrubber slider above the horizontal controls.
+  - Verified all floating chips (`.c1`, `.c2`, `.c3`) float at their correct positions around the device frame.
+  - Verified `Create a room` button displays a crisp dark play triangle.
+- **Screenshots Saved**:
+  - `docs/screenshots/landing_after_1440.png`: Hero desktop viewport.
+  - `docs/screenshots/landing_stage_in_view.png`: Scrolled view focusing on hero device mockup.
+  - `docs/screenshots/landing_scrolled_fullpage.png`: Complete landing page layout with Features Bento grid, How It Works, and Join Code Band.
+  - `docs/screenshots/landing_fresh_375.png`: Responsive mobile layout.
+- **Test Suites & Regression**:
+  - `node scripts/verify-seekbar.mjs`: PASSED 100% on MP4 and MKV fixtures (confirmed room seekbar remains intact).
+  - `npm test`: **199 / 199 tests passed** (134 server, 65 web).
+  - `npm run build`: 0 TypeScript / bundle errors across all workspaces.
