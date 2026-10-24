@@ -330,6 +330,22 @@ export class RoomManager {
             audioCodec: room.media.audioCodec || undefined,
             width: room.media.width || undefined,
             height: room.media.height || undefined,
+            trackManifest: room.media.trackManifest
+              ? (() => {
+                  try {
+                    return JSON.parse(room.media.trackManifest!);
+                  } catch {
+                    return undefined;
+                  }
+                })()
+              : undefined,
+            hlsMasterUrl: (room.media.playbackStorageKey && room.media.playbackStorageKey.endsWith('.m3u8'))
+              ? mediaStorage.getUrl(room.media.playbackStorageKey)
+              : undefined,
+            mp4FallbackUrl: (room.media.originalStorageKey && !room.media.originalStorageKey.endsWith('.m3u8'))
+              ? mediaStorage.getUrl(room.media.originalStorageKey)
+              : undefined,
+            isHls: !!(room.media.playbackStorageKey && room.media.playbackStorageKey.endsWith('.m3u8')),
             createdAt: room.media.createdAt.toISOString(),
           }
         : null,
@@ -541,17 +557,12 @@ export class RoomManager {
         }
       }
 
-      // 5. If local storage, safely remove the room's dedicated upload directory if empty or containing leftover files
+      // 5. If local storage, safely remove the room's dedicated upload directory (including any HLS/segments subdirs)
       const safeRoomId = roomId.replace(/[^a-zA-Z0-9_-]/g, '_');
       const roomDirPath = mediaStorage.getLocalPath(safeRoomId);
       if (roomDirPath && fs.existsSync(roomDirPath)) {
         try {
-          const files = await fs.promises.readdir(roomDirPath);
-          for (const file of files) {
-            const filePath = path.join(roomDirPath, file);
-            await fs.promises.unlink(filePath).catch(() => {});
-          }
-          await fs.promises.rmdir(roomDirPath).catch(() => {});
+          await fs.promises.rm(roomDirPath, { recursive: true, force: true }).catch(() => {});
           logger.info(`[MediaCleanup] Cleaned room directory ${safeRoomId}`);
         } catch (err: any) {
           logger.error(`[MediaCleanup] Error removing room directory ${safeRoomId}: ${err.message}`);

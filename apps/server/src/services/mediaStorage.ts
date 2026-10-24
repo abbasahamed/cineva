@@ -167,10 +167,26 @@ export class LocalMediaStorage implements MediaStorage {
 
       const ext = path.extname(filePath).toLowerCase();
       let contentType = "video/mp4";
-      if (ext === ".webm") contentType = "video/webm";
-      else if (ext === ".mkv") contentType = "video/x-matroska";
-      else if (ext === ".mov") contentType = "video/quicktime";
-      else if (ext === ".ogg" || ext === ".ogv") contentType = "video/ogg";
+      let cacheControl = "no-cache";
+
+      if (ext === ".m3u8") {
+        contentType = "application/vnd.apple.mpegurl";
+        cacheControl = "no-cache, no-store, must-revalidate";
+      } else if (ext === ".m4s") {
+        contentType = "video/mp4";
+        cacheControl = "public, max-age=31536000, immutable";
+      } else if (ext === ".vtt") {
+        contentType = "text/vtt; charset=utf-8";
+        cacheControl = "public, max-age=3600";
+      } else if (ext === ".webm") {
+        contentType = "video/webm";
+      } else if (ext === ".mkv") {
+        contentType = "video/x-matroska";
+      } else if (ext === ".mov") {
+        contentType = "video/quicktime";
+      } else if (ext === ".ogg" || ext === ".ogv") {
+        contentType = "video/ogg";
+      }
 
       const origin = (req.headers.origin as string) || "*";
       const corsHeaders: Record<string, string> = {
@@ -210,7 +226,7 @@ export class LocalMediaStorage implements MediaStorage {
           "Accept-Ranges": "bytes",
           "Content-Length": chunkSize,
           "Content-Type": contentType,
-          "Cache-Control": "no-cache",
+          "Cache-Control": cacheControl,
         });
 
         fileStream.pipe(res);
@@ -220,7 +236,7 @@ export class LocalMediaStorage implements MediaStorage {
           "Content-Length": fileSize,
           "Content-Type": contentType,
           "Accept-Ranges": "bytes",
-          "Cache-Control": "no-cache",
+          "Cache-Control": cacheControl,
         });
 
         fs.createReadStream(filePath).pipe(res);

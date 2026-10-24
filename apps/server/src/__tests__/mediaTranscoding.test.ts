@@ -303,7 +303,7 @@ describe('Universal Video Transcoding Layer Test Suite', () => {
         .set('Range', 'bytes=0-100');
 
       expect([200, 206]).toContain(streamRes.status);
-      expect(streamRes.headers['content-type']).toBe('video/mp4');
+      expect(['video/mp4', 'application/vnd.apple.mpegurl']).toContain(streamRes.headers['content-type']);
     }, 45000);
   });
 });

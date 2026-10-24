@@ -206,7 +206,7 @@ export class HlsPackager {
       '-hls_time',
       '4',
       '-hls_playlist_type',
-      'vod',
+      'event',
       '-hls_segment_type',
       'fmp4',
       '-hls_flags',
@@ -450,6 +450,22 @@ export class HlsPackager {
       processedLines.splice(insertIdx, 0, ...subLines);
     }
 
+    // Switch stream playlists from EVENT to VOD now that packaging is complete
+    try {
+      const plFiles = fs.readdirSync(outputDir).filter((f) => f.startsWith('stream_') && f.endsWith('.m3u8'));
+      for (const plFile of plFiles) {
+        const plPath = path.join(outputDir, plFile);
+        let plContent = fs.readFileSync(plPath, 'utf-8');
+        plContent = plContent.replace('#EXT-X-PLAYLIST-TYPE:EVENT', '#EXT-X-PLAYLIST-TYPE:VOD');
+        if (!plContent.includes('#EXT-X-ENDLIST')) {
+          plContent = plContent.trim() + '\n#EXT-X-ENDLIST\n';
+        }
+        fs.writeFileSync(plPath, plContent, 'utf-8');
+      }
+    } catch (e: any) {
+      logger.warn('[HlsPackager] Error converting stream playlists to VOD', { error: e.message });
+    }
+
     return processedLines.filter(Boolean).join('\n') + '\n';
   }
 
@@ -464,6 +480,21 @@ export class HlsPackager {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Cancels all active HLS packaging jobs on shutdown or sweep.
+   */
+  cancelAllJobs(): number {
+    let count = 0;
+    for (const [jobId, proc] of this.activeProcesses.entries()) {
+      try {
+        proc.kill('SIGKILL');
+        count++;
+      } catch {}
+      this.activeProcesses.delete(jobId);
+    }
+    return count;
   }
 }
 

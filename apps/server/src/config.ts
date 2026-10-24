@@ -93,7 +93,9 @@ export const CONFIG = {
   ROOM_EXPIRATION_HOURS: 24, // 24h room lifespan
 
   // Single-port serving & networking
-  ENABLE_TUNNEL: (process.env.ENABLE_TUNNEL || "false").toLowerCase() === "true",
+  ENABLE_TUNNEL: process.env.ENABLE_TUNNEL !== undefined
+    ? process.env.ENABLE_TUNNEL.toLowerCase() === "true"
+    : nodeEnv !== "test",
   KEEP_AWAKE: (process.env.KEEP_AWAKE || "true").toLowerCase() === "true",
   // Absolute path to the built web app; served from this process so one
   // port (and one tunnel) fronts both the site and the sockets.

@@ -685,7 +685,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
         participantId,
         displayName,
         isMuted: false,
-        isCameraOff: false,
+        isCameraOff: true,
         joinedAt: Date.now(),
       };
       roomVideos.set(participantId, newParticipant);

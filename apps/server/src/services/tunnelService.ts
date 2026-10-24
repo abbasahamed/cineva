@@ -13,12 +13,20 @@ class TunnelService {
   private activeTunnelUrl: string | null = null;
   private pollTimer: NodeJS.Timeout | null = null;
   private isChecking = false;
+  private cloudflaredChild: any = null;
+  private fallbackTunnelChild: any = null;
+  private lastTunnelError: string | null = null;
+  private cloudflareBlocked = false;
 
   constructor() {
     const rawEnv = (process.env.CINEVA_PUBLIC_URL || process.env.CLOUDFLARE_TUNNEL_DOMAIN || '').trim().replace(/\/+$/, '');
     if (rawEnv && !rawEnv.includes('localhost') && !rawEnv.includes('127.0.0.1')) {
       this.activeTunnelUrl = rawEnv.startsWith('http') ? rawEnv : `https://${rawEnv}`;
     }
+  }
+
+  public getLastTunnelError(): string | null {
+    return this.lastTunnelError;
   }
 
   /**
@@ -48,13 +56,11 @@ class TunnelService {
     }
   }
 
-  private cloudflaredChild: any = null;
-
   /**
    * Forcibly restarts cloudflared to obtain a fresh quick tunnel.
    */
   public restartCloudflared(localPort: number = CONFIG.PORT || 4000): void {
-    logger.warn('[TunnelService] Restarting cloudflared process to obtain fresh live tunnel...');
+    logger.warn('[TunnelService] Restarting tunnel process to obtain fresh live tunnel...');
     if (this.cloudflaredChild) {
       try {
         this.cloudflaredChild.kill('SIGTERM');
@@ -64,6 +70,12 @@ class TunnelService {
       try {
         execSync('pkill -9 -f cloudflared || true', { encoding: 'utf8', timeout: 2000 });
       } catch {}
+    }
+    if (this.fallbackTunnelChild) {
+      try {
+        this.fallbackTunnelChild.kill('SIGTERM');
+      } catch {}
+      this.fallbackTunnelChild = null;
     }
     this.activeTunnelUrl = null;
     this.ensureCloudflaredRunning(localPort);
@@ -174,8 +186,16 @@ class TunnelService {
 
   /**
    * Auto-spawn cloudflared quick tunnel if no cloudflared process is running and binary is available.
+   * If Cloudflare is blocked by ISP/firewall, automatically falls back to native SSH HTTPS tunneling.
    */
   public ensureCloudflaredRunning(localPort: number = CONFIG.PORT || 4000): void {
+    if (this.activeTunnelUrl) {
+      return;
+    }
+    if (this.cloudflareBlocked) {
+      this.ensureSshTunnelRunning(localPort);
+      return;
+    }
     if (this.cloudflaredChild && !this.cloudflaredChild.killed) {
       return;
     }
@@ -188,44 +208,110 @@ class TunnelService {
     try {
       whichBin = execSync('which cloudflared', { encoding: 'utf8', timeout: 1000 }).trim();
     } catch {
-      logger.warn(`[TunnelService] cloudflared not found in PATH. Operating in local mode (http://localhost:${localPort}). Install via 'brew install cloudflared' to enable public tunnels.`);
+      logger.warn(`[TunnelService] cloudflared not found in PATH. Activating SSH-HTTPS tunnel on port 443...`);
+      this.ensureSshTunnelRunning(localPort);
       return;
     }
-
-    // Check if trycloudflare.com resolves via current DNS
-    dns.lookup('api.trycloudflare.com', (dnsErr) => {
-      if (dnsErr) {
-        logger.warn(`[TunnelService] DNS lookup for api.trycloudflare.com failed (${dnsErr.code || dnsErr.message}). Your ISP/router DNS might be blocking trycloudflare.com. If the tunnel fails to connect, consider manually configuring DNS (e.g. 'networksetup -setdnsservers Wi-Fi 1.1.1.1 8.8.8.8').`);
-      }
-    });
 
     try {
       const token = (process.env.CLOUDFLARE_TUNNEL_TOKEN || '').trim();
       const onChildError = (err: any) => {
         logger.warn('[TunnelService] cloudflared process error', { error: err?.message });
         if (this.cloudflaredChild === child) this.cloudflaredChild = null;
+        this.cloudflareBlocked = true;
+        this.ensureSshTunnelRunning(localPort);
       };
-      const onChildExit = () => {
+      const onChildExit = (code: number | null) => {
         if (this.cloudflaredChild === child) this.cloudflaredChild = null;
+        if (code !== 0 && !this.activeTunnelUrl) {
+          logger.warn('[TunnelService] cloudflared exited non-zero. Activating SSH fallback tunnel...');
+          this.cloudflareBlocked = true;
+          this.ensureSshTunnelRunning(localPort);
+        }
       };
 
       let child: any;
       if (token) {
         logger.info('[TunnelService] Auto-spawning Cloudflare Named Tunnel process with token...', { bin: whichBin });
         child = spawn(whichBin, ['tunnel', 'run', '--token', token], {
-          stdio: 'ignore',
+          stdio: ['ignore', 'pipe', 'pipe'],
         });
       } else {
         logger.info('[TunnelService] Auto-spawning Cloudflare Quick Tunnel process...', { bin: whichBin, localPort });
         child = spawn(whichBin, ['tunnel', '--url', `http://localhost:${localPort}`, '--metrics', '127.0.0.1:20241'], {
-          stdio: 'ignore',
+          stdio: ['ignore', 'pipe', 'pipe'],
         });
       }
+      child.stderr?.on('data', (d: Buffer) => {
+        const text = d.toString();
+        this.lastTunnelError = text.trim();
+        if (/connection reset by peer|failed to request quick Tunnel|blocked/i.test(text)) {
+          logger.warn('[TunnelService] Cloudflare quick tunnel blocked by network/ISP. Activating SSH HTTPS tunnel fallback...');
+          this.cloudflareBlocked = true;
+          try { child.kill('SIGTERM'); } catch {}
+          this.ensureSshTunnelRunning(localPort);
+        }
+      });
       child.on('error', onChildError);
       child.on('exit', onChildExit);
       this.cloudflaredChild = child;
     } catch (err: any) {
       logger.warn('[TunnelService] Failed to auto-spawn cloudflared', { error: err?.message });
+      this.ensureSshTunnelRunning(localPort);
+    }
+  }
+
+  /**
+   * SSH-HTTPS tunnel fallback via free.pinggy.io on port 443.
+   * Universal compatibility over port 443 — bypasses strict campus/ISP DPI firewalls.
+   */
+  public ensureSshTunnelRunning(localPort: number = CONFIG.PORT || 4000): void {
+    if (this.fallbackTunnelChild && !this.fallbackTunnelChild.killed) {
+      return;
+    }
+    if (this.activeTunnelUrl) {
+      return;
+    }
+    logger.info('[TunnelService] Spawning SSH-HTTPS tunnel via free.pinggy.io on port 443...', { localPort });
+    try {
+      const child = spawn('ssh', [
+        '-o', 'StrictHostKeyChecking=no',
+        '-o', 'ServerAliveInterval=30',
+        '-o', 'ServerAliveCountMax=3',
+        '-T',
+        '-p', '443',
+        `-R0:localhost:${localPort}`,
+        'free.pinggy.io',
+      ]);
+
+      child.stdout?.on('data', (d: Buffer) => {
+        const text = d.toString();
+        const matches = text.match(/https:\/\/[a-z0-9-]+\.(?:free\.pinggy\.net|run\.pinggy-free\.link|pinggy\.link)/gi);
+        if (matches && matches.length > 0) {
+          const picked = matches.find((u) => u.includes('free.pinggy.net')) || matches[0];
+          this.setActiveTunnelUrl(picked);
+        }
+      });
+
+      child.stderr?.on('data', (d: Buffer) => {
+        const text = d.toString();
+        if (!text.includes('Allocated port') && !text.includes('Warning:')) {
+          this.lastTunnelError = text.trim();
+        }
+      });
+
+      child.on('error', (err: any) => {
+        logger.warn('[TunnelService] SSH fallback tunnel process error', { error: err?.message });
+        if (this.fallbackTunnelChild === child) this.fallbackTunnelChild = null;
+      });
+
+      child.on('exit', () => {
+        if (this.fallbackTunnelChild === child) this.fallbackTunnelChild = null;
+      });
+
+      this.fallbackTunnelChild = child;
+    } catch (err: any) {
+      logger.warn('[TunnelService] Failed to spawn fallback SSH tunnel', { error: err?.message });
     }
   }
 
@@ -400,6 +486,12 @@ class TunnelService {
         this.cloudflaredChild.kill('SIGTERM');
       } catch {}
       this.cloudflaredChild = null;
+    }
+    if (this.fallbackTunnelChild) {
+      try {
+        this.fallbackTunnelChild.kill('SIGTERM');
+      } catch {}
+      this.fallbackTunnelChild = null;
     }
   }
 }

@@ -19,6 +19,10 @@ import { setupSocketHandlers } from './sockets/socketHandler.js';
 import { logger } from './utils/logger.js';
 import { tunnelService } from './services/tunnelService.js';
 import { getClientIp } from './utils/clientIp.js';
+import { hlsPackager } from './services/media/hlsPackager.js';
+import { transcodingService } from './services/media/transcodingService.js';
+import { roomManager } from './services/roomManager.js';
+import { tempFileLifecycle } from './services/media/tempFileLifecycle.js';
 
 const execFilePromise = util.promisify(execFile);
 
@@ -263,8 +267,28 @@ app.get('/api/system/diagnostics', async (_req: Request, res: Response) => {
 
 // Public URL endpoint — the active Cloudflare tunnel URL (or null). The web
 // client uses this to build share links that never expose a localhost address.
-app.get('/api/system/public-url', (_req: Request, res: Response) => {
-  res.json({ publicUrl: tunnelService.getActiveTunnelUrl() });
+app.get('/api/system/public-url', async (req: Request, res: Response) => {
+  let publicUrl = tunnelService.getActiveTunnelUrl();
+  if (!publicUrl) {
+    try {
+      const authoritative = await tunnelService.getAuthoritativePublicUrl(req);
+      if (
+        authoritative &&
+        !authoritative.includes('localhost') &&
+        !authoritative.includes('127.0.0.1') &&
+        !authoritative.includes('192.168.') &&
+        !authoritative.includes('10.')
+      ) {
+        publicUrl = authoritative;
+      }
+    } catch {
+      // fallback
+    }
+  }
+  res.json({
+    publicUrl: publicUrl || null,
+    tunnelError: publicUrl ? null : tunnelService.getLastTunnelError(),
+  });
 });
 
 // REST Routes
@@ -332,6 +356,10 @@ function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
   logger.info('shutting_down', { signal });
+  try {
+    hlsPackager.cancelAllJobs();
+    transcodingService.cancelAllJobs();
+  } catch {}
   cleanupCaffeinate();
   tunnelService.stop();
   server.close(() => {
@@ -344,6 +372,10 @@ function shutdown(signal: string) {
 }
 
 process.on('exit', () => {
+  try {
+    hlsPackager.cancelAllJobs();
+    transcodingService.cancelAllJobs();
+  } catch {}
   cleanupCaffeinate();
   tunnelService.stop();
 });

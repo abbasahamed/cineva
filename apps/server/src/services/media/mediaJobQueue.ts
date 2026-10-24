@@ -7,6 +7,8 @@ import { syncEngine } from "../syncEngine.js";
 import { analyzeMediaFile } from "./mediaAnalyzer.js";
 import { evaluateMediaCompatibility, validatePlaybackFile } from "./mediaCompatibility.js";
 import { transcodingService } from "./transcodingService.js";
+import { hlsPackager } from "./hlsPackager.js";
+import { buildTrackManifest } from "./trackManifest.js";
 import { SOCKET_EVENTS } from "@cineva/shared";
 import { logger } from "../../utils/logger.js";
 import { CONFIG } from "../../config.js";
@@ -72,7 +74,8 @@ export class MediaJobQueue {
     const activeJob = this.activeJobMap.get(roomId);
     if (activeJob) {
       transcodingService.cancelJob(activeJob.id);
-      logger.info("[MediaJobQueue] Cancelled active transcoding job for room", { jobId: activeJob.id, roomId });
+      hlsPackager.cancelJob(activeJob.id);
+      logger.info("[MediaJobQueue] Cancelled active transcoding/HLS job for room", { jobId: activeJob.id, roomId });
     }
   }
 
@@ -162,7 +165,8 @@ export class MediaJobQueue {
     }
 
     const isTranscodingCancelled = transcodingService.cancelJob(jobId);
-    return isTranscodingCancelled;
+    const isHlsCancelled = hlsPackager.cancelJob(jobId);
+    return isTranscodingCancelled || isHlsCancelled;
   }
 
   private async isRoomActive(roomId: string): Promise<boolean> {
@@ -281,100 +285,18 @@ export class MediaJobQueue {
         throw new Error("Not enough temporary storage to prepare this video.");
       }
 
-      if (decision.action === "DIRECT_PLAY") {
-        logger.info("Media eligible for DIRECT_PLAY", { roomId, filename, reason: decision.reason });
-
-        if (!(await this.isRoomActive(roomId))) {
-          logger.info("[MediaJobQueue] Aborting DIRECT_PLAY save for cancelled room", { jobId: job.id, roomId });
-          return;
-        }
-
-        let savedMedia: { storageKey: string; size: number };
-        if (sourceStorageKey) {
-          // B2 object already exists in storage! No re-upload needed.
-          savedMedia = {
-            storageKey: sourceStorageKey,
-            size: analysis.sizeBytes || sourceSize || inputSizeBytes,
-          };
-          if (sourceStorageInput && fs.existsSync(sourceStorageInput)) {
-            tempFileLifecycle.unregisterActiveFile(sourceStorageInput);
-            tempFileLifecycle.safeDeleteFile(sourceStorageInput, true);
-            sourceStorageInput = null;
-          }
-        } else {
-          // Save original local file to media storage
-          savedMedia = await mediaStorage.saveFile(
-            roomId,
-            filename,
-            actualSourcePath,
-            decision.targetMimeType
-          );
-        }
-
-        // Record ready media in DB
-        const mediaRecord = await prisma.media.upsert({
-          where: { roomId },
-          create: {
-            roomId,
-            title: safeTitle,
-            filename,
-            mimeType: decision.targetMimeType,
-            size: BigInt(analysis.sizeBytes || savedMedia.size),
-            duration: analysis.duration || undefined,
-            storageKey: savedMedia.storageKey,
-            originalStorageKey: savedMedia.storageKey,
-            playbackStorageKey: savedMedia.storageKey,
-            status: "ready",
-            transcodeProgress: 100,
-            videoCodec: analysis.videoCodec || undefined,
-            audioCodec: analysis.audioCodec || undefined,
-            width: analysis.width || undefined,
-            height: analysis.height || undefined,
-          },
-          update: {
-            title: safeTitle,
-            filename,
-            mimeType: decision.targetMimeType,
-            size: BigInt(analysis.sizeBytes || savedMedia.size),
-            duration: analysis.duration || undefined,
-            storageKey: savedMedia.storageKey,
-            originalStorageKey: savedMedia.storageKey,
-            playbackStorageKey: savedMedia.storageKey,
-            status: "ready",
-            transcodeProgress: 100,
-            transcodeError: null,
-            videoCodec: analysis.videoCodec || undefined,
-            audioCodec: analysis.audioCodec || undefined,
-            width: analysis.width || undefined,
-            height: analysis.height || undefined,
-          },
-        });
-
-        // Initialize sync engine state
-        syncEngine.getOrCreateState(roomId);
-
-        const roomInfo = await roomManager.getRoomInfo(roomId);
-        if (roomInfo) {
-          broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_READY, {
-            roomId,
-            media: roomInfo.media,
-          });
-          broadcastToRoom(roomId, "room:updated", {
-            room: roomInfo,
-          });
-        }
-        return;
-      }
-
-      // 3. REMUX or TRANSCODE required
-      logger.info(`Media requires ${decision.action}`, { roomId, filename, reason: decision.reason });
-
+      const safeRoomId = roomId.replace(/[^a-zA-Z0-9_-]/g, "_");
       let savedOriginal: { storageKey: string; size: number };
       if (sourceStorageKey) {
         savedOriginal = {
           storageKey: sourceStorageKey,
           size: analysis.sizeBytes || sourceSize || inputSizeBytes,
         };
+        if (sourceStorageInput && fs.existsSync(sourceStorageInput)) {
+          tempFileLifecycle.unregisterActiveFile(sourceStorageInput);
+          tempFileLifecycle.safeDeleteFile(sourceStorageInput, true);
+          sourceStorageInput = null;
+        }
       } else {
         savedOriginal = await mediaStorage.saveFile(
           roomId,
@@ -385,7 +307,23 @@ export class MediaJobQueue {
         actualSourcePath = mediaStorage.getLocalPath(savedOriginal.storageKey) || actualSourcePath;
       }
 
-      // Create / update media record in PROCESSING state
+      // Check if room was cancelled while saving source
+      if (!(await this.isRoomActive(roomId))) {
+        logger.info("[MediaJobQueue] Aborting job for cancelled room", { jobId: job.id, roomId });
+        return;
+      }
+
+      const hlsMasterStorageKey = path.join(safeRoomId, "hls", "master.m3u8");
+      const hlsOutputDir = path.join(CONFIG.MEDIA_STORAGE_PATH, safeRoomId, "hls");
+
+      // Build initial track manifest
+      const initialManifest = buildTrackManifest(analysis, {
+        isHls: true,
+        hlsMasterUrl: mediaStorage.getUrl(hlsMasterStorageKey),
+        mp4FallbackUrl: mediaStorage.getUrl(savedOriginal.storageKey),
+      });
+
+      // 2. Create / update media record in PROCESSING state with initial track manifest
       await prisma.media.upsert({
         where: { roomId },
         create: {
@@ -397,7 +335,7 @@ export class MediaJobQueue {
           duration: analysis.duration || undefined,
           storageKey: savedOriginal.storageKey,
           originalStorageKey: savedOriginal.storageKey,
-          playbackStorageKey: null,
+          playbackStorageKey: hlsMasterStorageKey,
           status: "processing",
           transcodeProgress: 5,
           sourceMimeType: decision.targetMimeType,
@@ -406,6 +344,7 @@ export class MediaJobQueue {
           audioCodec: analysis.audioCodec || undefined,
           width: analysis.width || undefined,
           height: analysis.height || undefined,
+          trackManifest: JSON.stringify(initialManifest),
         },
         update: {
           title: safeTitle,
@@ -415,7 +354,7 @@ export class MediaJobQueue {
           duration: analysis.duration || undefined,
           storageKey: savedOriginal.storageKey,
           originalStorageKey: savedOriginal.storageKey,
-          playbackStorageKey: null,
+          playbackStorageKey: hlsMasterStorageKey,
           status: "processing",
           transcodeProgress: 5,
           transcodeError: null,
@@ -423,6 +362,7 @@ export class MediaJobQueue {
           audioCodec: analysis.audioCodec || undefined,
           width: analysis.width || undefined,
           height: analysis.height || undefined,
+          trackManifest: JSON.stringify(initialManifest),
         },
       });
 
@@ -430,118 +370,167 @@ export class MediaJobQueue {
         roomId,
         status: "processing",
         progress: 5,
+        stage: "Host is preparing the movie, 5%",
+        media: (await roomManager.getRoomInfo(roomId))?.media,
       });
 
-      // Prepare temp destination for converted MP4
-      tempConvertedPath = path.join(tempDir, `converted_${Date.now()}_${Math.random().toString(36).substr(2, 6)}.mp4`);
-      tempFileLifecycle.registerActiveFile(tempConvertedPath);
+      // Prepare clean HLS output directory
+      if (fs.existsSync(hlsOutputDir)) {
+        fs.rmSync(hlsOutputDir, { recursive: true, force: true });
+      }
+      fs.mkdirSync(hlsOutputDir, { recursive: true });
 
-      // 4. Run FFmpeg conversion with diagnostics logging
-      logger.info("MEDIA_DIAGNOSTICS_START", {
-        jobId: job.id,
-        roomId,
-        filename,
-        sourceVideoCodec: analysis.videoCodec || "none",
-        sourceAudioCodec: analysis.audioCodec || "none",
-        resolution: analysis.width && analysis.height ? `${analysis.width}x${analysis.height}` : "unknown",
-        durationSeconds: analysis.duration,
-        sourceSizeBytes: analysis.sizeBytes,
-        action: decision.action,
-        reason: decision.reason,
-        selectedAudioStreamIndex: decision.selectedAudioStreamIndex,
-        isAudioCompatible: decision.isAudioCompatible,
-      });
+      // 3. Package to HLS with multi-audio, subtitle extraction, and early playback
+      let finalManifest = initialManifest;
+      let earlyPlaybackTriggered = false;
 
-      const result = await transcodingService.processVideo(job.id, {
-        inputPath: actualSourcePath,
-        outputPath: tempConvertedPath,
-        mode: (decision.action as "REMUX" | "TRANSCODE" | "AUDIO_TRANSCODE_VIDEO_COPY"),
-        audioStreamIndex: decision.selectedAudioStreamIndex,
-        isAudioCompatible: decision.isAudioCompatible,
-        durationSeconds: analysis.duration,
-        onProgress: async (progressPercent, speed, etaSeconds, stage) => {
-          const scaledPercent = Math.min(99, 30 + Math.round(progressPercent * 0.69));
-          const currentStage = (progressPercent >= 98 || scaledPercent >= 98)
-            ? "Finalizing movie for streaming..."
-            : (stage || (decision.action === "REMUX" ? "Remuxing container..." : decision.action === "AUDIO_TRANSCODE_VIDEO_COPY" ? "Converting audio (copying video)..." : "Re-encoding video..."));
+      try {
+        const hlsResult = await hlsPackager.packageToHls(job.id, {
+          inputPath: actualSourcePath,
+          outputDir: hlsOutputDir,
+          analysis,
+          onProgress: async (progressPercent, speed, etaSeconds, stage) => {
+            const scaledPercent = Math.min(99, Math.max(5, progressPercent));
+            await prisma.media.update({
+              where: { roomId },
+              data: { transcodeProgress: scaledPercent },
+            }).catch(() => {});
 
-          await prisma.media.update({
-            where: { roomId },
-            data: { transcodeProgress: scaledPercent },
-          }).catch(() => { });
+            broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_PROGRESS, {
+              roomId,
+              status: "processing",
+              progress: scaledPercent,
+              speed,
+              etaSeconds,
+              stage: `Host is preparing the movie, ${scaledPercent}%`,
+            });
+          },
+          onInitialSegmentsReady: async () => {
+            if (!earlyPlaybackTriggered) {
+              earlyPlaybackTriggered = true;
+              logger.info("[MediaJobQueue] Initial HLS segments ready, broadcasting early playback", { roomId });
+              const earlyRoom = await roomManager.getRoomInfo(roomId);
+              if (earlyRoom && earlyRoom.media) {
+                syncEngine.getOrCreateState(roomId);
+                broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_READY, {
+                  roomId,
+                  status: "ready",
+                  progress: 25,
+                  media: earlyRoom.media,
+                });
+                broadcastToRoom(roomId, "room:updated", {
+                  room: earlyRoom,
+                });
+              }
+            }
+          },
+        });
 
-          broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_PROGRESS, {
-            roomId,
-            status: "processing",
-            progress: scaledPercent,
-            speed,
-            etaSeconds,
-            stage: currentStage,
-          });
-        },
-      });
+        finalManifest = hlsResult.trackManifest;
 
-      logger.info("MEDIA_DIAGNOSTICS_COMPLETE", {
-        jobId: job.id,
-        roomId,
-        action: decision.action,
-        executionTimeMs: result.executionTimeMs,
-        processingDurationSec: Math.round(result.executionTimeMs / 1000),
-        outputSizeBytes: result.outputSize,
-        processingSpeedRatio: (analysis.duration / Math.max(0.001, result.executionTimeMs / 1000)).toFixed(2) + "x",
-      });
+        const convertedFilename = `${filename.replace(/\.[^/.]+$/, "")}.mp4`;
+        // Update DB to READY state with finalized VOD manifest
+        await prisma.media.update({
+          where: { roomId },
+          data: {
+            filename: convertedFilename,
+            mimeType: "video/mp4",
+            playbackStorageKey: hlsMasterStorageKey,
+            status: "ready",
+            transcodeProgress: 100,
+            transcodeError: null,
+            trackManifest: JSON.stringify(finalManifest),
+          },
+        });
 
-      // Check if room is still active before registering playback output
+        logger.info("[MediaJobQueue] HLS packaging completed successfully", {
+          roomId,
+          executionTimeMs: hlsResult.executionTimeMs,
+          audioTracks: finalManifest.audioTracks.length,
+          subtitleTracks: finalManifest.subtitleTracks.length,
+        });
+      } catch (hlsErr: any) {
+        logger.warn("[MediaJobQueue] HLS packaging failed; attempting progressive MP4 fallback", {
+          roomId,
+          error: hlsErr.message,
+        });
+
+        // 4. Fallback: Progressive MP4
+        tempConvertedPath = path.join(tempDir, `converted_${Date.now()}_${Math.random().toString(36).substr(2, 6)}.mp4`);
+        tempFileLifecycle.registerActiveFile(tempConvertedPath);
+
+        const mp4Result = await transcodingService.processVideo(job.id, {
+          inputPath: actualSourcePath,
+          outputPath: tempConvertedPath,
+          mode: (decision.action as any) || "TRANSCODE",
+          audioStreamIndex: decision.selectedAudioStreamIndex,
+          isAudioCompatible: decision.isAudioCompatible,
+          durationSeconds: analysis.duration,
+          onProgress: async (progressPercent, speed, etaSeconds, stage) => {
+            const scaledPercent = Math.min(99, 10 + Math.round(progressPercent * 0.89));
+            await prisma.media.update({
+              where: { roomId },
+              data: { transcodeProgress: scaledPercent },
+            }).catch(() => {});
+
+            broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_PROGRESS, {
+              roomId,
+              status: "processing",
+              progress: scaledPercent,
+              speed,
+              etaSeconds,
+              stage: stage || `Converting video for fallback playback (${scaledPercent}%)...`,
+            });
+          },
+        });
+
+        const verifiedAnalysis = await validatePlaybackFile(mp4Result.outputPath);
+        const convertedFilename = `${filename.replace(/\.[^/.]+$/, "")}.mp4`;
+        const savedFallback = await mediaStorage.saveFile(
+          roomId,
+          convertedFilename,
+          mp4Result.outputPath,
+          "video/mp4"
+        );
+
+        // Mark that only primary audio track is switchable in progressive MP4 fallback
+        const fallbackManifest = buildTrackManifest(analysis, {
+          isHls: false,
+          mp4FallbackUrl: mediaStorage.getUrl(savedFallback.storageKey),
+        });
+        fallbackManifest.audioTracks.forEach((t, i) => {
+          if (i > 0) {
+            (t as any).supported = false;
+            (t as any).unsupportedReason = "HLS packaging failed; progressive MP4 fallback exposes only primary audio track.";
+          }
+        });
+
+        await prisma.media.update({
+          where: { roomId },
+          data: {
+            filename: convertedFilename,
+            mimeType: "video/mp4",
+            size: BigInt(savedFallback.size),
+            duration: verifiedAnalysis.duration || analysis.duration,
+            storageKey: savedFallback.storageKey,
+            playbackStorageKey: savedFallback.storageKey,
+            status: "ready",
+            transcodeProgress: 100,
+            transcodeError: null,
+            videoCodec: "h264",
+            audioCodec: "aac",
+            trackManifest: JSON.stringify(fallbackManifest),
+          },
+        });
+      }
+
+      // Check if room was cancelled while packaging/transcoding
       if (!(await this.isRoomActive(roomId))) {
-        logger.info("[MediaJobQueue] Room was cancelled during transcoding. Cleaning output and suppressing MEDIA_READY.", { jobId: job.id, roomId });
-        if (result.outputPath) {
-          tempFileLifecycle.safeDeleteFile(result.outputPath, true);
-        }
+        logger.info("[MediaJobQueue] Room was cancelled during packaging. Suppressing MEDIA_READY.", { jobId: job.id, roomId });
         return;
       }
 
-      broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_PROGRESS, {
-        roomId,
-        status: "processing",
-        progress: 99,
-        speed: "1.0x",
-        etaSeconds: 2,
-        stage: "Finalizing movie for streaming...",
-      });
-
-      // 5. Post-processing validation step per Section 17
-      const verifiedAnalysis = await validatePlaybackFile(result.outputPath);
-
-      // 6. Save converted playback file to media storage
-      const convertedFilename = `${filename.replace(/\.[^/.]+$/, "")}.mp4`;
-      const savedPlayback = await mediaStorage.saveFile(
-        roomId,
-        convertedFilename,
-        result.outputPath,
-        "video/mp4"
-      );
-
-      // 7. Update Media record to READY state with verified duration and metadata
-      await prisma.media.update({
-        where: { roomId },
-        data: {
-          filename: convertedFilename,
-          mimeType: "video/mp4",
-          size: BigInt(savedPlayback.size),
-          duration: verifiedAnalysis.duration || analysis.duration,
-          storageKey: savedPlayback.storageKey,
-          playbackStorageKey: savedPlayback.storageKey,
-          status: "ready",
-          transcodeProgress: 100,
-          transcodeError: null,
-          videoCodec: "h264",
-          audioCodec: "aac",
-        },
-      });
-
-      logger.info("Media processing completed successfully", { roomId, filename: convertedFilename, size: savedPlayback.size });
-
-      // Initialize sync engine state for converted video
+      // Initialize sync engine state
       syncEngine.getOrCreateState(roomId);
 
       const roomInfo = await roomManager.getRoomInfo(roomId);
@@ -560,6 +549,7 @@ export class MediaJobQueue {
       logger.error("Media processing job failed", { roomId, filename, error: err.message });
 
       transcodingService.cancelJob(job.id);
+      hlsPackager.cancelJob(job.id);
 
       const cleanMsg = (err.message || "")
         .replace(/\/Users\/[^\s]+/g, "[path]")

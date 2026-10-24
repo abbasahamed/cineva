@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "vitest run --fileParallelism=false",
-    "db:push": "node scripts/generate-prisma.js && prisma db push",
+    "db:push": "node scripts/generate-prisma.js && node scripts/db-push.js",
     "db:generate": "node scripts/generate-prisma.js"
   },
   "dependencies": {

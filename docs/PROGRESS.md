@@ -818,5 +818,139 @@ Executed reproduction script `scripts/reproduce-step1.mjs` using Playwright with
      ```
    - Because `el.audioTracks` is `undefined`, the application fell into the `else` branch, displaying the hardcoded string `"English 5.1 / Stereo"` regardless of the actual file contents.
 
+### STEP 2: Server — Track Manifest + HLS Packaging Pipeline
+
+1. **Implementation Summary**:
+   - **Track Manifest Generator (`trackManifest.ts`)**:
+     - Extracts all audio tracks, language codes, channel layouts, titles, and default flags.
+     - Formats clean language names using `Intl.DisplayNames`.
+     - Identifies supported text subtitles (`subrip`, `srt`, `ass`, `ssa`, `mov_text`, `webvtt`) vs unsupported image/bitmap subtitles (`hdmv_pgs_subtitle`, `pgs`, `dvd_subtitle`, `vobsub`, `dvb_subtitle`) with clear diagnostic explanation.
+   - **HLS Packager (`hlsPackager.ts`)**:
+     - Fast stream-copy (`-c:v copy`) for browser-safe H.264 8-bit; hardware accelerated `h264_videotoolbox` (fallback `libx264 veryfast`) otherwise.
+     - Splits each audio stream into an independent `#EXT-X-MEDIA:TYPE=AUDIO` rendition with clean language and name attributes.
+     - Extracts text subtitles to WebVTT (`.vtt`) files with companion subtitle playlists (`#EXT-X-MEDIA:TYPE=SUBTITLES`).
+     - Event playlist type during packaging enabling instant early start as soon as initial fMP4 segments are generated, converted to VOD upon completion.
+     - Full cancellation support: `cancelJob` and `cancelAllJobs` to terminate FFmpeg child processes on shutdown or room deletion.
+   - **Job Queue & Storage Serving (`mediaJobQueue.ts`, `mediaStorage.ts`, `roomManager.ts`)**:
+     - DB schema updated with `trackManifest` column in `Media` model.
+     - Single-port Express streaming updated with proper MIME types (`application/vnd.apple.mpegurl`, `video/mp4`, `text/vtt`) and optimal caching headers (`no-cache, no-store, must-revalidate` for `.m3u8`; immutable for `.m4s`).
+     - Recursive room directory cleanup on room termination.
+     - Graceful fallback: if HLS packaging ever fails, falls back to progressive MP4 and marks non-primary audio tracks as unswitchable rather than displaying misleading options.
+
+2. **2-Minute Test Fixture Generation (`scripts/make-fixtures.mjs`)**:
+   - Generated 2-minute 7-stream test fixture `fixtures/2_multi_track.mkv`:
+     - Video: 1920x1080 H.264
+     - Audio 1: English (440 Hz sine tone, mono, default)
+     - Audio 2: Hindi (880 Hz sine tone, mono)
+     - Audio 3: Telugu (1320 Hz sine tone, mono)
+     - Subtitle 1: English [CC] (SubRip text)
+     - Subtitle 2: Español (SubRip text)
+     - Subtitle 3: Français (PGS) (HDMV image subtitle)
+
+3. **Generated Track Manifest JSON**:
+   ```json
+   {
+     "formatName": "matroska,webm",
+     "duration": 120.023,
+     "sizeBytes": 14228176,
+     "videoTracks": [
+       {
+         "index": 0,
+         "codec": "h264",
+         "width": 1920,
+         "height": 1080,
+         "profile": "High"
+       }
+     ],
+     "audioTracks": [
+       {
+         "index": 0,
+         "streamIndex": 1,
+         "language": "eng",
+         "title": "English",
+         "codec": "aac",
+         "channels": 1,
+         "channelLayout": "mono",
+         "isDefault": true
+       },
+       {
+         "index": 1,
+         "streamIndex": 2,
+         "language": "hin",
+         "title": "Hindi",
+         "codec": "aac",
+         "channels": 1,
+         "channelLayout": "mono",
+         "isDefault": false
+       },
+       {
+         "index": 2,
+         "streamIndex": 3,
+         "language": "tel",
+         "title": "Telugu",
+         "codec": "aac",
+         "channels": 1,
+         "channelLayout": "mono",
+         "isDefault": false
+       }
+     ],
+     "subtitleTracks": [
+       {
+         "index": 0,
+         "streamIndex": 4,
+         "language": "eng",
+         "title": "English [CC]",
+         "codec": "subrip",
+         "isForced": false,
+         "isDefault": true,
+         "supported": true,
+         "url": "sub_4_eng.vtt"
+       },
+       {
+         "index": 1,
+         "streamIndex": 5,
+         "language": "spa",
+         "title": "Español",
+         "codec": "subrip",
+         "isForced": false,
+         "isDefault": false,
+         "supported": true,
+         "url": "sub_5_spa.vtt"
+       },
+       {
+         "index": 2,
+         "streamIndex": 6,
+         "language": "fra",
+         "title": "Français (PGS)",
+         "codec": "hdmv_pgs_subtitle",
+         "isForced": false,
+         "isDefault": false,
+         "supported": false,
+         "unsupportedReason": "Image-based subtitles (HDMV_PGS_SUBTITLE) cannot be rendered natively without OCR."
+       }
+     ],
+     "hlsMasterUrl": "master.m3u8",
+     "isHls": true
+   }
+   ```
+
+4. **Generated Master Playlist (`master.m3u8`)**:
+   ```m3u8
+   #EXTM3U
+   #EXT-X-VERSION:7
+   #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="group_audio",NAME="English (Mono)",DEFAULT=YES,LANGUAGE="eng",CHANNELS="1",URI="stream_English.m3u8"
+   #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="group_audio",NAME="Hindi (Mono)",DEFAULT=NO,LANGUAGE="hin",CHANNELS="1",URI="stream_Hindi.m3u8"
+   #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="group_audio",NAME="Telugu (Mono)",DEFAULT=NO,LANGUAGE="tel",CHANNELS="1",URI="stream_Telugu.m3u8"
+   #EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="English [CC]",DEFAULT=YES,AUTOSELECT=YES,FORCED=NO,LANGUAGE="eng",URI="sub_4.m3u8"
+   #EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Español",DEFAULT=NO,AUTOSELECT=NO,FORCED=NO,LANGUAGE="spa",URI="sub_5.m3u8"
+   #EXT-X-STREAM-INF:BANDWIDTH=564949,AVERAGE-BANDWIDTH=557350,RESOLUTION=1920x1080,CODECS="avc1.640028,mp4a.40.2",AUDIO="group_audio",SUBTITLES="subs"
+   stream_0.m3u8
+   ```
+
+5. **Test Verification**:
+   - `npx vitest run src/__tests__/hlsMultiTrack.test.ts`: Passed (4/4).
+   - `npm test -w @cineva/server`: Passed (134/134 across 17 test suites).
+
+
 
 
