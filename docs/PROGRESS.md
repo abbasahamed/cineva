@@ -305,3 +305,78 @@ Per instructions, the watch room page UI is kept intact and will be redesigned i
     - Executed Chrome browser automation:
       - Captured full-resolution screenshots (`room_verified_full.png`, `room_invite_verified.png`, `room_audience_tab.png`).
       - Verified zero black SVG silhouettes, pixel-perfect alignment of all text labels and icons, and responsive layout across theater and sidebar columns.
+
+## Playback bug: root cause
+Executed reproduction script `scripts/reproduce-step1.mjs` using Playwright with Google Chrome (`channel: 'chrome'`) testing both `fixtures/1_h264_aac.mp4` and `fixtures/2_multi_track.mkv`.
+
+### Evidence Captured
+1. **Console Errors & Warnings**:
+   - 0 console errors or warnings during room creation, upload, or room page mount.
+   - 0 failed network requests.
+   - Multipart upload requests (`init`, `part/1`, `complete`) all succeeded with HTTP 201/200 and sent:
+     - `Content-Type: application/json; charset=utf-8`
+     - `Access-Control-Allow-Origin: http://localhost:5173`
+     - `Cross-Origin-Resource-Policy: cross-origin`
+   - Direct streaming route `/media/*` tested with `Range: bytes=0-100`:
+     - Returned `HTTP/1.1 206 Partial Content`
+     - `Content-Range: bytes 0-100/2097`
+     - `Accept-Ranges: bytes`
+     - `Content-Length: 101`
+     - `Content-Type: video/mp4`
+     - `Cache-Control: no-cache`
+     - `Access-Control-Allow-Origin: http://localhost:5173`
+     - `Access-Control-Allow-Credentials: true`
+     - `Cross-Origin-Resource-Policy: cross-origin`
+2. **Video Element State in Browser**:
+   - `id`: `"v"`
+   - `src`: `""` (empty string)
+   - `currentSrc`: `""` (empty string)
+   - `getAttribute('src')`: `null` (not set)
+   - `networkState`: `0` (`NETWORK_EMPTY`)
+   - `readyState`: `0` (`HAVE_NOTHING`)
+   - `error`: `null`
+   - `paused`: `true`
+   - `duration`: `null`
+   - `currentTime`: `0`
+   - `videoWidth`: `0`, `videoHeight`: `0`
+   - `crossOrigin`: `"anonymous"`
+   - `outerHTMLSnippet`: `<video id="v" playsinline="" crossorigin="anonymous" style="object-fit: contain;"></video>`
+3. **Room API & Socket Media State**:
+   - For MP4 (`1_h264_aac.mp4`): Room active, `media.status = "ready"`, `media.duration = 5`, `media.url = "/media/cmvm0bdvz002mtiu6w261depr%2F1792822649659_1_h264_aac.mp4"`.
+   - For MKV (`2_multi_track.mkv`): Room active, transcode completed 100%, `media.status = "ready"`, `media.duration = 5.000998`, `media.url = "/media/cmvm0bj6m002ttiu6hu0iuuwz%2F1792822656636_2_multi_track.mp4"`.
+   - Server background pipeline converted the MKV multi-track into a 1080p H.264/AAC MP4 without issue.
+4. **Room Page Handling**:
+   - In `apps/web/src/pages/WatchRoomPage.tsx` line 735:
+     ```tsx
+     <video
+       ref={videoRef as React.RefObject<HTMLVideoElement>}
+       id="v"
+       playsInline
+       crossOrigin="anonymous"
+       style={{
+         objectFit: zoom === 2 ? "fill" : "contain",
+         transform: zoom === 1 ? "scale(1.34)" : undefined,
+       }}
+       onClick={() => (playback.isPlaying ? handlePause() : handlePlay())}
+     />
+     ```
+   - **No component sets the `src` attribute** on `<video id="v">`. Neither JSX nor any effect or hook assigns `videoRef.current.src = room.media.url`. The video element has literally no source attached, leaving the canvas black, `networkState = 0`, and `readyState = 0`.
+
+### Evaluation of 6 Likely Causes
+1. **`crossorigin="anonymous"` vs CORS**:
+   - **Ruled out as primary cause** of the black screen (the primary cause is missing `src`), but **confirmed as a critical safeguard**:
+   - When `crossorigin="anonymous"` is set, any media fetch requires valid `Access-Control-Allow-Origin`. While the Express server includes CORS headers, `LocalMediaStorage.streamFile` writes headers directly with `res.writeHead()`. Explicit CORS and try/catch around ambient-light canvas sampling are mandatory so sampling failures never abort playback.
+2. **Media URL origin / relative vs absolute**:
+   - **Ruled out as failure cause**. The server returns relative URLs `/media/...`. This is appropriate for single-port serving on port 4000 and works through the Vite proxy on port 5173 and through Cloudflare tunnels.
+3. **Room page mounts before media ready / never re-renders when "media ready" arrives / `src` stays empty**:
+   - **CONFIRMED PRIMARY ROOT CAUSE**.
+   - `<video id="v">` in `WatchRoomPage.tsx` was written without a `src` attribute (`src={room?.media?.status === 'ready' ? room.media.url : undefined}`). The video element never loads any media, remaining completely blank at 0:00.
+   - Furthermore, `WatchRoomPage.tsx` lacks an explicit "Preparing your movie…" progress state while `media.status === 'processing'`.
+4. **HTTP Range requests / 206 responses missing or wrong**:
+   - **Ruled out as failure cause**. Direct curl tests with `Range: bytes=0-100` confirmed the server returns `HTTP/1.1 206 Partial Content` with correct `Content-Range: bytes 0-100/<total>`, `Accept-Ranges: bytes`, and binary payload.
+5. **Browser compatibility (MKV / HEVC transcode produced nothing or failed silently)**:
+   - **Ruled out as failure cause**. The server FFmpeg pipeline successfully converted `2_multi_track.mkv` into a valid browser-compatible H.264/AAC MP4 with 100% progress and registered it in the database with status `"ready"`.
+6. **Sync engine or play/pause state sets "playing" before source is ready or autoplay blocked**:
+   - **CONFIRMED CONTRIBUTING CAUSE**.
+   - The UI play/pause button state in `WatchRoomPage.tsx` was derived directly from `playback.isPlaying` (socket state) rather than the actual `<video>` element's real playback state (`paused`, `ended`, `waiting`). If `playback.isPlaying` is true while `video.src` is missing or autoplay is blocked, the button displayed "pause" at 0:00 while the video was stopped.
+
