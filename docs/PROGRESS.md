@@ -951,6 +951,67 @@ Executed reproduction script `scripts/reproduce-step1.mjs` using Playwright with
    - `npx vitest run src/__tests__/hlsMultiTrack.test.ts`: Passed (4/4).
    - `npm test -w @cineva/server`: Passed (134/134 across 17 test suites).
 
+---
+
+## STEP 3: Web — hls.js playback and real menus (Completed)
+
+### 1. What was built
+- **Hls.js Integration with Unified `<video>` Sync Engine**:
+  - Attached `hls.js` (version `1.7.3`) with Safari native HLS fallback directly to the exact `<video>` element driven by `useSyncWatch`.
+  - Preserved zero-drift sync correction, local seeking, host playback broadcasts, and play/pause handlers without modifications.
+  - Enabled playback start immediately when initial ~4s fMP4 segments are produced using `#EXT-X-PLAYLIST-TYPE:EVENT`.
+  - Handled clean instance lifecycle with `hls.destroy()` on room unmount or media change.
+- **IINA-Style Audio Menu**:
+  - Implemented `apps/web/src/utils/trackDisplay.ts` with `formatAudioTrackList`.
+  - Translated ISO 639-2 language codes (`hin`, `tel`, `eng`, etc.) into clean human-friendly names via `Intl.DisplayNames`.
+  - Channel annotation: appends ` (5.1)` or ` (7.1)` only for surround sound (> stereo).
+  - Noise suppression: Completely strips raw file titles like `1Vegamovies.tw` when language is known.
+  - Track disambiguation: Appends ` (2)` if multiple tracks share the same language.
+  - Single-track awareness: If the media file has only 1 audio track, displays `"This file has one audio track"`.
+  - Seamless switching: Switching audio invokes `hls.audioTrack = i`, switching the audio buffer without video pause or desync.
+  - Completely purged the old hardcoded `"English 5.1 / Stereo"`.
+- **Subtitles Menu**:
+  - Implemented `formatSubtitleTrackList` in `trackDisplay.ts`.
+  - Clean language names for all extracted WebVTT tracks.
+  - Image-based tracks (such as `HDMV_PGS_SUBTITLE`) are kept visible in the menu but disabled with an honest label: `French (HDMV_PGS_SUBTITLE) - not supported`.
+  - Supported `Off` selection and custom uploaded subtitles via `"Add subtitle file…"`.
+- **Per-Viewer Local Isolation**:
+  - Audio and subtitle choices are strictly per viewer and are never broadcast over WebSockets.
+  - Choices persist per room in `localStorage` under `cineva_audio_${roomCode}` and `cineva_sub_${roomCode}`.
+  - Automatically defaults to the track marked with `isDefault: true`.
+- **Guest Preparing Banner**:
+  - Shows `"Host is preparing the movie, X%"` with live transcode percentage.
+
+### 2. Commands & Verification Output
+- **Unit Tests**:
+  ```bash
+  $ npm test -w @cineva/web -- trackDisplay.test.ts
+   ✓ src/__tests__/trackDisplay.test.ts (4 tests) 10ms
+     ✓ trackDisplay utilities > formats language codes correctly to human-friendly English names 8ms
+     ✓ trackDisplay utilities > formats audio track list ignoring noisy site titles and adding channel annotations 1ms
+     ✓ trackDisplay utilities > deduplicates identical language tracks by adding index suffixes 0ms
+     ✓ trackDisplay utilities > formats subtitles with text tracks enabled and image-based tracks disabled with honest label 0ms
+   Test Files  1 passed (1)
+        Tests  4 passed (4)
+  ```
+- **Typecheck & Web Suite**:
+  ```bash
+  $ npm run typecheck -w @cineva/web
+  # Exit code 0
+
+  $ npm test -w @cineva/web
+  # Test Files 10 passed (10)
+  # Tests 98 passed (98)
+  ```
+- **Production Build**:
+  ```bash
+  $ npm run build -w @cineva/web
+  # dist/index.html 1.79 kB
+  # dist/assets/index-*.js 1,053.17 kB
+  # built in 1.54s
+  ```
+
+
 
 
 

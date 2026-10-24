@@ -4,15 +4,28 @@ import { useSyncWatch, ConnectionStatus } from "../hooks/useSyncWatch.js";
 import { MediaUploadModal } from "../components/MediaUploadModal.js";
 import { DebugPanel } from "../components/DebugPanel.js";
 import { useToast } from "../components/Toast.js";
-import { RefreshCw, AlertCircle } from "lucide-react";
+import { RefreshCw, AlertCircle, Maximize2, Volume2, VolumeX } from "lucide-react";
 import {
   VideoProvider,
   useVideoControls,
   useVideoPeers,
   VideoTile,
+  ParticipantGalleryModal,
   WebRTCDebugPanel,
 } from "../features/video/index.js";
-import { getPublicUrl } from "../services/api.js";
+import {
+  getRoomInviteUrl,
+  shareOnWhatsApp,
+  copyToClipboard,
+  isPrivateAddress,
+} from "../utils/inviteUtils.js";
+import Hls from "hls.js";
+import {
+  formatAudioTrackList,
+  formatSubtitleTrackList,
+  AudioOption,
+  SubtitleOption,
+} from "../utils/trackDisplay.js";
 
 function formatMediaInfo(media: { title: string; size?: number | string } | null | undefined) {
   if (!media) return { displayTitle: "Friday movie night", size: null, rawTitle: "" };
@@ -273,9 +286,28 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
 }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { showToast: showGlobalToast } = useToast();
 
-  const { isCameraOn, isMuted, isConnecting, toggleCamera, toggleMute } = useVideoControls();
-  const { cameraPeers, currentParticipantId, currentDisplayName, getStream } = useVideoPeers();
+  const { isCameraOn, isMuted, isConnecting, permissionError, toggleCamera, toggleMute, dismissError } = useVideoControls();
+  const {
+    allPeers,
+    cameraPeers,
+    currentParticipantId,
+    currentDisplayName,
+    participantVolumes,
+    participantMutedLocally,
+    setParticipantVolume,
+    toggleParticipantLocalMute,
+    getStream,
+  } = useVideoPeers();
+
+  useEffect(() => {
+    if (permissionError) {
+      showGlobalToast(permissionError, "error");
+    }
+  }, [permissionError, showGlobalToast]);
+
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<"chat" | "participants">("chat");
@@ -312,20 +344,95 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   const mediaUrl = room?.media && room.media.status === "ready" && room.media.url ? room.media.url : undefined;
   const isMediaProcessing = room?.media && (room.media.status === "processing" || room.media.status === "uploading");
   const isMediaFailed = room?.media && (room.media.status === "failed" || (videoError !== null && !mediaUrl));
+  const isHls = Boolean(
+    room?.media?.isHls ||
+    (mediaUrl && (mediaUrl.endsWith(".m3u8") || mediaUrl.includes(".m3u8?")))
+  );
+
+  const hlsRef = useRef<Hls | null>(null);
+  const [hlsAudioTracks, setHlsAudioTracks] = useState<any[]>([]);
+  const [audioOptions, setAudioOptions] = useState<AudioOption[]>([]);
+  const [subtitleOptions, setSubtitleOptions] = useState<SubtitleOption[]>([]);
+  const [selectedAudioIdx, setSelectedAudioIdx] = useState<number>(0);
+  const [selectedSubIdx, setSelectedSubIdx] = useState<number>(-1);
+  const [userCustomSubs, setUserCustomSubs] = useState<Array<{ label: string; src: string }>>([]);
 
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
-    if (mediaUrl) {
+
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
+    if (!mediaUrl) {
+      el.removeAttribute("src");
+      el.load();
+      return;
+    }
+
+    if (isHls && Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false,
+        backBufferLength: 90,
+      });
+      hlsRef.current = hls;
+
+      hls.loadSource(mediaUrl);
+      hls.attachMedia(el);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (hls.audioTracks && hls.audioTracks.length > 0) {
+          setHlsAudioTracks([...hls.audioTracks]);
+        }
+      });
+
+      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (_event, data) => {
+        if (data.audioTracks && data.audioTracks.length > 0) {
+          setHlsAudioTracks([...data.audioTracks]);
+        }
+      });
+
+      hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_event, data) => {
+        setSelectedAudioIdx(data.id);
+      });
+
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (data.fatal) {
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              console.warn("[HLS] Fatal network error, recovering...", data);
+              hls.startLoad();
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              console.warn("[HLS] Fatal media error, recovering...", data);
+              hls.recoverMediaError();
+              break;
+            default:
+              console.error("[HLS] Unrecoverable error:", data);
+              hls.destroy();
+              hlsRef.current = null;
+              break;
+          }
+        }
+      });
+    } else {
+      // Native Safari HLS or Progressive MP4 fallback
       if (el.src !== mediaUrl && !el.src.endsWith(mediaUrl)) {
         el.src = mediaUrl;
         el.load();
       }
-    } else {
-      el.removeAttribute("src");
-      el.load();
     }
-  }, [mediaUrl, videoRef]);
+
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+  }, [mediaUrl, isHls, videoRef]);
 
   useEffect(() => {
     const el = videoRef.current;
@@ -399,10 +506,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     };
   }, [videoRef, mediaUrl]);
 
-  const [audioTracks, setAudioTracks] = useState<string[]>(["Track 1 (Default)"]);
-  const [selectedAudioIdx, setSelectedAudioIdx] = useState(0);
-  const [subTracks, setSubTracks] = useState<string[]>([]);
-  const [selectedSubIdx, setSelectedSubIdx] = useState<number>(-1);
+  const manifest = room?.media?.trackManifest;
 
   const [scrubTip, setScrubTip] = useState<{ text: string; left: number }>({ text: "0:00", left: 0 });
   const [isScrubbing, setIsScrubbing] = useState(false);
@@ -420,16 +524,14 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
 
   useEffect(() => {
     let active = true;
-    getPublicUrl()
-      .then((pubUrl) => {
-        if (active && pubUrl) {
-          setInviteUrl(`${pubUrl}/join/${roomCode}`);
-        } else if (active) {
-          setInviteUrl(`${window.location.origin}/join/${roomCode}`);
+    getRoomInviteUrl(roomCode)
+      .then((url) => {
+        if (active && url && !isPrivateAddress(url)) {
+          setInviteUrl(url);
         }
       })
-      .catch(() => {
-        if (active) setInviteUrl(`${window.location.origin}/join/${roomCode}`);
+      .catch((err) => {
+        console.warn("Public invite URL not yet discovered:", err?.message);
       });
     return () => {
       active = false;
@@ -465,27 +567,113 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   }, [videoRef, room?.media]);
 
   useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
-    const aTracks: string[] = [];
-    if ((el as any).audioTracks && (el as any).audioTracks.length > 0) {
-      const list = (el as any).audioTracks;
-      for (let i = 0; i < list.length; i++) {
-        aTracks.push(list[i].label || list[i].language || `Track ${i + 1}`);
-      }
-    } else {
-      aTracks.push("English 5.1 / Stereo");
-    }
-    setAudioTracks(aTracks);
+    const opts = formatAudioTrackList(hlsAudioTracks, manifest?.audioTracks);
+    setAudioOptions(opts);
 
-    const sTracks: string[] = [];
-    if (el.textTracks && el.textTracks.length > 0) {
-      for (let i = 0; i < el.textTracks.length; i++) {
-        sTracks.push(el.textTracks[i].label || el.textTracks[i].language || `Track ${i + 1}`);
+    // Read stored audio preference
+    const savedAudio = localStorage.getItem(`cineva_audio_${roomCode}`);
+    if (savedAudio !== null) {
+      const idx = parseInt(savedAudio, 10);
+      if (!isNaN(idx) && idx >= 0 && idx < opts.length && opts[idx].supported) {
+        setSelectedAudioIdx(idx);
+        if (hlsRef.current && hlsRef.current.audioTrack !== idx) {
+          hlsRef.current.audioTrack = idx;
+        }
+        return;
       }
     }
-    setSubTracks(sTracks);
-  }, [videoRef, room?.media]);
+
+    // Default to track with isDefault: true
+    const defIdx = opts.findIndex((o) => o.isDefault);
+    const targetIdx = defIdx >= 0 ? defIdx : 0;
+    setSelectedAudioIdx(targetIdx);
+    if (hlsRef.current && hlsRef.current.audioTrack !== targetIdx && opts.length > 0) {
+      hlsRef.current.audioTrack = targetIdx;
+    }
+  }, [hlsAudioTracks, manifest?.audioTracks, roomCode]);
+
+  useEffect(() => {
+    const sOpts = formatSubtitleTrackList(manifest?.subtitleTracks);
+    setSubtitleOptions(sOpts);
+
+    const savedSub = localStorage.getItem(`cineva_sub_${roomCode}`);
+    if (savedSub !== null) {
+      const sIdx = parseInt(savedSub, 10);
+      if (!isNaN(sIdx)) {
+        setSelectedSubIdx(sIdx);
+        return;
+      }
+    }
+
+    const defSub = sOpts.findIndex((s) => s.isDefault && s.supported);
+    if (defSub >= 0) {
+      setSelectedSubIdx(defSub);
+    } else {
+      setSelectedSubIdx(-1);
+    }
+  }, [manifest?.subtitleTracks, roomCode]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !v.textTracks) return;
+    for (let i = 0; i < v.textTracks.length; i++) {
+      v.textTracks[i].mode = i === selectedSubIdx ? "showing" : "disabled";
+    }
+  }, [selectedSubIdx, videoRef]);
+
+  const handleSelectAudio = useCallback(
+    (trackIdx: number) => {
+      setSelectedAudioIdx(trackIdx);
+      localStorage.setItem(`cineva_audio_${roomCode}`, String(trackIdx));
+
+      if (hlsRef.current) {
+        hlsRef.current.audioTrack = trackIdx;
+      } else if (videoRef.current && (videoRef.current as any).audioTracks) {
+        const list = (videoRef.current as any).audioTracks;
+        for (let i = 0; i < list.length; i++) {
+          list[i].enabled = i === trackIdx;
+        }
+      }
+
+      const opt = audioOptions[trackIdx];
+      showToast(`Audio: ${opt?.label || `Track ${trackIdx + 1}`}`);
+      setActiveMenu(null);
+    },
+    [audioOptions, roomCode, showToast, videoRef]
+  );
+
+  const handleSelectSubtitle = useCallback(
+    (subIdx: number) => {
+      setSelectedSubIdx(subIdx);
+      localStorage.setItem(`cineva_sub_${roomCode}`, String(subIdx));
+
+      const v = videoRef.current;
+      if (v && v.textTracks) {
+        for (let i = 0; i < v.textTracks.length; i++) {
+          v.textTracks[i].mode = i === subIdx ? "showing" : "disabled";
+        }
+      }
+
+      if (hlsRef.current && hlsRef.current.subtitleTracks.length > subIdx && subIdx >= 0) {
+        hlsRef.current.subtitleTrack = subIdx;
+      } else if (hlsRef.current && subIdx === -1) {
+        hlsRef.current.subtitleTrack = -1;
+      }
+
+      if (subIdx === -1) {
+        showToast("Subtitles off");
+      } else if (subIdx < subtitleOptions.length) {
+        const opt = subtitleOptions[subIdx];
+        showToast(`Subtitles: ${opt?.label || `Track ${subIdx + 1}`}`);
+      } else {
+        const customIdx = subIdx - subtitleOptions.length;
+        const cs = userCustomSubs[customIdx];
+        showToast(`Subtitles: ${cs?.label || "Custom"}`);
+      }
+      setActiveMenu(null);
+    },
+    [subtitleOptions, userCustomSubs, roomCode, showToast, videoRef]
+  );
 
   const wakeControls = useCallback(() => {
     setIsIdle(false);
@@ -577,19 +765,39 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   }, [playback.isPlaying, playback.duration, playback.currentTime, activeMenu, handlePlay, handlePause, handleSeek, wakeControls]);
 
   const handleCopyInvite = async () => {
-    const url = inviteUrl || `${window.location.origin}/join/${roomCode}`;
     try {
-      await navigator.clipboard.writeText(url);
-    } catch {
-      const el = document.createElement("textarea");
-      el.value = url;
-      document.body.appendChild(el);
-      el.select();
-      document.execCommand("copy");
-      document.body.removeChild(el);
+      const url = await getRoomInviteUrl(roomCode, {
+        forceRefresh: !inviteUrl || isPrivateAddress(inviteUrl),
+      });
+      const ok = await copyToClipboard(url);
+      if (ok) {
+        setInviteUrl(url);
+        setIsInviteOpen(false);
+        showToast("Invite link copied to clipboard");
+      } else {
+        showToast("Failed to copy link. Please copy manually.");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Public invite link unavailable: active public tunnel or deployed domain required.");
     }
-    setIsInviteOpen(false);
-    showToast("Invite link copied");
+  };
+
+  const handleShareWhatsApp = async () => {
+    try {
+      const url = await getRoomInviteUrl(roomCode, {
+        forceRefresh: !inviteUrl || isPrivateAddress(inviteUrl),
+      });
+      setInviteUrl(url);
+      const win = shareOnWhatsApp(url);
+      if (!win) {
+        showToast("Popup blocked: please allow popups to open WhatsApp.");
+      } else {
+        setIsInviteOpen(false);
+        showToast("Opening WhatsApp...");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Public invite link unavailable: active public tunnel or deployed domain required.");
+    }
   };
 
   const burstReactions = (emoji: string) => {
@@ -739,27 +947,18 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       }
       const blob = new Blob([txt], { type: "text/vtt" });
       const trackUrl = URL.createObjectURL(blob);
-      if (videoRef.current) {
-        const trackEl = document.createElement("track");
-        trackEl.kind = "subtitles";
-        trackEl.label = file.name.replace(/\.[^.]+$/, "");
-        trackEl.src = trackUrl;
-        trackEl.default = true;
-        videoRef.current.appendChild(trackEl);
-        trackEl.addEventListener("load", () => {
-          for (let i = 0; i < videoRef.current!.textTracks.length; i++) {
-            videoRef.current!.textTracks[i].mode = "disabled";
-          }
-          trackEl.track.mode = "showing";
-        });
-      }
+      const label = file.name.replace(/\.[^.]+$/, "");
+
+      setUserCustomSubs((prev) => [...prev, { label, src: trackUrl }]);
+      const newIdx = subtitleOptions.length + userCustomSubs.length;
+      setSelectedSubIdx(newIdx);
+
       handleUploadSubtitle({
-        label: file.name.replace(/\.[^.]+$/, ""),
+        label,
         srclang: "en",
         content: txt,
       });
-      setSubTracks((prev) => [...prev, file.name.replace(/\.[^.]+$/, "")]);
-      setSelectedSubIdx(subTracks.length);
+
       setActiveMenu(null);
       showToast("Subtitles added");
     };
@@ -776,7 +975,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       <div className="grain" aria-hidden="true"></div>
 
       {/* ================= TOP HEADER BAR ================= */}
-      <header className="top gl">
+      <header className="top gl" style={{ zIndex: 90 }}>
         <div className="mk">
           <svg viewBox="0 0 24 24">
             <rect x="3" y="4" width="18" height="16" rx="4" />
@@ -847,9 +1046,9 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
           </button>
 
           {/* Invite Popover */}
-          <div className={`pop gl ${isInviteOpen ? "o" : ""}`} id="pop">
+          <div className={`pop gl ${isInviteOpen ? "o" : ""}`} id="pop" style={{ width: "310px", zIndex: 1000 }}>
             <h4>Invite friends</h4>
-            <p>Anyone with this code can join the room.</p>
+            <p>Anyone with this code or link can join the room.</p>
             <div className="code">
               <span id="rc">{roomCode}</span>
               <button
@@ -860,6 +1059,35 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                 onClick={handleCopyInvite}
               >
                 Copy link
+              </button>
+            </div>
+            <div style={{ marginTop: "10px" }}>
+              <button
+                type="button"
+                className="b wa"
+                id="waShareBtn"
+                onClick={handleShareWhatsApp}
+                style={{
+                  width: "100%",
+                  height: "36px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  background: "#25D366",
+                  color: "#0a1f11",
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  borderRadius: "12px",
+                  border: "none",
+                  cursor: "pointer",
+                  transition: "opacity 0.15s ease, transform 0.1s ease",
+                }}
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                  <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0012.04 2zm.01 1.67c4.54 0 8.24 3.7 8.24 8.24 0 2.2-.86 4.28-2.42 5.84-1.56 1.56-3.64 2.41-5.84 2.41-1.49 0-2.95-.39-4.23-1.15l-.3-.18-3.13.82.83-3.05-.2-.31a8.196 8.196 0 01-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24zm4.52 11.66c-.25-.13-1.47-.72-1.7-.81-.23-.08-.39-.13-.56.13-.17.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.13-1.06-.39-2.03-1.25-.75-.67-1.26-1.5-1.41-1.75-.14-.25-.02-.39.11-.51.11-.11.25-.29.37-.44.13-.14.17-.25.25-.42.08-.17.04-.31-.02-.44-.06-.13-.56-1.35-.77-1.85-.2-.49-.41-.42-.56-.43h-.48c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1 0 1.24.9 2.44 1.03 2.61.13.17 1.78 2.72 4.31 3.81.6.26 1.07.42 1.44.54.61.19 1.16.17 1.6.1.49-.07 1.47-.6 1.68-1.18.21-.58.21-1.08.15-1.18-.06-.1-.23-.17-.48-.29z" />
+                </svg>
+                <span>Share on WhatsApp</span>
               </button>
             </div>
           </div>
@@ -892,7 +1120,6 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
           <video
             ref={videoRef as React.RefObject<HTMLVideoElement>}
             id="v"
-            src={mediaUrl}
             playsInline
             crossOrigin="anonymous"
             style={{
@@ -900,7 +1127,41 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
               transform: zoom === 1 ? "scale(1.34)" : undefined,
             }}
             onClick={() => (isActuallyPlaying ? handlePause() : handlePlay())}
-          />
+          >
+            {/* Extracted WebVTT subtitle tracks */}
+            {subtitleOptions
+              .filter((s) => s.supported && s.url)
+              .map((s, idx) => {
+                const resolvedUrl =
+                  s.url?.startsWith("http://") || s.url?.startsWith("https://") || s.url?.startsWith("/")
+                    ? s.url
+                    : mediaUrl
+                    ? `${mediaUrl.substring(0, mediaUrl.lastIndexOf("/") + 1)}${s.url}`
+                    : s.url;
+                return (
+                  <track
+                    key={`sub-${s.streamIndex}-${idx}`}
+                    kind="subtitles"
+                    label={s.label}
+                    srcLang={s.language}
+                    src={resolvedUrl}
+                    default={selectedSubIdx === s.id}
+                  />
+                );
+              })}
+
+            {/* User-uploaded custom subtitles */}
+            {userCustomSubs.map((cs, idx) => (
+              <track
+                key={`custom-sub-${idx}`}
+                kind="subtitles"
+                label={cs.label}
+                srcLang="en"
+                src={cs.src}
+                default={selectedSubIdx === subtitleOptions.length + idx}
+              />
+            ))}
+          </video>
           <div className="scrim t"></div>
           <div className="scrim bt"></div>
 
@@ -930,9 +1191,11 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
               <div className="ring gl">
                 <RefreshCw className="w-8 h-8 animate-spin" style={{ color: "var(--accent, #6366f1)" }} />
               </div>
-              <h1 style={{ fontSize: "22px", fontWeight: 600 }}>Preparing your movie…</h1>
+              <h1 style={{ fontSize: "22px", fontWeight: 600 }}>
+                {isHost ? "Preparing your movie…" : `Host is preparing the movie, ${Math.round(room.media.transcodeProgress || 0)}%`}
+              </h1>
               <p style={{ color: "var(--t2)", maxWidth: "26em", fontSize: "14px" }}>
-                {room.media.stage || (isHost ? "Optimizing video format for zero-drift sync..." : "Host is preparing the movie...")}
+                {room.media.stage || (isHost ? "Packaging multi-audio HLS streams..." : "Host is preparing the movie...")}
               </p>
               <div style={{ width: "260px", margin: "16px 0 6px" }}>
                 <div className="bar" style={{ margin: "0 0 8px 0" }}>
@@ -1291,25 +1554,35 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                       <>
                         <h4>Audio</h4>
                         <small>Only you hear this choice.</small>
-                        {audioTracks.map((tr, i) => (
-                          <button
-                            key={i}
-                            role="menuitemradio"
-                            aria-checked={selectedAudioIdx === i}
-                            onClick={() => {
-                              setSelectedAudioIdx(i);
-                              showToast(`Audio changed`);
-                              setActiveMenu(null);
-                            }}
-                          >
-                            {tr}
-                            {selectedAudioIdx === i && (
-                              <svg className="ck" viewBox="0 0 24 24">
-                                <path d="M5 12.5l4.5 4.5L19 7.5" />
-                              </svg>
-                            )}
-                          </button>
-                        ))}
+                        {audioOptions.length <= 1 ? (
+                          <div style={{ padding: "8px 12px", color: "var(--t2)", fontSize: "13px" }}>
+                            {audioOptions.length === 1 && audioOptions[0].supported === false
+                              ? "This file's audio is not switchable in fallback mode"
+                              : "This file has one audio track"}
+                          </div>
+                        ) : (
+                          audioOptions.map((opt) => (
+                            <button
+                              key={opt.id}
+                              role="menuitemradio"
+                              aria-checked={selectedAudioIdx === opt.id}
+                              disabled={!opt.supported}
+                              style={!opt.supported ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+                              title={opt.unsupportedReason}
+                              onClick={() => {
+                                if (!opt.supported) return;
+                                handleSelectAudio(opt.id);
+                              }}
+                            >
+                              <span>{opt.label}</span>
+                              {selectedAudioIdx === opt.id && (
+                                <svg className="ck" viewBox="0 0 24 24">
+                                  <path d="M5 12.5l4.5 4.5L19 7.5" />
+                                </svg>
+                              )}
+                            </button>
+                          ))
+                        )}
                       </>
                     )}
 
@@ -1320,16 +1593,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                         <button
                           role="menuitemradio"
                           aria-checked={selectedSubIdx === -1}
-                          onClick={() => {
-                            setSelectedSubIdx(-1);
-                            if (videoRef.current) {
-                              for (let i = 0; i < videoRef.current.textTracks.length; i++) {
-                                videoRef.current.textTracks[i].mode = "disabled";
-                              }
-                            }
-                            showToast("Subtitles off");
-                            setActiveMenu(null);
-                          }}
+                          onClick={() => handleSelectSubtitle(-1)}
                         >
                           Off
                           {selectedSubIdx === -1 && (
@@ -1338,30 +1602,45 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                             </svg>
                           )}
                         </button>
-                        {subTracks.map((st, i) => (
+                        {subtitleOptions.map((opt) => (
                           <button
-                            key={i}
+                            key={opt.id}
                             role="menuitemradio"
-                            aria-checked={selectedSubIdx === i}
+                            aria-checked={selectedSubIdx === opt.id}
+                            disabled={!opt.supported}
+                            style={!opt.supported ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+                            title={opt.unsupportedReason}
                             onClick={() => {
-                              setSelectedSubIdx(i);
-                              if (videoRef.current) {
-                                for (let j = 0; j < videoRef.current.textTracks.length; j++) {
-                                  videoRef.current.textTracks[j].mode = j === i ? "showing" : "disabled";
-                                }
-                              }
-                              showToast("Subtitles on");
-                              setActiveMenu(null);
+                              if (!opt.supported) return;
+                              handleSelectSubtitle(opt.id);
                             }}
                           >
-                            {st}
-                            {selectedSubIdx === i && (
+                            <span>{opt.label}</span>
+                            {selectedSubIdx === opt.id && (
                               <svg className="ck" viewBox="0 0 24 24">
                                 <path d="M5 12.5l4.5 4.5L19 7.5" />
                               </svg>
                             )}
                           </button>
                         ))}
+                        {userCustomSubs.map((cs, idx) => {
+                          const cIdx = subtitleOptions.length + idx;
+                          return (
+                            <button
+                              key={`custom-sub-btn-${idx}`}
+                              role="menuitemradio"
+                              aria-checked={selectedSubIdx === cIdx}
+                              onClick={() => handleSelectSubtitle(cIdx)}
+                            >
+                              <span>{cs.label} (Custom)</span>
+                              {selectedSubIdx === cIdx && (
+                                <svg className="ck" viewBox="0 0 24 24">
+                                  <path d="M5 12.5l4.5 4.5L19 7.5" />
+                                </svg>
+                              )}
+                            </button>
+                          );
+                        })}
                         <hr />
                         <button
                           type="button"
@@ -1470,94 +1749,69 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
         <aside className="side gl" aria-label="Call, chat and people">
           {/* Video Call Card */}
           <div className="call">
-            <div className="rh">
+            <div className="rh flex items-center justify-between">
               <h3>Video call</h3>
-              <span className="live">
-                <i></i>
-                <span id="inc">{participants.length} in the call</span>
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+                  title="Fullscreen participant gallery"
+                  aria-label="Fullscreen participant gallery"
+                  onClick={() => setIsGalleryOpen(true)}
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
+                <span className="live">
+                  <i></i>
+                  <span id="inc">{participants.length} in the call</span>
+                </span>
+              </div>
             </div>
 
             <div className="grid" id="grid">
               {/* Local User Tile */}
-              <div className={`tile me ${isCameraOn ? "cam" : ""}`} id="t-me">
-                {isCameraOn ? (
-                  <VideoTile
-                    participantId={currentParticipantId}
-                    displayName={currentDisplayName}
-                    stream={getStream(currentParticipantId || "", true)}
-                    isLocal={true}
-                    isMuted={isMuted}
-                    isCameraOff={false}
-                    getStream={getStream}
-                  />
-                ) : (
-                  <>
-                    <video muted playsInline autoPlay style={{ opacity: 0 }} />
-                    <div className="ph" style={{ "--g": "linear-gradient(145deg,#f1d9a0,#d9a85c)" } as any}>
-                      <i>{(displayName || "A").charAt(0).toUpperCase()}</i>
-                    </div>
-                  </>
-                )}
-                {isHost && <span className="hb">Host</span>}
-                <div className="meta">
-                  <span className="nm">{displayName || "You"}</span>
-                  {isMuted && (
-                    <span className="mi">
-                      <svg viewBox="0 0 24 24">
-                        <rect x="9" y="3" width="6" height="11" rx="3" />
-                        <path d="M5 11a7 7 0 0014 0M12 18v3M4 4l16 16" />
-                      </svg>
-                    </span>
-                  )}
-                </div>
+              <div className="tile" id="t-me">
+                <VideoTile
+                  participantId={currentParticipantId}
+                  displayName={currentDisplayName || displayName || "You"}
+                  stream={getStream(currentParticipantId || "", true)}
+                  isLocal={true}
+                  isHost={isHost}
+                  isMuted={isMuted}
+                  isCameraOff={!isCameraOn}
+                  getStream={getStream}
+                  showVolumeControl={false}
+                />
               </div>
 
               {/* Real Remote Participants */}
               {participants
                 .filter((p) => p.sessionId !== sessionId)
                 .map((p) => {
-                  const peer = cameraPeers.find((cp) => cp.participantId === p.id);
-                  const hasCamera = peer && !peer.isCameraOff && peer.stream;
+                  const peer = allPeers.find((cp) => cp.participantId === p.id);
+                  const isPeerCameraOff = peer ? peer.isCameraOff : true;
+                  const peerStream = peer?.stream || getStream(p.id, false);
+                  const vol = participantVolumes.get(p.id) ?? 100;
+                  const isLocMuted = participantMutedLocally.get(p.id) ?? false;
+
                   return (
-                    <div key={p.id} className={`tile peer ${hasCamera ? "cam" : ""}`}>
-                      {hasCamera ? (
-                        <VideoTile
-                          participantId={p.id}
-                          displayName={p.displayName}
-                          stream={peer.stream || getStream(p.id, false)}
-                          isLocal={false}
-                          isMuted={peer.isMuted}
-                          isCameraOff={false}
-                          connectionState={peer.connectionState}
-                          getStream={getStream}
-                        />
-                      ) : (
-                        <>
-                          <video muted playsInline autoPlay style={{ opacity: 0 }} />
-                          <div className="ph" style={{ "--g": "linear-gradient(145deg,#b8e0f2,#6ba7c6)" } as any}>
-                            <i>{(p.displayName || "A").charAt(0).toUpperCase()}</i>
-                          </div>
-                        </>
-                      )}
-                      {p.isHost && <span className="hb">Host</span>}
-                      <div className="meta">
-                        <span className="nm">{p.displayName}</span>
-                        {peer?.isMuted ? (
-                          <span className="mi">
-                            <svg viewBox="0 0 24 24">
-                              <rect x="9" y="3" width="6" height="11" rx="3" />
-                              <path d="M5 11a7 7 0 0014 0M12 18v3M4 4l16 16" />
-                            </svg>
-                          </span>
-                        ) : (
-                          <span className="qb mid">
-                            <i></i>
-                            <i></i>
-                            <i></i>
-                          </span>
-                        )}
-                      </div>
+                    <div key={p.id} className="tile">
+                      <VideoTile
+                        participantId={p.id}
+                        displayName={p.displayName}
+                        stream={peerStream}
+                        isLocal={false}
+                        isHost={p.isHost}
+                        isMuted={peer?.isMuted ?? false}
+                        isCameraOff={isPeerCameraOff}
+                        connectionState={peer?.connectionState}
+                        volume={vol}
+                        isLocallyMuted={isLocMuted}
+                        onVolumeChange={(newVol) => setParticipantVolume(p.id, newVol)}
+                        onToggleLocalMute={() => toggleParticipantLocalMute(p.id)}
+                        getStream={getStream}
+                        showVolumeControl={true}
+                      />
                     </div>
                   );
                 })}
@@ -1601,12 +1855,16 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
 
               <button
                 type="button"
-                className={`b ${!isCameraOn ? "off" : ""}`}
+                className={`b ${isCameraOn ? "active" : ""} ${permissionError ? "err" : ""}`}
                 id="dCam"
                 onClick={toggleCamera}
                 disabled={isConnecting}
+                title={permissionError || (isCameraOn ? "Turn camera off" : "Turn camera on")}
+                aria-label={permissionError || (isCameraOn ? "Turn camera off" : "Turn camera on")}
               >
-                {!isCameraOn ? (
+                {isConnecting ? (
+                  <RefreshCw className="w-4 h-4 animate-spin text-brand-300" />
+                ) : !isCameraOn ? (
                   <svg viewBox="0 0 24 24" id="dCamI">
                     <rect x="3" y="6" width="12" height="12" rx="3.5" />
                     <path d="M15 10.5l5.5-3v9l-5.5-3M4 4l16 16" />
@@ -1617,7 +1875,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                     <path d="M15 10.5l5.5-3v9l-5.5-3" />
                   </svg>
                 )}
-                <span>Camera</span>
+                <span>{isConnecting ? "Starting..." : isCameraOn ? "Camera on" : "Camera"}</span>
               </button>
             </div>
           </div>
@@ -1705,27 +1963,75 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
               {participants.map((p) => {
                 const isMe = p.sessionId === sessionId;
                 const initial = (p.displayName || "A").charAt(0).toUpperCase();
+                const userVol = participantVolumes.get(p.id) ?? 100;
+                const isLocMuted = participantMutedLocally.get(p.id) ?? false;
+
                 return (
-                  <div key={p.id} className="row">
-                    <span className="av">
-                      <i style={{ background: isMe ? "#f1d9a0" : "#b8e0f2" }}>{initial}</i>
-                    </span>
-                    <span>
-                      {p.displayName} {isMe ? "(You)" : ""}
-                    </span>
-                    {p.isHost ? (
-                      <span className="r">Host</span>
-                    ) : isHost ? (
-                      <button
-                        type="button"
-                        className="b"
-                        style={{ marginLeft: "auto", height: "30px", fontSize: "12px" }}
-                        onClick={() => handleKickParticipant(p.id)}
-                      >
-                        Remove
-                      </button>
-                    ) : (
-                      <span className="r">Viewer</span>
+                  <div key={p.id} className="row flex-col items-stretch gap-2 py-2.5 border-b border-white/[0.06]">
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="av">
+                          <i style={{ background: isMe ? "rgba(99, 102, 241, 0.25)" : "rgba(255, 255, 255, 0.1)" }}>{initial}</i>
+                        </span>
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="text-sm font-medium text-white truncate max-w-[130px]">
+                            {p.displayName}
+                          </span>
+                          {isMe && <span className="text-[10px] text-brand-300 font-bold uppercase">(You)</span>}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {p.isHost ? (
+                          <span className="r">Host</span>
+                        ) : isHost ? (
+                          <button
+                            type="button"
+                            className="b"
+                            style={{ height: "26px", fontSize: "11px", padding: "0 8px" }}
+                            onClick={() => handleKickParticipant(p.id)}
+                          >
+                            Remove
+                          </button>
+                        ) : (
+                          <span className="r">Viewer</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Independent Volume Slider for Remote Participants */}
+                    {!isMe && (
+                      <div className="flex items-center gap-2 px-1 pt-1 text-xs text-slate-300">
+                        <button
+                          type="button"
+                          className={`p-1 rounded-md transition-colors ${
+                            isLocMuted ? "text-rose-400 bg-rose-500/20" : "text-slate-400 hover:text-white"
+                          }`}
+                          title={isLocMuted ? `Unmute ${p.displayName}` : `Mute ${p.displayName}`}
+                          aria-label={`Mute or unmute ${p.displayName}`}
+                          onClick={() => toggleParticipantLocalMute(p.id)}
+                        >
+                          {isLocMuted || userVol === 0 ? (
+                            <VolumeX className="w-3.5 h-3.5" />
+                          ) : (
+                            <Volume2 className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="5"
+                          value={isLocMuted ? 0 : userVol}
+                          disabled={isLocMuted}
+                          onChange={(e) => setParticipantVolume(p.id, parseInt(e.target.value, 10))}
+                          className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-500"
+                          aria-label={`${p.displayName} volume`}
+                        />
+                        <span className="w-9 text-right font-mono text-[11px] text-slate-400">
+                          {isLocMuted ? "Muted" : `${userVol}%`}
+                        </span>
+                      </div>
                     )}
                   </div>
                 );
@@ -1786,6 +2092,28 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
           videoRef={videoRef as React.RefObject<HTMLVideoElement>}
         />
       )}
+      {/* Fullscreen Participant Gallery */}
+      <ParticipantGalleryModal
+        isOpen={isGalleryOpen}
+        onClose={() => setIsGalleryOpen(false)}
+        roomTitle={room?.name || `Room ${roomCode}`}
+        participants={participants}
+        sessionId={sessionId}
+        currentParticipantId={currentParticipantId}
+        currentDisplayName={displayName}
+        isHost={isHost}
+        isCameraOn={isCameraOn}
+        isMuted={isMuted}
+        allPeers={allPeers}
+        participantVolumes={participantVolumes}
+        participantMutedLocally={participantMutedLocally}
+        onVolumeChange={setParticipantVolume}
+        onToggleLocalMute={toggleParticipantLocalMute}
+        onToggleCamera={toggleCamera}
+        onToggleMute={toggleMute}
+        getStream={getStream}
+      />
+
       <WebRTCDebugPanel />
     </div>
   );
