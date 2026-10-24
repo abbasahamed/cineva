@@ -303,10 +303,9 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
 
   // Ambient Moods from prototype
   const moods = [
-    { name: 'Cineva Violet', c1: '#7b6bff', c2: '#ff5fa8', c3: '#38d5ff' },
-    { name: 'Cryo Spatial', c1: '#38d5ff', c2: '#7b6bff', c3: '#6ee7a0' },
-    { name: 'Sunset IMAX', c1: '#ffab5e', c2: '#ff5fa8', c3: '#7b6bff' },
-    { name: 'Obsidian Dim', c1: '#3a3285', c2: '#251e52', c3: '#183c4e' },
+    { name: "Cryo Cyan & Sunset", c1: "#34d5ff", c2: "#ff5da6", c3: "#ff9d54", dot: "#34d5ff" },
+    { name: "Neon Fuchsia & Amber", c1: "#ff5da6", c2: "#ff9d54", c3: "#34d5ff", dot: "#ff5da6" },
+    { name: "Emerald Phosphor & Ice", c1: "#65e7a8", c2: "#34d5ff", c3: "#ff5da6", dot: "#65e7a8" },
   ];
   const [moodIdx, setMoodIdx] = useState(0);
 
@@ -428,105 +427,43 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   const activeCamerasCount = (isCameraOn ? 1 : 0) + cameraPeers.length;
 
   return (
-    <div className="h-screen w-screen flex flex-col p-4 sm:p-5 gap-4 overflow-hidden relative select-none bg-[#06060c] text-[#f6f5f2]">
-      {/* SVG Liquid Refraction Filter & Icons */}
-      <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+    <div className="room-shell">
+      {/* Liquid Refraction Filter (#lens) */}
+      <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
         <defs>
           <filter id="lens" x="0" y="0" width="100%" height="100%" colorInterpolationFilters="sRGB">
             <feTurbulence type="fractalNoise" baseFrequency=".009 .014" numOctaves={2} seed={7} result="n" />
             <feGaussianBlur in="n" stdDeviation="3" result="m" />
-            <feDisplacementMap in="SourceGraphic" in2="m" scale="34" xChannelSelector="R" yChannelSelector="G" />
+            <feDisplacementMap in="SourceGraphic" in2="m" scale="36" xChannelSelector="R" yChannelSelector="G" />
           </filter>
-          <symbol id="film" viewBox="0 0 24 24">
-            <rect className="d" x="3" y="4" width="18" height="16" rx="4" />
-            <rect x="3" y="4" width="18" height="16" rx="4" />
-            <path d="M8 4v16M16 4v16M3 9h5M3 15h5M16 9h5M16 15h5" />
-          </symbol>
-          <symbol id="add-vid" viewBox="0 0 24 24">
-            <rect className="d" x="3" y="5" width="18" height="14" rx="3" />
-            <rect x="3" y="5" width="18" height="14" rx="3" />
-            <path d="M12 9v6M9 12h6" />
-          </symbol>
-          <symbol id="cam" viewBox="0 0 24 24">
-            <rect className="d" x="3" y="6" width="12" height="12" rx="3.5" />
-            <rect x="3" y="6" width="12" height="12" rx="3.5" />
-            <path d="M15 10.5l5.5-3v9l-5.5-3" />
-          </symbol>
-          <symbol id="cam-off" viewBox="0 0 24 24">
-            <path d="M15 10.5l5.5-3v9l-5.5-3M3 3l18 18M3 6.5A3.5 3.5 0 016.5 3H12a3.5 3.5 0 013.5 3.5v4M3 11v3.5A3.5 3.5 0 006.5 18H13" />
-          </symbol>
-          <symbol id="mic" viewBox="0 0 24 24">
-            <rect className="d" x="9" y="3" width="6" height="11" rx="3" />
-            <rect x="9" y="3" width="6" height="11" rx="3" />
-            <path d="M5 10a7 7 0 0014 0M12 17v4M8 21h8" />
-          </symbol>
-          <symbol id="mic-off" viewBox="0 0 24 24">
-            <path d="M2 2l20 20M9 9v2a3 3 0 005.12 2.12M15 9.34V6a3 3 0 00-5.94-.6M17 16.95A7 7 0 015 10M12 17v4M8 21h8" />
-          </symbol>
-          <symbol id="chat" viewBox="0 0 24 24">
-            <path className="d" d="M21 12a8 8 0 01-8 8H4l3-3a8 8 0 1114-5z" />
-            <path d="M21 12a8 8 0 01-8 8H4l3-3a8 8 0 1114-5z" />
-          </symbol>
-          <symbol id="users" viewBox="0 0 24 24">
-            <circle className="d" cx="9" cy="8" r="4" />
-            <circle cx="9" cy="8" r="4" />
-            <path d="M2 20a7 7 0 0114 0M16 4a4 4 0 010 7.75M22 20a7 7 0 00-5-6.7" />
-          </symbol>
-          <symbol id="share" viewBox="0 0 24 24">
-            <circle cx="18" cy="5" r="3" />
-            <circle cx="6" cy="12" r="3" />
-            <circle cx="18" cy="19" r="3" />
-            <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
-          </symbol>
-          <symbol id="gear" viewBox="0 0 24 24">
-            <circle className="d" cx="12" cy="12" r="3" />
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9c.26.6.77 1.02 1.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
-          </symbol>
-          <symbol id="exit" viewBox="0 0 24 24">
-            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
-          </symbol>
-          <symbol id="send" viewBox="0 0 24 24">
-            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
-          </symbol>
-          <symbol id="play" viewBox="0 0 24 24">
-            <polygon points="6 4 20 12 6 20 6 4" fill="currentColor" stroke="none" />
-          </symbol>
-          <symbol id="pause" viewBox="0 0 24 24">
-            <path d="M8 5v14M16 5v14" strokeWidth="2.6" />
-          </symbol>
-          <symbol id="sidebar" viewBox="0 0 24 24">
-            <rect x="3" y="4" width="18" height="16" rx="3" />
-            <path d="M15 4v16" />
-          </symbol>
         </defs>
       </svg>
 
-      {/* Background Aurora with calibrated mood colors */}
-      <div className="aurora" aria-hidden="true">
-        <div className="aurora-layer">
-          <i id="orb1" style={{ background: currentMood.c1 }}></i>
-          <i id="orb2" style={{ background: currentMood.c2 }}></i>
-          <i id="orb3" style={{ background: currentMood.c3 }}></i>
-          <i id="orb4"></i>
-        </div>
+      {/* Dynamic 5-Layer Multi-Chromatic Aurora */}
+      <div className="aurora" aria-hidden="true" id="auroraBg">
+        <i style={{ background: currentMood.c1 }}></i>
+        <i style={{ background: currentMood.c2 }}></i>
+        <i style={{ background: currentMood.c3 }}></i>
+        <i></i>
+        <i></i>
       </div>
 
-      {/* ================= TOP FLOATING DOCK HEADER ================= */}
-      <header className="top-dock lg">
-        <div className="dock-left">
-          <Link to="/" className="logo">
-            <span className="mk">
-              <svg className="ic">
-                <use href="#film" />
+      {/* ================= TOP HEADER BAR ================= */}
+      <header className="topbar lg">
+        <div className="topbar-left">
+          <Link to="/" className="brand">
+            <span className="logo-mk">
+              <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="#101828" strokeWidth={2.1} style={{ width: 16, height: 16, fill: "none", stroke: "#101828", strokeWidth: 2.1, flexShrink: 0 }}>
+                <rect x="3" y="4" width="18" height="16" rx="3" />
+                <path d="M8 4v16M16 4v16M3 9h5M3 15h5M16 9h5M16 15h5" />
               </svg>
             </span>
-            <span>
-              CINE<span className="thin">VA</span>
-            </span>
+            <span>CINE<span className="brand-muted">VA</span></span>
           </Link>
-          <span className="dock-divider"></span>
-          <span className="room-title-txt">{room?.media ? mediaInfo.displayTitle : room?.name || 'Watch Room'}</span>
+          <span className="v-sep"></span>
+          <span className="room-name" id="topRoomName">
+            {room?.media ? mediaInfo.displayTitle : room?.name || "Watch Room"}
+          </span>
           {isHost && (
             <span className="host-badge">
               <i></i>HOST
@@ -534,127 +471,129 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
           )}
         </div>
 
-        <div className="dock-right relative">
-          {/* Ambient Lighting Cycler */}
+        <div className="topbar-right">
           <button
             type="button"
-            className="btn frost mood-pill"
-            id="moodBtn"
-            title="Cycle Ambient Glass Lighting"
+            className="pill-btn"
+            id="themeBtn"
+            title="Switch Aurora Mood"
             onClick={handleCycleMood}
           >
+            <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 15, height: 15, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+              <circle cx="12" cy="12" r="9" />
+              <circle cx="9" cy="10" r="1.2" />
+              <circle cx="15" cy="10" r="1.2" />
+              <circle cx="12" cy="15" r="1.2" />
+            </svg>
             <span
-              className="mood-dot"
-              id="moodDot"
-              style={{ background: `linear-gradient(135deg, ${currentMood.c1}, ${currentMood.c2})` }}
-            ></span>
+              className="theme-dot"
+              id="themeDot"
+              style={{ background: currentMood.dot, boxShadow: `0 0 8px ${currentMood.dot}` }}
+            />
           </button>
 
-          {/* Invite Pill */}
           <button
             type="button"
-            className="btn frost"
+            className="pill-btn"
             id="inviteBtn"
             onClick={() => setIsInviteOpen(!isInviteOpen)}
           >
-            <svg className="ic" style={{ width: 15, height: 15 }}>
-              <use href="#share" />
+            <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 15, height: 15, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+              <circle cx="18" cy="5" r="3" />
+              <circle cx="6" cy="12" r="3" />
+              <circle cx="18" cy="19" r="3" />
+              <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
             </svg>
             <span>Invite</span>
           </button>
 
-          {/* Audience Counter Pill */}
           <button
             type="button"
-            className="btn frost"
-            id="topAudBtn"
+            className="pill-btn"
+            id="topAudienceBtn"
             onClick={() => {
               setIsSidebarCollapsed(false);
-              setActiveTab('participants');
+              setActiveTab("participants");
             }}
           >
-            <svg className="ic" style={{ width: 15, height: 15 }}>
-              <use href="#users" />
+            <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 15, height: 15, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+              <circle cx="9" cy="8" r="4" />
+              <path d="M2 20a7 7 0 0114 0M16 4a4 4 0 010 7.75M22 20a7 7 0 00-5-6.7" />
             </svg>
             <span id="topAudCount">{participants.length}</span>
           </button>
 
-          {/* Settings */}
           <button
             type="button"
-            className="btn frost icon-pill"
+            className="pill-btn icon-only"
             id="settingsBtn"
-            title="Sync Calibration"
+            title="Sync Telemetry"
             onClick={() => setIsSettingsOpen(true)}
           >
-            <svg className="ic" style={{ width: 16, height: 16 }}>
-              <use href="#gear" />
+            <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 15, height: 15, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9c.26.6.77 1.02 1.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
             </svg>
           </button>
 
-          {/* Leave Room */}
           <button
             type="button"
-            className="btn frost icon-pill"
-            id="leaveBtn"
-            title="Leave Watch Room"
+            className="pill-btn icon-only"
+            id="exitBtn"
+            title="Leave Room"
             onClick={() => {
               handleLeaveRoom();
-              navigate('/', { replace: true });
+              navigate("/", { replace: true });
             }}
           >
-            <svg className="ic" style={{ width: 16, height: 16 }}>
-              <use href="#exit" />
+            <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 15, height: 15, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
             </svg>
           </button>
 
-          {/* Invite Glass Popover */}
-          <div className={`popover lg ${isInviteOpen ? 'open' : ''}`} id="invitePopover">
-            <div style={{ fontSize: 13, fontWeight: 650, color: '#fff' }}>Invite friends to Watch Room</div>
-            <div style={{ fontSize: 12, color: 'var(--t2)', marginTop: 2 }}>
-              Share your 6-character key for instant browser sync.
+          {/* Invite Popover */}
+          <div className={`invite-popover lg ${isInviteOpen ? "open" : ""}`} id="invitePopover">
+            <div style={{ fontWeight: 650, color: "#fff", fontSize: "13px" }}>Private Room Invite</div>
+            <div style={{ fontSize: "11.5px", color: "var(--t2)", marginTop: "2px" }}>
+              Share this code with friends to sync playback:
             </div>
-            <div className="pop-code-row">
+            <div className="invite-code-box">
               <span>{roomCode}</span>
               <button
                 type="button"
-                className="btn violet"
-                style={{ height: 30, padding: '0 12px', fontSize: 12 }}
-                id="copyCodeBtn"
+                className="btn-w"
+                style={{ height: "28px", padding: "0 12px", fontSize: "11.5px" }}
+                id="copyInviteBtn"
                 onClick={handleCopyInvite}
               >
-                Copy Link
+                Copy
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* ================= MAIN WORKSPACE ================= */}
+      {/* ================= WORKSPACE ================= */}
       <div className="workspace">
-        {/* LEFT COLUMN: MAIN CINEMA STAGE */}
-        <main className="stage-col lg" id="stageCol">
-          {/* Inner Widescreen Cinema Canvas */}
+        {/* LEFT COLUMN: THEATER */}
+        <main className="theater-col lg">
           <div
             ref={cinemaScreenRef}
-            className="cinema-screen"
-            id="cinemaScreen"
+            className="cinema-viewport"
+            id="cinemaViewport"
             onDragOver={(e) => {
               e.preventDefault();
-              cinemaScreenRef.current?.classList.add('dragover');
+              cinemaScreenRef.current?.classList.add("dragover");
             }}
-            onDragLeave={() => cinemaScreenRef.current?.classList.remove('dragover')}
+            onDragLeave={() => cinemaScreenRef.current?.classList.remove("dragover")}
             onDrop={handleScreenDrop}
           >
-            <div className="screen-glare"></div>
-
-            {/* Hidden File Input */}
             <input
               ref={fileInputRef}
               type="file"
-              id="fileInput"
+              id="videoFileInput"
               accept="video/mp4,video/webm,video/x-matroska,video/quicktime,.mkv"
-              style={{ display: 'none' }}
+              style={{ display: "none" }}
               onChange={(e) => {
                 if (e.target.files && e.target.files[0]) {
                   setIsUploadOpen(true);
@@ -662,50 +601,51 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
               }}
             />
 
-            {/* Center Empty State (when no media loaded) */}
+            {/* Empty State */}
             {!room?.media ? (
-              <div className="empty-screening" id="emptyState">
-                <div className="reel-squircle">
-                  <svg className="ic">
-                    <use href="#film" />
+              <div className="empty-state" id="emptyState">
+                <div className="film-squircle">
+                  <svg viewBox="0 0 24 24" width={24} height={24} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 24, height: 24, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                    <rect x="3" y="4" width="18" height="16" rx="3" />
+                    <path d="M8 4v16M16 4v16M3 9h5M3 15h5M16 9h5M16 15h5" />
                   </svg>
                 </div>
-                <span className="eyebrow">PRIVATE SCREENING</span>
+                <div className="eyebrow">PRIVATE SCREENING</div>
                 <h1>Your cinema is ready</h1>
-                <p className="empty-lead">Add an authorized video to begin the screening with your friends.</p>
+                <p className="empty-desc">Add an authorized video to begin the screening with your friends.</p>
                 <p className="empty-sub">Invite friends anytime using your private room link.</p>
 
-                <div className="cta-stack">
-                  <button
-                    type="button"
-                    className="btn violet btn-add-video"
-                    id="addVideoBtn"
-                    onClick={() => setIsUploadOpen(true)}
-                  >
-                    <svg className="ic">
-                      <use href="#add-vid" />
-                    </svg>
-                    <span>Add video</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="sample-trigger"
-                    id="loadSampleBtn"
-                    onClick={handleMediaRetry}
-                  >
-                    <svg className="ic" style={{ width: 13, height: 13 }}>
-                      <use href="#play" />
-                    </svg>
-                    <span>Or test with 4K Cinema Sample</span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className="btn-w"
+                  id="addVideoBtn"
+                  onClick={() => setIsUploadOpen(true)}
+                >
+                  <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="#0f172a" strokeWidth={1.85} style={{ width: 15, height: 15, fill: "none", stroke: "#0f172a", strokeWidth: 1.85, flexShrink: 0 }}>
+                    <rect x="3" y="5" width="18" height="14" rx="3" />
+                    <path d="M12 9v6M9 12h6" />
+                  </svg>
+                  <span>Add video</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="demo-link"
+                  id="sampleVideoBtn"
+                  onClick={handleMediaRetry}
+                >
+                  <svg viewBox="0 0 24 24" style={{ width: 12, height: 12, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                    <polygon points="5 3 19 12 5 21 5 3" />
+                  </svg>
+                  <span>Or load 1080p HD sample film</span>
+                </button>
               </div>
             ) : (
-              /* Active Synchronized Video Player */
-              <div className="player-layer active" id="playerLayer">
+              /* Active Video Player Layer */
+              <div className="player-stage active" id="playerStage">
                 <video
                   ref={videoRef as React.RefObject<HTMLVideoElement>}
-                  className="player-video"
+                  className="video-element"
                   id="videoEl"
                   playsInline
                   loop
@@ -713,51 +653,60 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                   onClick={() => (playback.isPlaying ? handlePause() : handlePlay())}
                 />
 
-                <div className="player-top-bar">
-                  <span className="sync-pill lg">
-                    <span className="dot-ok"></span>
-                    <span id="nowPlayingLabel">{mediaInfo.displayTitle}</span>
-                    <span style={{ color: 'var(--t3)', font: '12px var(--mono)' }}>
+                <div className="player-topbar">
+                  <div className="sync-status-pill">
+                    <span className="dot-live"></span>
+                    <span id="playingTitle">{mediaInfo.displayTitle}</span>
+                    <span style={{ color: "var(--t3)", fontFamily: "var(--mono)", fontSize: "11.5px" }}>
                       · {Math.round(rtt)} ms sync
                     </span>
-                  </span>
+                  </div>
+
                   {isHost && (
                     <button
                       type="button"
-                      className="btn frost lg"
-                      id="ejectBtn"
-                      style={{ height: 34, fontSize: '12.5px' }}
+                      className="pill-btn"
+                      id="changeVideoBtn"
+                      style={{ background: "rgba(10, 12, 20, 0.78)" }}
                       onClick={() => setIsUploadOpen(true)}
                     >
-                      Change video
+                      <span>Change video</span>
                     </button>
                   )}
                 </div>
 
-                <div className="player-bottom-hud lg">
-                  <div className="scrub-track" id="scrubTrack" onClick={handleScrubClick}>
-                    <div className="scrub-fill" id="scrubFill" style={{ width: `${scrubPercent}%` }}></div>
-                  </div>
-                  <div className="hud-row">
+                <div className="player-hud-wrap">
+                  <div className="player-hud">
                     <button
                       type="button"
-                      className="hud-btn"
-                      id="playPauseBtn"
-                      aria-label={playback.isPlaying ? 'Pause' : 'Play'}
+                      className="hud-icon-btn"
+                      id="playToggleBtn"
+                      aria-label={playback.isPlaying ? "Pause" : "Play"}
                       onClick={() => (playback.isPlaying ? handlePause() : handlePlay())}
                     >
-                      <svg className="ic" id="playPauseIcon">
-                        <use href={playback.isPlaying ? '#pause' : '#play'} />
-                      </svg>
+                      {playback.isPlaying ? (
+                        <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 15, height: 15, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                          <path d="M8 5v14M16 5v14" />
+                        </svg>
+                      ) : (
+                        <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 15, height: 15, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                          <polygon points="6 4 20 12 6 20 6 4" />
+                        </svg>
+                      )}
                     </button>
-                    <span id="timeLabel">
+
+                    <div className="scrubber-bar" id="scrubberBar" onClick={handleScrubClick}>
+                      <div className="scrubber-progress" id="scrubberProgress" style={{ width: `${scrubPercent}%` }}></div>
+                    </div>
+
+                    <span className="hud-time" id="timeDisplay">
                       {fmtTime(playback.currentTime)} / {fmtTime(playback.duration || 0)}
                     </span>
-                    <span style={{ flex: 1 }}></span>
+
                     <button
                       type="button"
-                      className="hud-btn"
-                      id="audioLangBtn"
+                      className="hud-chip"
+                      id="audioTrackBtn"
                       onClick={() => {
                         const next = (audioIdx + 1) % audioOptions.length;
                         setAudioIdx(next);
@@ -768,15 +717,15 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                     </button>
                     <button
                       type="button"
-                      className="hud-btn"
-                      id="subBtn"
+                      className="hud-chip"
+                      id="ccToggleBtn"
                       onClick={() => {
                         const next = !ccActive;
                         setCcActive(next);
-                        showToast(next ? 'Subtitles enabled' : 'Subtitles hidden');
+                        showToast(next ? "Subtitles enabled" : "Subtitles hidden");
                       }}
                     >
-                      {ccActive ? 'CC: On' : 'CC: Off'}
+                      {ccActive ? "CC: On" : "CC: Off"}
                     </button>
                   </div>
                 </div>
@@ -790,7 +739,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                 className="spatial-emoji"
                 style={{
                   left: `${item.left}%`,
-                  ['--drift' as any]: `${item.drift}px`,
+                  ["--drift" as any]: `${item.drift}px`,
                 }}
               >
                 {item.emoji}
@@ -798,235 +747,234 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             ))}
           </div>
 
-          {/* Bottom Theater Control Strip */}
-          <div className="stage-footer">
-            <div className="stage-meta">
-              <div className="stage-meta-top">
-                <span className="stage-meta-title">
-                  {room?.media ? mediaInfo.displayTitle : room?.name || 'Watch Room'}
+          {/* Bottom Bar under Cinema Viewport */}
+          <div className="theater-footer">
+            <div className="footer-info">
+              <div className="footer-title-row">
+                <span className="footer-title" id="bottomRoomName">
+                  {room?.media ? mediaInfo.displayTitle : room?.name || "Watch Room"}
                 </span>
                 {isHost && <span className="host-badge">HOST</span>}
               </div>
-              <div className="stage-meta-sub">
-                <span>1080p HD</span>
-                <span>·</span>
-                <span>Sub-frame Sync</span>
-              </div>
+              <div className="footer-sub">1080p HD &nbsp;·&nbsp; Sub-frame Sync</div>
             </div>
 
-            <div className="stage-controls">
+            <div className="footer-controls">
               <button
                 type="button"
-                className={`btn frost ${isCameraOn ? 'on-ok' : ''}`}
-                id="camBtn"
+                className={`pill-btn ${isCameraOn ? "active-green" : ""}`}
+                id="bottomCamBtn"
                 onClick={toggleCamera}
                 disabled={isConnecting}
               >
-                <svg className="ic" id="camIcon">
-                  <use href={isCameraOn ? '#cam' : '#cam-off'} />
-                </svg>
-                <span id="camLabel">
-                  {isCameraOn ? 'Camera On' : isConnecting ? 'Starting...' : 'Camera Off'}
-                </span>
+                {isCameraOn ? (
+                  <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 15, height: 15, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                    <rect x="3" y="6" width="12" height="12" rx="3" />
+                    <path d="M15 10.5l5.5-3v9l-5.5-3" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 15, height: 15, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                    <path d="M15 10.5l5.5-3v9l-5.5-3M3 3l18 18M3 6.5A3.5 3.5 0 016.5 3H12a3.5 3.5 0 013.5 3.5v4M3 11v3.5A3.5 3.5 0 006.5 18H13" />
+                  </svg>
+                )}
+                <span id="bottomCamText">{isCameraOn ? "Camera On" : isConnecting ? "Starting..." : "Camera Off"}</span>
               </button>
 
               <button
                 type="button"
-                className={`btn frost ${!isMuted ? 'on-ok' : 'on-muted'}`}
-                id="micBtn"
+                className={`pill-btn ${!isMuted ? "active-green" : "active-muted"}`}
+                id="bottomMicBtn"
                 onClick={toggleMute}
               >
-                <svg className="ic" id="micIcon">
-                  <use href={!isMuted ? '#mic' : '#mic-off'} />
-                </svg>
-                <span id="micLabel">{!isMuted ? 'Mic' : 'Muted'}</span>
-                {!isMuted && (
-                  <span className="mic-bars" id="micBars">
-                    <i></i>
-                    <i></i>
-                    <i></i>
-                  </span>
+                {!isMuted ? (
+                  <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 15, height: 15, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                    <rect x="9" y="3" width="6" height="11" rx="3" />
+                    <path d="M5 10a7 7 0 0014 0M12 17v4M8 21h8" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 15, height: 15, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                    <path d="M2 2l20 20M9 9v2a3 3 0 005.12 2.12M15 9.34V6a3 3 0 00-5.94-.6M17 16.95A7 7 0 015 10M12 17v4M8 21h8" />
+                  </svg>
                 )}
+                <span id="bottomMicText">{!isMuted ? "Mic" : "Muted"}</span>
               </button>
 
               <button
                 type="button"
-                className="btn frost"
-                id="hideSidebarBtn"
+                className="pill-btn"
+                id="toggleSidebarBtn"
                 onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
               >
-                <svg className="ic">
-                  <use href="#sidebar" />
+                <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 15, height: 15, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                  <rect x="3" y="4" width="18" height="16" rx="3" />
+                  <path d="M15 4v16" />
                 </svg>
-                <span id="hideSidebarLabel">
-                  {isSidebarCollapsed ? 'Show Sidebar' : 'Hide Sidebar'}
-                </span>
+                <span id="toggleSidebarText">{isSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"}</span>
               </button>
             </div>
           </div>
         </main>
 
-        {/* ================= RIGHT SIDEBAR ================= */}
-        <aside className={`sidebar-col ${isSidebarCollapsed ? 'collapsed' : ''}`} id="sidebarCol">
+        {/* RIGHT SIDEBAR */}
+        <aside className={`sidebar-col ${isSidebarCollapsed ? "hidden" : ""}`} id="sidebarCol">
           {/* Card 1: VIDEO CALLS */}
-          <section className="calls-card lg">
-            <div className="card-head">
-              <div className="card-label">
-                <span className="label-icon-box">
-                  <svg className="ic">
-                    <use href="#cam" />
+          <section className="side-card-calls lg">
+            <div className="side-header">
+              <div className="side-label">
+                <span className="side-icon-badge">
+                  <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 13, height: 13, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                    <rect x="3" y="6" width="12" height="12" rx="3" />
+                    <path d="M15 10.5l5.5-3v9l-5.5-3" />
                   </svg>
                 </span>
                 <span>VIDEO CALLS</span>
               </div>
-              <div style={{ display: 'flex', gap: 6 }}>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <button
                   type="button"
-                  className={`btn frost icon-pill ${!isMuted ? 'on-ok' : 'on-muted'}`}
+                  className={`pill-btn icon-only ${!isMuted ? "active-green" : "active-muted"}`}
                   id="sideMicBtn"
-                  style={{ width: 30, height: 30 }}
+                  style={{ width: "28px", height: "28px" }}
                   title="Toggle Mic"
                   onClick={toggleMute}
                 >
-                  <svg className="ic" style={{ width: 14, height: 14 }}>
-                    <use href={!isMuted ? '#mic' : '#mic-off'} />
-                  </svg>
+                  {!isMuted ? (
+                    <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 13, height: 13, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                      <rect x="9" y="3" width="6" height="11" rx="3" />
+                      <path d="M5 10a7 7 0 0014 0M12 17v4M8 21h8" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 13, height: 13, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                      <path d="M2 2l20 20M9 9v2a3 3 0 005.12 2.12M15 9.34V6a3 3 0 00-5.94-.6M17 16.95A7 7 0 015 10M12 17v4M8 21h8" />
+                    </svg>
+                  )}
                 </button>
                 <button
                   type="button"
-                  className={`btn frost ${isCameraOn ? 'on-ok' : ''}`}
+                  className={`pill-btn ${isCameraOn ? "active-green" : ""}`}
                   id="sideCamBtn"
-                  style={{ height: 30, padding: '0 11px', fontSize: 12 }}
+                  style={{ height: "28px", padding: "0 10px", fontSize: "11.5px" }}
                   onClick={toggleCamera}
                   disabled={isConnecting}
                 >
-                  <svg className="ic" style={{ width: 13, height: 13 }}>
-                    <use href={isCameraOn ? '#cam' : '#cam-off'} />
-                  </svg>
-                  <span id="sideCamLabel">{isCameraOn ? 'Camera On' : 'Camera Off'}</span>
+                  {isCameraOn ? (
+                    <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 13, height: 13, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                      <rect x="3" y="6" width="12" height="12" rx="3" />
+                      <path d="M15 10.5l5.5-3v9l-5.5-3" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 13, height: 13, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                      <path d="M15 10.5l5.5-3v9l-5.5-3M3 3l18 18M3 6.5A3.5 3.5 0 016.5 3H12a3.5 3.5 0 013.5 3.5v4M3 11v3.5A3.5 3.5 0 006.5 18H13" />
+                    </svg>
+                  )}
+                  <span id="sideCamText">{isCameraOn ? "Camera On" : "Camera Off"}</span>
                 </button>
               </div>
             </div>
 
-            <div className="call-well well" id="callWell">
+            <div className="calls-well glass-well">
               {activeCamerasCount === 0 ? (
-                /* Standby State: No cameras on */
-                <div id="noCamState" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div className="cam-off-circle">
-                    <svg className="ic" style={{ width: 18, height: 18 }}>
-                      <use href="#cam-off" />
+                <div id="noCamView" style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <div className="cam-placeholder-icon">
+                    <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 15, height: 15, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                      <path d="M15 10.5l5.5-3v9l-5.5-3M3 3l18 18M3 6.5A3.5 3.5 0 016.5 3H12a3.5 3.5 0 013.5 3.5v4M3 11v3.5A3.5 3.5 0 006.5 18H13" />
                     </svg>
                   </div>
                   <h4>No cameras on</h4>
                   <p>Turn on your camera to see your friends here.</p>
                 </div>
               ) : (
-                /* Active Spatial Persona Tiles */
-                <div className="cam-tiles active" id="camTiles">
-                  {/* Local Tile if Camera On */}
+                <div className="active-cam-grid show" id="activeCamGrid">
                   {isCameraOn && (
-                    <VideoTile
-                      participantId={currentParticipantId}
-                      displayName={currentDisplayName}
-                      stream={getStream(currentParticipantId || '', true)}
-                      isLocal={true}
-                      isMuted={isMuted}
-                      isCameraOff={false}
-                      getStream={getStream}
-                    />
+                    <div className="cam-box">
+                      <VideoTile
+                        participantId={currentParticipantId}
+                        displayName={currentDisplayName}
+                        stream={getStream(currentParticipantId || "", true)}
+                        isLocal={true}
+                        isMuted={isMuted}
+                        isCameraOff={false}
+                        getStream={getStream}
+                      />
+                    </div>
                   )}
-
-                  {/* Remote Camera Peers */}
                   {cameraPeers.map((peer) => (
-                    <VideoTile
-                      key={peer.participantId}
-                      participantId={peer.participantId}
-                      displayName={peer.displayName}
-                      stream={peer.stream || getStream(peer.participantId, false)}
-                      isLocal={false}
-                      isMuted={peer.isMuted}
-                      isCameraOff={peer.isCameraOff}
-                      connectionState={peer.connectionState}
-                      getStream={getStream}
-                    />
+                    <div key={peer.participantId} className="cam-box">
+                      <VideoTile
+                        participantId={peer.participantId}
+                        displayName={peer.displayName}
+                        stream={peer.stream || getStream(peer.participantId, false)}
+                        isLocal={false}
+                        isMuted={peer.isMuted}
+                        isCameraOff={peer.isCameraOff}
+                        connectionState={peer.connectionState}
+                        getStream={getStream}
+                      />
+                    </div>
                   ))}
                 </div>
               )}
             </div>
           </section>
 
-          {/* Card 2: CHAT & AUDIENCE DOCK */}
-          <section className="chat-card lg">
-            {/* Segmented Switcher */}
-            <div className="seg-bar">
+          {/* Card 2: CHAT & AUDIENCE */}
+          <section className="side-card-chat lg">
+            <div className="seg-tabs">
               <button
                 type="button"
-                className={`seg-btn ${activeTab === 'chat' ? 'active' : ''}`}
-                id="tabChatBtn"
-                onClick={() => setActiveTab('chat')}
+                className={`seg-tab ${activeTab === "chat" ? "active" : ""}`}
+                id="chatTabBtn"
+                onClick={() => setActiveTab("chat")}
               >
-                <svg className="ic">
-                  <use href="#chat" />
+                <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 14, height: 14, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                  <path d="M21 12a8 8 0 01-8 8H4l3-3a8 8 0 1114-5z" />
                 </svg>
                 <span>Chat</span>
               </button>
               <button
                 type="button"
-                className={`seg-btn ${activeTab === 'participants' ? 'active' : ''}`}
-                id="tabAudBtn"
-                onClick={() => setActiveTab('participants')}
+                className={`seg-tab ${activeTab === "participants" ? "active" : ""}`}
+                id="audTabBtn"
+                onClick={() => setActiveTab("participants")}
               >
-                <svg className="ic">
-                  <use href="#users" />
+                <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={1.85} style={{ width: 14, height: 14, fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                  <circle cx="9" cy="8" r="4" />
+                  <path d="M2 20a7 7 0 0114 0M16 4a4 4 0 010 7.75M22 20a7 7 0 00-5-6.7" />
                 </svg>
-                <span id="tabAudLabel">Audience ({participants.length})</span>
+                <span>Audience ({participants.length})</span>
               </button>
             </div>
 
-            {/* Inner Well */}
-            <div className="chat-well well">
-              <div className="well-subhead">
-                <div className="well-subhead-left">
-                  <svg className="ic" style={{ width: 13, height: 13, color: 'var(--t2)' }}>
-                    <use href={activeTab === 'chat' ? '#chat' : '#users'} />
+            <div className="chat-well glass-well">
+              <div className="chat-well-head">
+                <div className="chat-well-title">
+                  <svg viewBox="0 0 24 24" style={{ width: 12, height: 12, color: "var(--a4)", fill: "none", stroke: "currentColor", strokeWidth: 1.85, flexShrink: 0 }}>
+                    <path d="M21 12a8 8 0 01-8 8H4l3-3a8 8 0 1114-5z" />
                   </svg>
-                  <span id="wellTitle">{activeTab === 'chat' ? 'CINEMA CHAT' : 'AUDIENCE SYNC'}</span>
+                  <span id="wellHeaderTitle">{activeTab === "chat" ? "CINEMA CHAT" : "ROOM AUDIENCE"}</span>
                 </div>
-                <span className="count-pill" id="msgCountPill">
-                  {activeTab === 'chat'
-                    ? `${chatMessages.length} ${chatMessages.length === 1 ? 'msg' : 'msgs'}`
+                <span className="msg-counter" id="msgCounter">
+                  {activeTab === "chat"
+                    ? `${chatMessages.length} ${chatMessages.length === 1 ? "msg" : "msgs"}`
                     : `${participants.length} connected`}
                 </span>
               </div>
 
-              {/* Chat View */}
-              {activeTab === 'chat' ? (
-                <div ref={msgStreamRef} className="msg-stream" id="msgStream">
+              {/* Chat Body */}
+              {activeTab === "chat" ? (
+                <div ref={msgStreamRef} className="chat-body" id="chatBody">
                   {chatMessages.length === 0 ? (
-                    <div className="chat-empty" id="chatEmpty">
+                    <div className="chat-empty-state" id="chatEmptyState">
                       <h5>No messages yet</h5>
                       <p>Start the conversation while the movie rolls.</p>
-                      <div className="quick-reacts">
-                        {['🍿', '🔥', '😂', '👏', '❤️'].map((em) => (
-                          <button
-                            key={em}
-                            type="button"
-                            className="react-chip"
-                            data-emoji={em}
-                            title={`Send ${em}`}
-                            onClick={() => handleQuickReact(em)}
-                          >
-                            {em}
-                          </button>
-                        ))}
-                      </div>
                     </div>
                   ) : (
                     chatMessages.map((msg, idx) => {
                       const isMe = msg.senderId === currentParticipantId || msg.senderSessionId === sessionId;
                       return (
-                        <div key={idx} className={`bubble ${isMe ? 'me' : ''}`}>
-                          <small>{msg.senderName || 'Audience'}</small>
+                        <div key={idx} className={`msg-bubble ${isMe ? "me" : ""}`}>
+                          <span className="msg-author">{msg.senderName || "Audience"}</span>
                           <span>{msg.text}</span>
                         </div>
                       );
@@ -1034,46 +982,46 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                   )}
                 </div>
               ) : (
-                /* Audience List View */
-                <div className="audience-list active" id="audList">
+                /* Audience Body */
+                <div className="audience-body show" id="audBody">
                   {participants.map((p) => {
                     const isMe = p.sessionId === sessionId;
-                    const initial = (p.displayName || 'A').charAt(0).toUpperCase();
+                    const initial = (p.displayName || "A").charAt(0).toUpperCase();
                     return (
-                      <div key={p.id} className="aud-item">
-                        <div className="aud-left">
+                      <div key={p.id} className="member-row">
+                        <div className="member-info">
                           <div
-                            className="aud-av"
+                            className="member-avatar"
                             style={{
                               background: isMe
-                                ? 'linear-gradient(145deg,#ffe3b0,#f0b860)'
-                                : 'linear-gradient(145deg,#bfe6f7,#6fb0d2)',
+                                ? "linear-gradient(145deg, #ffe3b0, #f0b860)"
+                                : "linear-gradient(145deg, #bfe6f7, #6fb0d2)",
                             }}
                           >
                             {initial}
                           </div>
                           <div>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>
-                              {p.displayName} {isMe ? '(You)' : ''}
+                            <div style={{ fontSize: "12.5px", fontWeight: 600, color: "#fff" }}>
+                              {p.displayName} {isMe ? "(You)" : ""}
                             </div>
-                            <div style={{ font: '11px var(--mono)', color: 'var(--ok)' }}>
-                              ● {p.isHost ? 'Reference clock · 0 ms' : `In sync · ${Math.round(rtt)} ms apart`}
+                            <div style={{ fontFamily: "var(--mono)", fontSize: "10.5px", color: "var(--ok)" }}>
+                              ● {p.isHost ? "Reference clock · 0 ms" : `In sync · ${Math.round(rtt)} ms apart`}
                             </div>
                           </div>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div>
                           {p.isHost ? (
                             <span className="host-badge">HOST</span>
                           ) : isHost ? (
                             <button
                               type="button"
-                              className="text-xs text-rose-400 hover:text-rose-300 font-semibold"
+                              className="text-xs text-rose-400 hover:text-rose-300 font-semibold cursor-pointer"
                               onClick={() => handleKickParticipant(p.id)}
                             >
                               Kick
                             </button>
                           ) : (
-                            <span style={{ fontSize: '11.5px', color: 'var(--t2)' }}>Viewer</span>
+                            <span style={{ fontSize: "11px", color: "var(--t3)" }}>Viewer</span>
                           )}
                         </div>
                       </div>
@@ -1083,20 +1031,19 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
               )}
             </div>
 
-            {/* Message Composer */}
+            {/* Chat Composer Footer */}
             <form className="chat-composer" id="chatForm" autoComplete="off" onSubmit={handleChatSubmit}>
-              <div className="chat-input-wrap">
-                <input
-                  type="text"
-                  id="chatInput"
-                  placeholder="Send a message..."
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                />
-              </div>
-              <button type="submit" className="send-btn" aria-label="Send message">
-                <svg className="ic" style={{ width: 16, height: 16 }}>
-                  <use href="#send" />
+              <input
+                type="text"
+                className="chat-input"
+                id="chatInput"
+                placeholder="Send a message..."
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+              />
+              <button type="submit" className="chat-send-btn" aria-label="Send">
+                <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="#0f172a" strokeWidth={1.85} style={{ width: 15, height: 15, fill: "none", stroke: "#0f172a", strokeWidth: 1.85, flexShrink: 0 }}>
+                  <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
                 </svg>
               </button>
             </form>
@@ -1105,13 +1052,13 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       </div>
 
       {/* Sync Settings Modal */}
-      <div className={`modal-overlay ${isSettingsOpen ? 'open' : ''}`} id="settingsModal">
+      <div className={`modal-overlay ${isSettingsOpen ? "open" : ""}`} id="settingsModal">
         <div className="modal-card lg">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <span style={{ fontSize: 16, fontWeight: 650, color: '#fff' }}>Theater & Sync Settings</span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+            <span style={{ fontSize: 16, fontWeight: 650, color: "#fff" }}>Theater & Sync Settings</span>
             <button
               type="button"
-              className="btn frost icon-pill"
+              className="pill-btn icon-only"
               id="closeSettingsBtn"
               style={{ width: 30, height: 30 }}
               onClick={() => setIsSettingsOpen(false)}
@@ -1120,31 +1067,31 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             </button>
           </div>
           <div className="setting-row">
-            <span style={{ color: 'var(--t2)' }}>Sub-frame WebRTC Lock</span>
-            <span style={{ font: '600 12.5px var(--mono)', color: 'var(--ok)' }}>
+            <span style={{ color: "var(--t2)" }}>Sub-frame WebRTC Lock</span>
+            <span style={{ font: "600 12.5px var(--mono)", color: "var(--ok)" }}>
               ACTIVE · &lt; {Math.max(14, Math.round(rtt))}ms
             </span>
           </div>
           <div className="setting-row">
-            <span style={{ color: 'var(--t2)' }}>Stream Resolution</span>
-            <span style={{ font: '500 12.5px var(--mono)', color: '#fff' }}>1080p60 / 4K Pass-through</span>
+            <span style={{ color: "var(--t2)" }}>Stream Resolution</span>
+            <span style={{ font: "500 12.5px var(--mono)", color: "#fff" }}>1080p60 / 4K Pass-through</span>
           </div>
           <div className="setting-row" style={{ borderBottom: 0 }}>
-            <span style={{ color: 'var(--t2)' }}>Ephemeral Buffer Erase</span>
-            <span style={{ font: '500 12.5px var(--mono)', color: '#cbc3ff' }}>On Room Close</span>
+            <span style={{ color: "var(--t2)" }}>Ephemeral Buffer Erase</span>
+            <span style={{ font: "500 12.5px var(--mono)", color: "#cbc3ff" }}>On Room Close</span>
           </div>
 
           {isHost && (
             <button
               type="button"
-              className="btn"
+              className="pill-btn"
               style={{
-                width: '100%',
+                width: "100%",
                 height: 38,
                 marginTop: 12,
-                background: 'rgba(244,63,94,0.12)',
-                color: '#fda4af',
-                border: '1px solid rgba(244,63,94,0.3)',
+                background: "rgba(244,63,94,0.12)",
+                color: "#fda4af",
+                borderColor: "rgba(244,63,94,0.3)",
               }}
               onClick={() => {
                 setIsSettingsOpen(false);
@@ -1157,8 +1104,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
 
           <button
             type="button"
-            className="btn violet"
-            style={{ width: '100%', height: 42, marginTop: 14 }}
+            className="btn-w"
+            style={{ width: "100%", height: 42, marginTop: 14 }}
             id="doneSettingsBtn"
             onClick={() => setIsSettingsOpen(false)}
           >
@@ -1168,7 +1115,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       </div>
 
       {/* Floating Liquid Glass Toast */}
-      <div className={`toast lg ${toastMessage ? 'show' : ''}`} id="toast">
+      <div className={`toast lg ${toastMessage ? "show" : ""}`} id="toast">
         {toastMessage}
       </div>
 
@@ -1181,13 +1128,13 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
           onClose={() => setIsUploadOpen(false)}
           onUploadComplete={() => {
             setIsUploadOpen(false);
-            showToast('Screening video updated');
+            showToast("Screening video updated");
           }}
         />
       )}
 
       {/* Diagnostics Debug Panels when ?debug=1 or ?debugWebRTC=1 */}
-      {(window.location.search.includes('debug=1') || searchParams.get('debug') === '1') && (
+      {(window.location.search.includes("debug=1") || searchParams.get("debug") === "1") && (
         <DebugPanel
           playback={playback}
           connectionStatus={connectionStatus}

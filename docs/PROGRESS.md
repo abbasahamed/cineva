@@ -280,3 +280,28 @@ Per instructions, the watch room page UI is kept intact and will be redesigned i
     - Executed real Chrome browser automation:
       - Captured verified screenshots of Create and Join pages confirming pixel-perfect alignment of "Back to Home", "Or use sample HD demo video", and the 6 code cells.
       - Verified full E2E flow in Chrome: Create room -> Enter theater -> Leave room -> Returned to home -> Database confirmed 0 active rooms remaining.
+- **Step 10: Watch Room Overhaul from claude/room.html & Distortion Elimination**:
+  - **What changed**:
+    - **Replaced Old Watch Room CSS in `apps/web/src/index.css`**:
+      - Integrated the complete modern Apple Liquid Glass foundation and components from the newly provided `claude/room.html`:
+        - Global SVG safeguard: enforced `fill: none !important; stroke: currentColor; stroke-width: 1.85; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;` across all room elements, eliminating the giant black silhouette SVG distortion caused by Tailwind preflight.
+        - Container `.room-shell` with `100vw`, `100vh`, and `max-width: none !important`.
+        - Top bar `.topbar.lg`: CINEVA brand logo with film frame, clean text, emerald host badge with glowing phosphor dot, ambient mood cycler button, invite button, audience counter, settings telemetry button, and leave room button.
+        - Theater column `.theater-col.lg` and `.cinema-viewport`: empty screening state with warm sunset amber `.film-squircle`, "Add video" CTA pill (`.btn-w`), and 1080p HD sample film demo link.
+        - Video player HUD `.player-hud`: single-row floating bar with play/pause toggle, multi-chromatic scrubber progress bar (`.scrubber-progress`) with circular white thumb, monospace time display, `Audio: English 5.1` chip, and `CC: On` chip.
+        - Theater footer `.theater-footer`: title row with host badge, sub-frame sync metadata, Camera Off pill button, Mic pill button with active phosphor green state, and Hide Sidebar toggle button.
+        - Right sidebar `.sidebar-col`:
+          - Video Calls card `.side-card-calls.lg`: cryo cyan icon badge, camera/mic quick controls, standby state with camera placeholder and clear messaging ("No cameras on"), and active camera grid (`.cam-box`) rendering live WebRTC streams.
+          - Cinema Chat & Audience card `.side-card-chat.lg`: glass segmented tabs (`.seg-tabs`), well header with dynamic message counter ("0 msgs"), chat stream with `.msg-bubble` and `.msg-bubble.me`, audience member list (`.member-row`) with initial avatars, sync latency indicators, and kick controls.
+          - Chat composer `.chat-composer`: dark recessed input with focus glow and crisp white-gloss send button with paper airplane icon.
+          - Invite popover `.invite-popover.lg`: dark glass backing (`rgba(10, 12, 20, 0.92)`), backdrop filter blur, 6-digit room code box, and instant copy button.
+    - **Updated `apps/web/src/pages/WatchRoomPage.tsx`**:
+      - Replaced legacy `.top-dock` and `.stage-col` markup with the exact structural components and classes from `claude/room.html`.
+      - Replaced SVG `<use href="...">` sprites with clean, inline SVGs with explicit `width`, `height`, `viewBox="0 0 24 24"`, `fill="none"`, `stroke="currentColor"`, and `strokeWidth="1.85"`.
+      - Preserved 100% of live underlying logic: real WebRTC peer streaming, HLS video sync, audio/subtitle toggling, chat message sending/receiving, audience sync, kick controls, ambient mood cycling, and clean room abort on exit.
+  - **What was verified**:
+    - `npm run typecheck`: **0 errors** across `@cineva/shared`, `@cineva/server`, and `@cineva/web`.
+    - `npm test`: **188 / 188 tests passed** (130 server tests across 16 suites, 58 web tests across 5 suites).
+    - Executed Chrome browser automation:
+      - Captured full-resolution screenshots (`room_verified_full.png`, `room_invite_verified.png`, `room_audience_tab.png`).
+      - Verified zero black SVG silhouettes, pixel-perfect alignment of all text labels and icons, and responsive layout across theater and sidebar columns.
