@@ -461,6 +461,10 @@ export class MediaJobQueue {
         durationSeconds: analysis.duration,
         onProgress: async (progressPercent, speed, etaSeconds, stage) => {
           const scaledPercent = Math.min(99, 30 + Math.round(progressPercent * 0.69));
+          const currentStage = (progressPercent >= 98 || scaledPercent >= 98)
+            ? "Finalizing movie for streaming..."
+            : (stage || (decision.action === "REMUX" ? "Remuxing container..." : decision.action === "AUDIO_TRANSCODE_VIDEO_COPY" ? "Converting audio (copying video)..." : "Re-encoding video..."));
+
           await prisma.media.update({
             where: { roomId },
             data: { transcodeProgress: scaledPercent },
@@ -472,7 +476,7 @@ export class MediaJobQueue {
             progress: scaledPercent,
             speed,
             etaSeconds,
-            stage: stage || (decision.action === "REMUX" ? "Remuxing container..." : decision.action === "AUDIO_TRANSCODE_VIDEO_COPY" ? "Converting audio (copying video)..." : "Re-encoding video..."),
+            stage: currentStage,
           });
         },
       });
@@ -495,6 +499,15 @@ export class MediaJobQueue {
         }
         return;
       }
+
+      broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_PROGRESS, {
+        roomId,
+        status: "processing",
+        progress: 99,
+        speed: "1.0x",
+        etaSeconds: 2,
+        stage: "Finalizing movie for streaming...",
+      });
 
       // 5. Post-processing validation step per Section 17
       const verifiedAnalysis = await validatePlaybackFile(result.outputPath);

@@ -33,12 +33,15 @@ function formatMediaInfo(media: { title: string; size?: number | string } | null
   };
 }
 
-function fmtTime(s: number): string {
-  if (!isFinite(s) || s < 0) return "0:00";
+function fmtTime(s: number, forceHours = false): string {
+  if (!Number.isFinite(s) || s < 0) return forceHours ? "0:00:00" : "0:00";
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = Math.floor(s % 60);
-  return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(sec).padStart(2, "0");
+  if (h || forceHours) {
+    return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  }
+  return `${m}:${String(sec).padStart(2, "0")}`;
 }
 
 interface FloatingEmoji {
@@ -338,10 +341,20 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     };
     const onCanPlay = () => setIsBuffering(false);
     const onEnded = () => setRealVideoPaused(true);
-    const onTimeUpdate = () => setVideoCurrentTime(el.currentTime);
-    const onDurationChange = () => setVideoDuration(el.duration || 0);
+    const onTimeUpdate = () => {
+      if (Number.isFinite(el.currentTime)) {
+        setVideoCurrentTime(el.currentTime);
+      }
+    };
+    const onDurationChange = () => {
+      if (Number.isFinite(el.duration) && el.duration > 0) {
+        setVideoDuration(el.duration);
+      }
+    };
     const onLoadedMetadata = () => {
-      setVideoDuration(el.duration || 0);
+      if (Number.isFinite(el.duration) && el.duration > 0) {
+        setVideoDuration(el.duration);
+      }
       setVideoError(null);
     };
     const onError = () => {
@@ -443,8 +456,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     if (!el) return;
     const onProgress = () => {
       const b = el.buffered;
-      if (b.length && el.duration) {
-        setBufferPercent((b.end(b.length - 1) / el.duration) * 100);
+      if (b.length && Number.isFinite(el.duration) && el.duration > 0) {
+        setBufferPercent(Math.min(100, Math.max(0, (b.end(b.length - 1) / el.duration) * 100)));
       }
     };
     el.addEventListener("progress", onProgress);
@@ -612,32 +625,72 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     }
   }, [chatMessages]);
 
+  const isActuallyPlaying = !realVideoPaused && (!videoRef.current || !videoRef.current.paused) && playback.isPlaying;
+  const curTime = isActuallyPlaying || videoCurrentTime > 0 ? (videoCurrentTime || playback.currentTime) : playback.currentTime;
+  const rawDuration = videoDuration || playback.duration || 0;
+  const totalDuration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : 0;
+  const scrubPercent = totalDuration > 0 && Number.isFinite(curTime) ? Math.min(100, Math.max(0, (curTime / totalDuration) * 100)) : 0;
+
   const getScrubRatio = (clientX: number) => {
     if (!seekRef.current) return 0;
     const r = seekRef.current.getBoundingClientRect();
+    if (!r.width) return 0;
     return Math.max(0, Math.min(1, (clientX - r.left) / r.width));
   };
 
   const handleSeekDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!videoRef.current || !playback.duration) return;
+    if (!canControl) {
+      showToast("The host controls playback");
+      return;
+    }
+    if (!videoRef.current || !totalDuration) return;
     setIsScrubbing(true);
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
     const r = getScrubRatio(e.clientX);
-    handleSeek(r * playback.duration);
+    handleSeek(r * totalDuration);
     wakeControls();
   };
 
   const handleSeekMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const r = getScrubRatio(e.clientX);
-    const time = r * (playback.duration || 0);
-    setScrubTip({ text: fmtTime(time), left: r * 100 });
-    if (isScrubbing && playback.duration) {
-      handleSeek(r * playback.duration);
+    const time = r * totalDuration;
+    setScrubTip({ text: fmtTime(time, totalDuration >= 3600), left: r * 100 });
+    if (isScrubbing && canControl && totalDuration) {
+      handleSeek(r * totalDuration);
     }
   };
 
-  const handleSeekUp = () => {
-    setIsScrubbing(false);
+  const handleSeekUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isScrubbing) {
+      try {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }
+      } catch {}
+      setIsScrubbing(false);
+    }
+  };
+
+  const handleSeekKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      if (!canControl) {
+        showToast("The host controls playback");
+        return;
+      }
+      handleSeek(Math.max(0, curTime - 10));
+      wakeControls();
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      if (!canControl) {
+        showToast("The host controls playback");
+        return;
+      }
+      handleSeek(Math.min(totalDuration, curTime + 10));
+      wakeControls();
+    }
   };
 
   const handleMenuClick = (menu: "audio" | "subs" | "speed" | "zoom" | "react", e: React.MouseEvent<HTMLButtonElement>) => {
@@ -714,10 +767,6 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     e.target.value = "";
   };
 
-  const isActuallyPlaying = !realVideoPaused && (!videoRef.current || !videoRef.current.paused) && playback.isPlaying;
-  const curTime = isActuallyPlaying || videoCurrentTime > 0 ? (videoCurrentTime || playback.currentTime) : playback.currentTime;
-  const totalDuration = videoDuration || playback.duration || 0;
-  const scrubPercent = totalDuration ? Math.min(100, Math.max(0, (curTime / totalDuration) * 100)) : 0;
   const activeCamerasCount = (isCameraOn ? 1 : 0) + cameraPeers.length;
 
   return (
@@ -1033,6 +1082,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                   onPointerDown={handleSeekDown}
                   onPointerMove={handleSeekMove}
                   onPointerUp={handleSeekUp}
+                  onPointerCancel={handleSeekUp}
+                  onKeyDown={handleSeekKeyDown}
                 >
                   <div className="buf" id="buf" style={{ width: `${bufferPercent}%` }}></div>
                   <div className="pl" id="pl" style={{ width: `${scrubPercent}%` }}></div>
@@ -1049,6 +1100,10 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                     id="pp"
                     aria-label={isActuallyPlaying ? "Pause" : "Play"}
                     onClick={() => {
+                      if (!canControl) {
+                        showToast("The host controls playback");
+                        return;
+                      }
                       isActuallyPlaying ? handlePause() : handlePlay();
                       wakeControls();
                     }}
@@ -1070,7 +1125,11 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                     id="bk"
                     aria-label="Back 10 seconds"
                     onClick={() => {
-                      handleSeek(Math.max(0, (videoCurrentTime || playback.currentTime) - 10));
+                      if (!canControl) {
+                        showToast("The host controls playback");
+                        return;
+                      }
+                      handleSeek(Math.max(0, curTime - 10));
                       wakeControls();
                     }}
                   >
@@ -1085,7 +1144,11 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                     id="fw"
                     aria-label="Forward 10 seconds"
                     onClick={() => {
-                      handleSeek(Math.min(totalDuration, (videoCurrentTime || playback.currentTime) + 10));
+                      if (!canControl) {
+                        showToast("The host controls playback");
+                        return;
+                      }
+                      handleSeek(Math.min(totalDuration, curTime + 10));
                       wakeControls();
                     }}
                   >

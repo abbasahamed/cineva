@@ -257,7 +257,8 @@ export class TranscodingService {
                 lastEmittedSpeed = currentSpeed;
                 lastProgressTime = now;
                 if (onProgress) {
-                  onProgress(pct, currentSpeed, etaSec, stageDescription);
+                  const currentStage = pct >= 98 ? 'Finalizing movie for streaming...' : stageDescription;
+                  onProgress(pct, currentSpeed, etaSec, currentStage);
                 }
               }
             }

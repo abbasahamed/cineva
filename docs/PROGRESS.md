@@ -482,4 +482,59 @@ Executed reproduction script `scripts/reproduce-step1.mjs` using Playwright with
   - `playback_mkv_dev.png`: MKV transcode progressive streaming proof.
   - `playback_mp4_prod.png`: Single-port production server playback proof.
 
+---
+
+## BUG FIX: Player Seek Bar, Header Logo Mark & Controls Alignment
+
+### 1. Empirical Diagnosis & Evidence (Playwright Google Chrome)
+- **Problem**: In the Watch Room, the glass floating control bar (`#ctl`) showed playback buttons, volume, and time text ("0:04 / 2:50:28"), but the timeline / seek bar above the buttons was completely invisible.
+- **Empirical Diagnostics (`scripts/diagnose-seekbar.mjs`)**:
+  - `#ctl` computed styles: `display: flex; position: absolute; width: 1022px; height: 56px; overflow: visible; zIndex: 5;`
+  - `.seek` outerHTML: `<div class="seek" id="seek" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="15"><div class="buf" id="buf" style="width: 100%;"></div><div class="pl" id="pl" style="width: 14.6955%;"></div><span class="tip" id="tip" style="left: 0%;">0:00</span></div>`
+  - `.seek` computed styles: `width: 0px; height: 22px; display: flex; position: relative;`
+  - Child layers (`.buf`, `.pl`): computed `width: 0px; height: 4px;`
+  - `video.duration`: 5 (finite), `readyState = 4`, `paused = false`.
+- **Root Cause**:
+  1. In `apps/web/src/index.css:1497`, a demo bar `.ctl` rule defined `display: flex; align-items: center; gap: 16px;` (default `flex-direction: row`).
+  2. The Watch Room `.ctl` rule in line 2470 did not specify `flex-direction: column`.
+  3. Consequently, `.ctl` laid out its direct children (`.seek` and `.cr`) side-by-side in a horizontal row. Because `.seek` lacked `width: 100%`, flex shrinking collapsed `.seek` to `width: 0px`. All children (`.buf`, `.pl`) scaled to 0px width, rendering the entire timeline invisible.
+  4. Header logo mark (`.mk`) had `background: var(--tx)`. Because `--tx` was undefined, it fell back to transparent, resulting in a dark icon on dark background.
+  5. During long video transcodes, post-processing (`-movflags +faststart` and validation) scaled to 98% with generic description, appearing stuck.
+
+### 2. Implementation & Fixes
+- **CSS (`apps/web/src/index.css`)**:
+  - Scoped demo bar rule from `.ctl` to `.dbar .ctl`.
+  - Updated Watch Room `.ctl` to `display: flex; flex-direction: column; gap: 2px; overflow: visible;`.
+  - Restored `.seek` exactly matching reference specification: `width: 100%; height: 22px; display: flex; align-items: center; cursor: pointer; touch-action: none; outline: none;` with 4px/6px pseudo-track (`.seek::before`) and hover knob (`.pl::after`).
+  - Added tooltip styling (`.tip`) with `font: 12px ui-monospace, monospace;`, `position: absolute; bottom: 24px; transform: translateX(-50%);`.
+  - Updated Cineva logo mark (`.mk`) to match design reference: `width: 30px; height: 30px; border-radius: 10px; background: linear-gradient(145deg, #ffffff, #d8f3ff); box-shadow: 0 4px 14px rgba(52, 213, 255, 0.45);` with dark film icon SVG.
+  - Aligned `.tm`, `.cb` icon buttons, `#dMic`, `#dCam` to share the exact center line (delta = 0px).
+- **Player Component (`apps/web/src/pages/WatchRoomPage.tsx`)**:
+  - Pointer capture via `e.currentTarget.setPointerCapture(e.pointerId)` on scrub down, move, and release.
+  - Keyboard navigation: Left/Right arrow keys jump ∓10s when `.seek` is focused.
+  - Duration/time guards: guarded against `NaN` and `Infinity` with `Number.isFinite()`.
+  - Tooltip formatting: formatted as `h:mm:ss` for movies over an hour, else `m:ss`.
+  - Sync & permissions: clicks/keys call `handleSeek(time)` through `useSyncWatch`; if guest clicks without control permissions, playback seek is ignored and a toast ("The host controls playback") is shown.
+- **Transcoding Stage Reporting (`transcodingService.ts` & `mediaJobQueue.ts`)**:
+  - Updated stage description to `"Finalizing movie for streaming..."` when transcode reaches 98% or during post-processing faststart / validation.
+
+### 3. Verification & Evidence
+- **Automated Verification Script**: `scripts/verify-seekbar.mjs`
+  - Tested against real Google Chrome with both MP4 and MKV fixtures:
+    - `.seek` layout: `width: 994px`, `height: 22px`, `beforeHeight: 4px` (PASSED).
+    - `#ctl`: `width: 1022px`, `height: 80px`, `flexDirection: 'column'` (PASSED).
+    - Vertical alignment: `tmCenterY = ppCenterY = bkCenterY = fwCenterY = 839` (delta 0px, PASSED).
+    - Mic / Cam button vertical alignment: `dMicCenterY = dCamCenterY = 278` (delta 0px, PASSED).
+    - Hover tooltip: opacity 1 on hover at cursor position (PASSED).
+    - 50% seek: Host seeked to 3.44s (~50%), and Guest synchronized to 3.45s within 11ms (PASSED).
+    - Drag seek: Host dragged 30% -> 70% and updated accurately (PASSED).
+    - Keyboard seek: ArrowLeft jumped backward, ArrowRight jumped forward (PASSED).
+    - Both MP4 and MKV runs passed 100%.
+- **Screenshots Saved**:
+  - `docs/screenshots/seek_after_1440.png` (Desktop 1440px with seekbar visible, logo mark, and center-aligned controls).
+  - `docs/screenshots/seek_after_360.png` (Mobile 360px viewport).
+- **Test Suites**:
+  - `npm test`: **199 / 199 tests passed** (134 server tests across 17 suites, 65 web tests across 7 suites).
+  - `npm run build`: built `@cineva/shared`, `@cineva/server`, and `@cineva/web` with 0 errors.
+
 
