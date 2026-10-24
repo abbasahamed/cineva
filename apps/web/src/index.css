@@ -1785,14 +1785,14 @@ h2 {
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
 }
-.cb {
+.conv .cb {
   flex: 1;
   height: 6px;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.12);
   overflow: hidden;
 }
-.cb i {
+.conv .cb i {
   display: block;
   height: 100%;
   background: linear-gradient(90deg, var(--a3), var(--a2));
@@ -3753,6 +3753,7 @@ footer .wrap {
     width: 36px;
     height: 36px;
     min-width: 36px;
+    flex: 0 0 auto !important;
     display: grid;
     place-items: center;
     position: relative;

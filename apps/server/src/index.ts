@@ -163,6 +163,7 @@ const roomCreationLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
   max: 30, // 30 rooms per IP per 10 mins
   keyGenerator: (req) => getClientIp(req),
+  skip: (req) => process.env.NODE_ENV !== 'production' && (req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1'),
   message: { error: 'Too many rooms created recently. Please wait a few minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -173,6 +174,7 @@ const roomJoinLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
   max: 60, // 60 join attempts per IP per 5 mins
   keyGenerator: (req) => getClientIp(req),
+  skip: (req) => process.env.NODE_ENV !== 'production' && (req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1'),
   message: { error: 'Too many join attempts. Please wait a few minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -183,7 +185,9 @@ app.use('/api/rooms', (req, res, next) => {
     if (req.path.endsWith('/join')) {
       return roomJoinLimiter(req, res, next);
     }
-    return roomCreationLimiter(req, res, next);
+    if (req.path === '/' || req.path === '') {
+      return roomCreationLimiter(req, res, next);
+    }
   }
   next();
 });
