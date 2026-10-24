@@ -142,7 +142,7 @@ export const SubtitleOverlay: React.FC<SubtitleOverlayProps> = ({
         textAlign: 'center',
         lineHeight: 1.35,
         textWrap: 'balance' as any,
-        fontSize: `calc(clamp(16px, 2.2vw, 34px) * ${settings.sizePercent / 100})`,
+        fontSize: `calc(max(14px, clamp(14px, 3.2vw, 34px)) * ${settings.sizePercent / 100})`,
         fontFamily:
           'Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Devanagari", "Noto Sans Telugu", sans-serif',
         color: textColor,

@@ -3421,37 +3421,683 @@ footer .wrap {
   font-size: 13.5px;
 }
 
-@media (max-width: 900px) {
-  html, body {
-    overflow: auto;
-  }
-  .room-shell {
-    height: auto;
-  }
-  .main,
-  .main.hide {
-    grid-template-columns: 1fr;
-  }
-  .stage {
-    aspect-ratio: 16/10;
-  }
-  .side {
-    height: 520px;
-  }
-  .main.hide .side {
-    display: none;
-  }
-  .sep,
-  .hs {
-    display: none;
-  }
-  .vw {
-    display: none;
-  }
-  .tm {
-    margin: 0 4px;
+@media (min-width: 900px) {
+  .mobile-tabs-area,
+  .cb-more,
+  .top-overflow-btn,
+  .landscape-drawer-toggle {
+    display: none !important;
   }
 }
+
+/* ================= MOBILE & TABLET LAYOUT (< 900px) ================= */
+@media (max-width: 899px) {
+  html, body {
+    max-width: 100%;
+    height: 100dvh;
+    overflow-x: hidden;
+  }
+
+  .room-shell {
+    height: 100dvh;
+    max-height: 100dvh;
+    width: 100%;
+    max-width: 100%;
+    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    gap: 8px;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  /* Compact Top Bar (52px height) */
+  .top {
+    height: 52px;
+    min-height: 52px;
+    padding: 0 10px;
+    gap: 8px;
+    border-radius: 16px;
+    flex-shrink: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .top .mk {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+
+  .top .brand,
+  .top .sep {
+    display: none !important;
+  }
+
+  .top .title {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--tx);
+  }
+
+  .top .tag {
+    flex-shrink: 0;
+    font-size: 11px;
+    padding: 2px 7px;
+  }
+
+  .top .sp {
+    display: none !important;
+  }
+
+  /* Hide desktop buttons in top bar on mobile */
+  .top .b.hs,
+  .top #sb,
+  .top #leave {
+    display: none !important;
+  }
+
+  .top #cnt {
+    width: auto;
+    min-width: 44px;
+    height: 44px;
+    padding: 0 10px;
+    border-radius: 12px;
+  }
+
+  .top-overflow-btn {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    color: var(--tx);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  /* Main container on mobile: single column filling available height */
+  .main,
+  .main.hide {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    max-width: 100%;
+    gap: 8px;
+    grid-template-columns: none !important;
+    overflow: hidden;
+  }
+
+  /* Sticky 16:9 Stage under top bar */
+  .stage {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    width: 100%;
+    max-width: 100%;
+    aspect-ratio: 16/9;
+    flex-shrink: 0;
+    border-radius: 16px;
+    min-height: 0;
+  }
+
+  /* Empty State scaled down */
+  .stage .empty {
+    padding: 16px;
+    gap: 8px;
+  }
+  .stage .empty .ring {
+    width: 52px;
+    height: 52px;
+    margin-bottom: 4px;
+  }
+  .stage .empty .ring svg {
+    width: 24px;
+    height: 24px;
+  }
+  .stage .empty h1 {
+    font-size: 20px;
+    line-height: 1.25;
+    margin: 0;
+  }
+  .stage .empty p {
+    font-size: 13.5px;
+    max-width: 280px;
+    margin: 4px 0 8px;
+  }
+  .stage .empty .row {
+    flex-direction: column;
+    width: 100%;
+    max-width: 260px;
+    gap: 8px;
+  }
+  .stage .empty .row .b {
+    width: 100%;
+    height: 44px;
+    font-size: 14px;
+  }
+  .stage .empty small {
+    font-size: 11px;
+    margin-top: 2px;
+  }
+
+  /* Top Video Overlay */
+  .ovl {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+  }
+  .ovl .pill {
+    font-size: 11px;
+    padding: 3px 8px;
+    max-width: calc(100% - 75px);
+  }
+  .ovl .pill #pt {
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ovl #chg {
+    height: 28px;
+    padding: 0 10px;
+    font-size: 11px;
+    border-radius: 99px;
+  }
+
+  /* Control Bar on Mobile */
+  .amb {
+    inset: 0 !important;
+    max-width: 100vw !important;
+    overflow: hidden !important;
+  }
+
+  /* Control Bar on Mobile */
+  .ctl {
+    bottom: 8px;
+    left: 6px;
+    right: 6px;
+    padding: 4px 6px 6px;
+    border-radius: 16px;
+  }
+
+  /* Row 1 Seek Bar: 36px touch target with 4px track and thumb always visible */
+  .seek {
+    height: 36px;
+  }
+  .seek::before {
+    height: 4px;
+  }
+  .seek .buf,
+  .seek .pl {
+    height: 4px;
+  }
+  .seek .pl::after {
+    transform: scale(1) !important;
+    width: 14px;
+    height: 14px;
+    margin-top: -7px;
+    right: -7px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+  }
+
+  /* Row 2 Controls Row */
+  .cr {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .cr .sp {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .cb {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    display: grid;
+    place-items: center;
+    position: relative;
+    touch-action: manipulation;
+  }
+
+  /* Expand hit target to >= 44x44px without expanding layout footprint */
+  .cb::before,
+  .cb-more::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .cb.pp {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+  }
+
+  /* Control bar overflow button */
+  .cb-more {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+    position: relative;
+    touch-action: manipulation;
+  }
+
+  /* Hide desktop inline buttons that move to bottom sheet */
+  .vw .vr,
+  .cr [data-m="audio"],
+  .cr [data-m="subs"],
+  .cr [data-m="quality"],
+  .cr [data-m="speed"],
+  .cr [data-m="zoom"],
+  .cr [data-m="react"],
+  .cr #pip,
+  .cr #shortcuts-btn {
+    display: none !important;
+  }
+
+  .vw {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .tm {
+    font-size: 10.5px;
+    margin: 0 2px;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  /* Tabbed Area Below Stage */
+  .mobile-tabs-area {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    max-width: 100%;
+    background: rgba(18, 20, 29, 0.75);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+
+  .mobile-seg {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    height: 44px;
+    min-height: 44px;
+    margin: 8px 8px 0;
+    padding: 3px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.4);
+    position: relative;
+    box-sizing: border-box;
+  }
+
+  .mobile-seg button {
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 13.5px;
+    font-weight: 500;
+    border-radius: 9px;
+    background: none;
+    border: none;
+    color: var(--t2);
+    cursor: pointer;
+    position: relative;
+    z-index: 2;
+    transition: color 0.15s ease;
+  }
+
+  .mobile-seg button[aria-selected="true"] {
+    color: #ffffff;
+    font-weight: 600;
+  }
+
+  .mobile-seg-indicator {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    width: calc((100% - 6px) / 3);
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 1;
+  }
+
+  .mobile-seg[data-t="call"] .mobile-seg-indicator {
+    transform: translateX(0);
+  }
+  .mobile-seg[data-t="chat"] .mobile-seg-indicator {
+    transform: translateX(100%);
+  }
+  .mobile-seg[data-t="participants"] .mobile-seg-indicator {
+    transform: translateX(200%);
+  }
+
+  /* Unread badge on Chat tab */
+  .unread-badge {
+    padding: 1px 6px;
+    border-radius: 99px;
+    background: #6366f1;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  /* Call Tab Content */
+  .mobile-call-pane {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    padding: 10px;
+    overflow-y: auto;
+  }
+
+  /* Strip layout when > 4 participants */
+  .mobile-call-strip {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 8px;
+    box-sizing: border-box;
+    width: 100%;
+  }
+
+  .mobile-call-strip .tile {
+    width: 140px;
+    height: 105px;
+    min-width: 140px;
+    flex-shrink: 0;
+    scroll-snap-align: start;
+    border-radius: 12px;
+  }
+
+  /* 2-column grid when <= 4 participants */
+  .mobile-call-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+    margin-bottom: 8px;
+  }
+
+  .mobile-call-grid .tile {
+    aspect-ratio: 4/3;
+    border-radius: 12px;
+  }
+
+  /* Mic and Camera buttons in Call tab: full width two-button row */
+  .mobile-dock {
+    display: flex;
+    gap: 8px;
+    margin-top: auto;
+    padding-top: 8px;
+    width: 100%;
+  }
+
+  .mobile-dock .b {
+    flex: 1;
+    height: 44px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  /* Chat Pane on Mobile */
+  .mobile-chat-pane {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .mobile-chat-pane .msgs {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 10px 12px;
+  }
+
+  .mobile-chat-pane .cmp {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px max(8px, env(safe-area-inset-bottom));
+    background: rgba(255, 255, 255, 0.04);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    width: 100%;
+    box-sizing: border-box;
+    flex-shrink: 0;
+  }
+
+  .mobile-chat-pane .cmp input {
+    flex: 1;
+    min-width: 0;
+    height: 44px;
+    font-size: 16px; /* Prevents auto-zoom in iOS Safari */
+    padding: 0 14px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #fff;
+  }
+
+  .mobile-chat-pane .cmp button {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    flex-shrink: 0;
+    border-radius: 12px;
+  }
+
+  /* People Pane on Mobile */
+  .mobile-people-pane {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 10px 14px;
+  }
+
+  /* Hide the desktop sidebar element on mobile */
+  .side {
+    display: none !important;
+  }
+
+  /* Pseudo-fullscreen on phones */
+  .stage.pseudo-fullscreen {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 9999 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    border-radius: 0 !important;
+    background: #000 !important;
+    max-width: none !important;
+  }
+}
+
+/* Landscape Phones (height < 500px) */
+@media (max-width: 899px) and (max-height: 499px) and (orientation: landscape) {
+  .room-shell {
+    padding: 0;
+    gap: 0;
+  }
+  .top {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.85), transparent);
+    border: none;
+    border-radius: 0;
+    z-index: 40;
+    opacity: 1;
+    transition: opacity 0.25s ease;
+  }
+  .stage.idle ~ .top,
+  .stage.idle .top {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .stage {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;
+    border-radius: 0;
+    z-index: 10;
+  }
+  /* Slide-over panel toggled by button */
+  .mobile-tabs-area {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 320px;
+    max-width: 80vw;
+    z-index: 50;
+    border-radius: 16px 0 0 16px;
+    transform: translateX(100%);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .mobile-tabs-area.open {
+    transform: translateX(0);
+  }
+  .landscape-drawer-toggle {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    z-index: 45;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(18, 20, 29, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  }
+}
+
+/* Bottom Sheet & Ripple Styles */
+.mobile-sheet-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  box-sizing: border-box;
+  text-align: left;
+}
+.mobile-sheet-btn:hover,
+.mobile-sheet-btn:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+.mobile-sheet-btn.destructive {
+  background: rgba(244, 63, 94, 0.15);
+  border-color: rgba(244, 63, 94, 0.3);
+  color: #fda4af;
+}
+.mobile-sheet-btn.destructive:hover,
+.mobile-sheet-btn.destructive:active {
+  background: rgba(244, 63, 94, 0.25);
+}
+
+@keyframes bsFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes bsSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes rippleEffect {
+  0% { transform: scale(0.6); opacity: 0.9; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+.double-tap-ripple {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  pointer-events: none;
+  animation: rippleEffect 500ms ease-out forwards;
+  z-index: 20;
+}
+.double-tap-ripple.left { left: 15%; }
+.double-tap-ripple.right { right: 15%; }
+
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

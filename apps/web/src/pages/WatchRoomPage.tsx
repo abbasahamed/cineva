@@ -40,6 +40,8 @@ import { SubtitleOverlay } from "../components/SubtitleOverlay.js";
 import { SubtitleSettingsPanel } from "../components/SubtitleSettingsPanel.js";
 import { useRoomShortcuts } from "../hooks/useRoomShortcuts.js";
 import { ShortcutsModal } from "../components/ShortcutsModal.js";
+import { BottomSheet } from "../components/BottomSheet.js";
+import { SettingsModal } from "../components/SettingsModal.js";
 
 function formatMediaInfo(media: { title: string; size?: number | string } | null | undefined) {
   if (!media) return { displayTitle: "Friday movie night", size: null, rawTitle: "" };
@@ -364,6 +366,22 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   const [activeCueText, setActiveCueText] = useState<string | null>(null);
   const [controlBarHeight, setControlBarHeight] = useState<number>(76);
 
+  // Mobile layout state (< 900px)
+  const [mobileTab, setMobileTab] = useState<"call" | "chat" | "participants">("call");
+  const [unreadChatCount, setUnreadChatCount] = useState<number>(0);
+  const [isTopOverflowOpen, setIsTopOverflowOpen] = useState(false);
+  const [isCtlOverflowOpen, setIsCtlOverflowOpen] = useState(false);
+  const [isSubSettingsOpen, setIsSubSettingsOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [selectedParticipantForMenu, setSelectedParticipantForMenu] = useState<any | null>(null);
+  const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false);
+  const [isLandscapeDrawerOpen, setIsLandscapeDrawerOpen] = useState(false);
+  const [keyboardPadding, setKeyboardPadding] = useState(0);
+  const [doubleTapRipple, setDoubleTapRipple] = useState<{ side: "left" | "right"; text: string; id: number } | null>(null);
+  const lastTapTimeRef = useRef<number>(0);
+  const singleTapTimerRef = useRef<any>(null);
+  const mobileMsgStreamRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const updateControlHeight = () => {
       const el = ctlRef.current || document.getElementById("ctl");
@@ -390,6 +408,48 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       window.removeEventListener("resize", updateControlHeight);
     };
   }, [room]);
+
+  // Track unread chat messages when on another mobile tab
+  useEffect(() => {
+    if (chatMessages.length > 0) {
+      if (mobileTab !== "chat") {
+        setUnreadChatCount((prev) => prev + 1);
+      }
+    }
+  }, [chatMessages.length, mobileTab]);
+
+  useEffect(() => {
+    if (mobileTab === "chat") {
+      setUnreadChatCount(0);
+      if (mobileMsgStreamRef.current) {
+        mobileMsgStreamRef.current.scrollTop = mobileMsgStreamRef.current.scrollHeight;
+      }
+    }
+  }, [mobileTab]);
+
+  useEffect(() => {
+    if (mobileTab === "chat" && mobileMsgStreamRef.current) {
+      mobileMsgStreamRef.current.scrollTop = mobileMsgStreamRef.current.scrollHeight;
+    }
+  }, [chatMessages, mobileTab]);
+
+  // Visual Viewport Listener to keep composer pinned above virtual keyboard on mobile
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const handleViewportChange = () => {
+      const offset = window.innerHeight - (vv.height + vv.offsetTop);
+      setKeyboardPadding(Math.max(0, offset));
+    };
+
+    vv.addEventListener("resize", handleViewportChange);
+    vv.addEventListener("scroll", handleViewportChange);
+    return () => {
+      vv.removeEventListener("resize", handleViewportChange);
+      vv.removeEventListener("scroll", handleViewportChange);
+    };
+  }, []);
 
   // Real HTMLMediaElement state tracking
   const [realVideoPaused, setRealVideoPaused] = useState(true);
@@ -1219,11 +1279,78 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     }
   };
 
-  const handleToggleFullscreen = () => {
+  const handleToggleFullscreen = async () => {
+    if (isPseudoFullscreen) {
+      setIsPseudoFullscreen(false);
+      return;
+    }
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
-    } else if (stageRef.current?.requestFullscreen) {
-      stageRef.current.requestFullscreen().catch(() => {});
+      return;
+    }
+    if (stageRef.current?.requestFullscreen) {
+      try {
+        await stageRef.current.requestFullscreen();
+        if (screen.orientation && "lock" in screen.orientation) {
+          (screen.orientation as any).lock("landscape").catch(() => {});
+        }
+        return;
+      } catch {
+        // Fallback to pseudo-fullscreen on failure
+      }
+    }
+    setIsPseudoFullscreen(true);
+  };
+
+  const handleStagePointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    wakeControls();
+    const now = Date.now();
+    const delta = now - lastTapTimeRef.current;
+    const rect = stageRef.current?.getBoundingClientRect();
+
+    if (delta < 300 && rect) {
+      // Double tap!
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = null;
+      }
+      lastTapTimeRef.current = 0;
+      const relX = e.clientX - rect.left;
+      const width = rect.width;
+
+      if (relX < width / 3) {
+        // Left third: Seek -10s
+        if (!canControl) {
+          showToast("The host controls playback");
+          return;
+        }
+        handleSeek(Math.max(0, curTime - 10));
+        setDoubleTapRipple({ side: "left", text: "-10 s", id: Date.now() });
+        setTimeout(() => setDoubleTapRipple(null), 500);
+      } else if (relX > (width * 2) / 3) {
+        // Right third: Seek +10s
+        if (!canControl) {
+          showToast("The host controls playback");
+          return;
+        }
+        handleSeek(Math.min(totalDuration, curTime + 10));
+        setDoubleTapRipple({ side: "right", text: "+10 s", id: Date.now() });
+        setTimeout(() => setDoubleTapRipple(null), 500);
+      } else {
+        // Center third: play/pause
+        if (!canControl) {
+          showToast("The host controls playback");
+          return;
+        }
+        isActuallyPlaying ? handlePause() : handlePlay();
+      }
+    } else {
+      lastTapTimeRef.current = now;
+      if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
+      singleTapTimerRef.current = setTimeout(() => {
+        setIsIdle((prev) => !prev);
+        singleTapTimerRef.current = null;
+      }, 300);
     }
   };
 
@@ -1333,6 +1460,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             onClick={() => {
               setIsSidebarCollapsed(false);
               setActiveTab("participants");
+              setMobileTab("participants");
             }}
           >
             <svg viewBox="0 0 24 24">
@@ -1340,6 +1468,21 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
               <path d="M3 20a6 6 0 0112 0M16 5a3.5 3.5 0 010 7M18 20a6 6 0 00-1.5-4" />
             </svg>
             <span id="n">{participants.length}</span>
+          </button>
+
+          {/* Mobile Top Overflow Button (⋯) */}
+          <button
+            type="button"
+            className="top-overflow-btn"
+            id="top-overflow-btn"
+            aria-label="More room options"
+            onClick={() => setIsTopOverflowOpen(true)}
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <circle cx="5" cy="12" r="2" />
+              <circle cx="12" cy="12" r="2" />
+              <circle cx="19" cy="12" r="2" />
+            </svg>
           </button>
 
           <button
@@ -1424,11 +1567,11 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
         {/* Cinema Stage */}
         <section
           ref={stageRef}
-          className={`stage ${isIdle ? "idle" : ""}`}
+          className={`stage ${isIdle ? "idle" : ""} ${isPseudoFullscreen ? "pseudo-fullscreen" : ""}`}
           id="stage"
           aria-label="Video"
           onPointerMove={wakeControls}
-          onPointerDown={wakeControls}
+          onPointerDown={handleStagePointerDown}
           onDragOver={(e) => {
             e.preventDefault();
             stageRef.current?.classList.add("drag");
@@ -1442,6 +1585,51 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             }
           }}
         >
+          {/* Double-tap Seek Ripple Indicator */}
+          {doubleTapRipple && (
+            <div
+              className={`double-tap-ripple ${doubleTapRipple.side}`}
+              key={doubleTapRipple.id}
+            >
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2.5">
+                {doubleTapRipple.side === "left" ? (
+                  <path d="M4 12a8 8 0 108-8H8M8 1L5 4l3 3" />
+                ) : (
+                  <path d="M20 12a8 8 0 11-8-8h4M16 1l3 3-3 3" />
+                )}
+              </svg>
+              <span>{doubleTapRipple.text}</span>
+            </div>
+          )}
+
+          {/* Exit button in pseudo-fullscreen */}
+          {isPseudoFullscreen && (
+            <button
+              type="button"
+              className="pseudo-fs-exit-btn"
+              aria-label="Exit fullscreen"
+              onClick={() => setIsPseudoFullscreen(false)}
+              style={{
+                position: "absolute",
+                top: "16px",
+                right: "16px",
+                zIndex: 60,
+                width: "44px",
+                height: "44px",
+                borderRadius: "50%",
+                background: "rgba(0,0,0,0.75)",
+                border: "1px solid rgba(255,255,255,0.25)",
+                color: "#fff",
+                display: "grid",
+                placeItems: "center",
+                cursor: "pointer",
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
+                <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+              </svg>
+            </button>
+          )}
           <video
             ref={videoRef as React.RefObject<HTMLVideoElement>}
             id="v"
@@ -1511,7 +1699,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             settings={subSettings}
             controlsVisible={!isIdle}
             controlBarHeight={controlBarHeight}
-            isSettingsOpen={activeMenu === "sub-settings"}
+            isSettingsOpen={isSubSettingsOpen || activeMenu === "sub-settings"}
             onUpdatePositionOffset={(newOffset) => {
               setSubSettings((prev: SubtitleSettings) => {
                 const updated = { ...prev, positionOffsetPercent: newOffset };
@@ -2111,6 +2299,23 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
 
                   <button
                     type="button"
+                    className="cb cb-more"
+                    id="ctl-more-btn"
+                    aria-label="More player options"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      setIsCtlOverflowOpen(true);
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                      <circle cx="5" cy="12" r="2" />
+                      <circle cx="12" cy="12" r="2" />
+                      <circle cx="19" cy="12" r="2" />
+                    </svg>
+                  </button>
+
+                  <button
+                    type="button"
                     className="cb"
                     id="fs"
                     aria-label="Fullscreen"
@@ -2392,6 +2597,286 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             </span>
           ))}
         </section>
+
+        {/* Mobile Tabbed Area (< 900px) */}
+        <div className={`mobile-tabs-area ${isLandscapeDrawerOpen ? "open" : ""}`} id="mobile-tabs-area">
+          <div className="mobile-seg" data-t={mobileTab} role="tablist">
+            <span className="mobile-seg-indicator" aria-hidden="true" />
+            <button
+              type="button"
+              role="tab"
+              id="m-tab-call"
+              aria-selected={mobileTab === "call"}
+              onClick={() => setMobileTab("call")}
+            >
+              Call
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="m-tab-chat"
+              aria-selected={mobileTab === "chat"}
+              onClick={() => setMobileTab("chat")}
+            >
+              Chat
+              {unreadChatCount > 0 && <span className="unread-badge">{unreadChatCount}</span>}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="m-tab-people"
+              aria-selected={mobileTab === "participants"}
+              onClick={() => setMobileTab("participants")}
+            >
+              People ({participants.length})
+            </button>
+          </div>
+
+          {/* Call Pane */}
+          {mobileTab === "call" && (
+            <div className="mobile-call-pane" id="m-pane-call">
+              <div className={participants.length <= 4 ? "mobile-call-grid" : "mobile-call-strip"}>
+                {/* Local user tile */}
+                <div className="tile" id="t-me-m">
+                  <VideoTile
+                    participantId={currentParticipantId}
+                    displayName={currentDisplayName || displayName || "You"}
+                    stream={getStream(currentParticipantId || "", true)}
+                    isLocal={true}
+                    isHost={isHost}
+                    isMuted={isMuted}
+                    isCameraOff={!isCameraOn}
+                    getStream={getStream}
+                    showVolumeControl={false}
+                  />
+                </div>
+
+                {/* Remote participant tiles */}
+                {participants
+                  .filter((p) => p.sessionId !== sessionId)
+                  .map((p) => {
+                    const peer = allPeers.find((cp) => cp.participantId === p.id);
+                    const isPeerCameraOff = peer ? peer.isCameraOff : true;
+                    const peerStream = peer?.stream || getStream(p.id, false);
+                    const vol = participantVolumes.get(p.id) ?? 100;
+                    const isLocMuted = participantMutedLocally.get(p.id) ?? false;
+
+                    return (
+                      <div key={`m-tile-${p.id}`} className="tile">
+                        <VideoTile
+                          participantId={p.id}
+                          displayName={p.displayName}
+                          stream={peerStream}
+                          isLocal={false}
+                          isHost={p.isHost}
+                          isMuted={peer?.isMuted ?? false}
+                          isCameraOff={isPeerCameraOff}
+                          connectionState={peer?.connectionState}
+                          volume={vol}
+                          isLocallyMuted={isLocMuted}
+                          onVolumeChange={(newVol) => setParticipantVolume(p.id, newVol)}
+                          onToggleLocalMute={() => toggleParticipantLocalMute(p.id)}
+                          getStream={getStream}
+                          showVolumeControl={true}
+                        />
+                      </div>
+                    );
+                  })}
+
+                {/* Invite Tile */}
+                <button
+                  type="button"
+                  className="tile add"
+                  id="inv-mobile-tile"
+                  aria-label="Invite someone"
+                  onClick={() => setIsInviteOpen(true)}
+                >
+                  <svg viewBox="0 0 24 24">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  <span>Invite</span>
+                </button>
+              </div>
+
+              {/* Full-width two-button dock */}
+              <div className="mobile-dock">
+                <button
+                  type="button"
+                  className={`b ${isMuted ? "off" : ""}`}
+                  id="dMic-mobile"
+                  onClick={toggleMute}
+                  aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
+                >
+                  {isMuted ? (
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="9" y="3" width="6" height="11" rx="3" />
+                      <path d="M5 11a7 7 0 0014 0M12 18v3M4 4l16 16" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="9" y="3" width="6" height="11" rx="3" />
+                      <path d="M5 11a7 7 0 0014 0M12 18v3" />
+                    </svg>
+                  )}
+                  <span>{isMuted ? "Muted" : "Mic"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`b ${isCameraOn ? "active" : ""}`}
+                  id="dCam-mobile"
+                  onClick={toggleCamera}
+                  disabled={isConnecting}
+                  aria-label={isCameraOn ? "Turn camera off" : "Turn camera on"}
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="6" width="12" height="12" rx="3.5" />
+                    <path d="M15 10.5l5.5-3v9l-5.5-3" />
+                  </svg>
+                  <span>{isCameraOn ? "Camera on" : "Camera"}</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Chat Pane */}
+          {mobileTab === "chat" && (
+            <div
+              className="mobile-chat-pane"
+              id="m-pane-chat"
+              style={{ paddingBottom: keyboardPadding ? `${keyboardPadding}px` : undefined }}
+            >
+              <div ref={mobileMsgStreamRef} className="msgs" id="ms-mobile">
+                {chatMessages.length === 0 ? (
+                  <div className="none">
+                    <b>No messages yet</b>Say something while the movie loads.
+                  </div>
+                ) : (
+                  chatMessages.map((msg, idx) => {
+                    if (msg.isSystem) {
+                      return (
+                        <div key={msg.id || idx} className="m sys">
+                          <span>{msg.message}</span>
+                        </div>
+                      );
+                    }
+                    const myParticipant = participants.find((p) => p.sessionId === sessionId);
+                    const isMe =
+                      msg.participantId === myParticipant?.id ||
+                      msg.participantId === currentParticipantId ||
+                      (msg as any).senderId === currentParticipantId ||
+                      (msg as any).senderSessionId === sessionId ||
+                      (myParticipant && msg.displayName === myParticipant.displayName);
+                    return (
+                      <div key={msg.id || idx} className={`m ${isMe ? "me" : ""}`}>
+                        {!isMe && <b>{msg.displayName || "Audience"}</b>}
+                        <span>{msg.message || (msg as any).text || ""}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <form className="cmp" id="fm-mobile" onSubmit={handleChatSubmit}>
+                <input
+                  id="mi-mobile"
+                  placeholder="Message"
+                  autoComplete="off"
+                  aria-label="Message"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                />
+                <button type="submit" className="b p i" aria-label="Send" id="send-mobile-btn">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                    <path d="M21 3L10 14M21 3l-7 18-4-7-7-4z" />
+                  </svg>
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* People Pane */}
+          {mobileTab === "participants" && (
+            <div className="mobile-people-pane" id="m-pane-people">
+              {participants.map((p) => {
+                const isMe = p.sessionId === sessionId;
+                const initial = (p.displayName || "A").charAt(0).toUpperCase();
+                const userVol = participantVolumes.get(p.id) ?? 100;
+                const isLocMuted = participantMutedLocally.get(p.id) ?? false;
+
+                return (
+                  <div key={`m-p-${p.id}`} className="row flex-col items-stretch gap-2 py-2.5 border-b border-white/[0.06]">
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="av">
+                          <i style={{ background: isMe ? "rgba(99, 102, 241, 0.25)" : "rgba(255, 255, 255, 0.1)" }}>{initial}</i>
+                        </span>
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="text-sm font-medium text-white truncate max-w-[130px]">
+                            {p.displayName}
+                          </span>
+                          {isMe && <span className="text-[10px] text-brand-300 font-bold uppercase">(You)</span>}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {p.isHost ? (
+                          <span className="r">Host</span>
+                        ) : (
+                          <span className="r">Viewer</span>
+                        )}
+                        {isHost && !isMe && (
+                          <button
+                            type="button"
+                            className="b"
+                            style={{ width: "36px", height: "36px", padding: 0, display: "grid", placeItems: "center" }}
+                            onClick={() => setSelectedParticipantForMenu(p)}
+                            aria-label={`Options for ${p.displayName}`}
+                          >
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                              <circle cx="12" cy="5" r="2" />
+                              <circle cx="12" cy="12" r="2" />
+                              <circle cx="12" cy="19" r="2" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {!isMe && (
+                      <div className="flex items-center gap-2 px-1 pt-1 text-xs text-slate-300">
+                        <button
+                          type="button"
+                          className={`p-1 rounded-md transition-colors ${
+                            isLocMuted ? "text-rose-400 bg-rose-500/20" : "text-slate-400 hover:text-white"
+                          }`}
+                          aria-label={`Mute or unmute ${p.displayName}`}
+                          onClick={() => toggleParticipantLocalMute(p.id)}
+                        >
+                          {isLocMuted || userVol === 0 ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                        </button>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="5"
+                          value={isLocMuted ? 0 : userVol}
+                          disabled={isLocMuted}
+                          onChange={(e) => setParticipantVolume(p.id, parseInt(e.target.value, 10))}
+                          className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-500"
+                          aria-label={`${p.displayName} volume`}
+                        />
+                        <span className="w-9 text-right font-mono text-[11px] text-slate-400">
+                          {isLocMuted ? "Muted" : `${userVol}%`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         {/* Sidebar */}
         <aside className="side gl" aria-label="Call, chat and people">
@@ -2772,6 +3257,476 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
         isOpen={showShortcutsHelp}
         onClose={() => setShowShortcutsHelp(false)}
       />
+
+      {/* Mobile Top Overflow BottomSheet */}
+      <BottomSheet
+        isOpen={isTopOverflowOpen}
+        onClose={() => setIsTopOverflowOpen(false)}
+        title="Room Options"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <button
+            type="button"
+            className="mobile-sheet-btn"
+            id="sheet-opt-invite"
+            onClick={() => {
+              setIsTopOverflowOpen(false);
+              setIsInviteOpen(true);
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
+                <path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1" />
+              </svg>
+              <span>Invite Friends</span>
+            </div>
+            <span>→</span>
+          </button>
+
+          <button
+            type="button"
+            className="mobile-sheet-btn"
+            id="sheet-opt-chat"
+            onClick={() => {
+              setIsTopOverflowOpen(false);
+              setMobileTab("chat");
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
+                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+              </svg>
+              <span>Chat Panel</span>
+            </div>
+            <span>→</span>
+          </button>
+
+          {isHost && (
+            <button
+              type="button"
+              className="mobile-sheet-btn"
+              id="sheet-opt-settings"
+              onClick={() => {
+                setIsTopOverflowOpen(false);
+                setIsSettingsModalOpen(true);
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
+                </svg>
+                <span>Room Settings</span>
+              </div>
+              <span>→</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="mobile-sheet-btn"
+            id="sheet-opt-subs"
+            onClick={() => {
+              setIsTopOverflowOpen(false);
+              setIsSubSettingsOpen(true);
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
+                <rect x="3" y="5" width="18" height="14" rx="4" />
+                <path d="M7 11h3M13 11h4M7 15h5M15 15h2" />
+              </svg>
+              <span>Subtitle Settings</span>
+            </div>
+            <span>→</span>
+          </button>
+
+          {!('ontouchstart' in window || (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0)) && (
+            <button
+              type="button"
+              className="mobile-sheet-btn"
+              id="sheet-opt-shortcuts"
+              onClick={() => {
+                setIsTopOverflowOpen(false);
+                setShowShortcutsHelp(true);
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01" />
+                </svg>
+                <span>Keyboard Shortcuts</span>
+              </div>
+              <span>→</span>
+            </button>
+          )}
+
+          <hr style={{ border: 0, borderTop: "1px solid rgba(255, 255, 255, 0.1)", margin: "6px 0" }} />
+
+          <button
+            type="button"
+            className="mobile-sheet-btn destructive"
+            id="sheet-opt-leave"
+            onClick={() => {
+              setIsTopOverflowOpen(false);
+              handleLeaveRoom();
+              navigate("/", { replace: true });
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
+                <path d="M10 4H6a2 2 0 00-2 2v12a2 2 0 002 2h4M15 8l4 4-4 4M19 12H9" />
+              </svg>
+              <span>Leave Room</span>
+            </div>
+          </button>
+        </div>
+      </BottomSheet>
+
+      {/* Mobile Player Control Options BottomSheet */}
+      <BottomSheet
+        isOpen={isCtlOverflowOpen}
+        onClose={() => setIsCtlOverflowOpen(false)}
+        title="Playback & Media Options"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          {/* Quick Reactions Bar */}
+          <div>
+            <div style={{ fontSize: "11px", color: "var(--t2)", marginBottom: "8px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Quick Reactions
+            </div>
+            <div style={{ display: "flex", gap: "8px", justifyContent: "space-between" }}>
+              {["❤️", "😂", "😮", "😢", "👏", "🔥"].map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  style={{
+                    flex: 1,
+                    height: "44px",
+                    fontSize: "20px",
+                    borderRadius: "12px",
+                    background: "rgba(255,255,255,0.08)",
+                    border: "none",
+                    cursor: "pointer",
+                    display: "grid",
+                    placeItems: "center",
+                  }}
+                  onClick={() => burstReactions(emoji)}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <hr style={{ border: 0, borderTop: "1px solid rgba(255, 255, 255, 0.1)", margin: "2px 0" }} />
+
+          {/* Audio Tracks */}
+          <div>
+            <div style={{ fontSize: "11px", color: "var(--t2)", marginBottom: "6px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Audio Track
+            </div>
+            {audioOptions.length <= 1 ? (
+              <div style={{ fontSize: "13px", color: "var(--t3)", padding: "4px 0" }}>
+                Default Audio Track
+              </div>
+            ) : (
+              audioOptions.map((opt) => (
+                <button
+                  key={`m-aud-${opt.id}`}
+                  type="button"
+                  className="mobile-sheet-btn"
+                  style={{ fontWeight: selectedAudioIdx === opt.id ? 700 : 400, marginTop: "4px" }}
+                  onClick={() => handleSelectAudio(opt.id)}
+                >
+                  <span>{opt.label}</span>
+                  {selectedAudioIdx === opt.id && <span>✓</span>}
+                </button>
+              ))
+            )}
+          </div>
+
+          <hr style={{ border: 0, borderTop: "1px solid rgba(255, 255, 255, 0.1)", margin: "2px 0" }} />
+
+          {/* Subtitles */}
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+              <span style={{ fontSize: "11px", color: "var(--t2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Subtitles
+              </span>
+              <button
+                type="button"
+                style={{ fontSize: "12px", color: "#818cf8", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}
+                onClick={() => {
+                  setIsCtlOverflowOpen(false);
+                  setIsSubSettingsOpen(true);
+                }}
+              >
+                Subtitle Settings →
+              </button>
+            </div>
+
+            <button
+              type="button"
+              className="mobile-sheet-btn"
+              style={{ fontWeight: selectedSubIdx === -1 ? 700 : 400 }}
+              onClick={() => handleSelectSubtitle(-1)}
+            >
+              <span>Off</span>
+              {selectedSubIdx === -1 && <span>✓</span>}
+            </button>
+
+            {subtitleOptions.map((opt) => {
+              const sIdx = supportedSubtitleOptions.findIndex((s) => s.id === opt.id);
+              const isSelected = sIdx >= 0 && selectedSubIdx === sIdx;
+              return (
+                <button
+                  key={`m-sub-${opt.id}`}
+                  type="button"
+                  className="mobile-sheet-btn"
+                  style={{ fontWeight: isSelected ? 700 : 400, marginTop: "4px" }}
+                  onClick={() => sIdx >= 0 && handleSelectSubtitle(sIdx)}
+                >
+                  <span>{opt.label}</span>
+                  {isSelected && <span>✓</span>}
+                </button>
+              );
+            })}
+
+            <button
+              type="button"
+              className="mobile-sheet-btn"
+              style={{ marginTop: "4px" }}
+              onClick={() => {
+                subFileInputRef.current?.click();
+                setIsCtlOverflowOpen(false);
+              }}
+            >
+              <span>Add Subtitle File (.srt, .vtt)…</span>
+            </button>
+          </div>
+
+          <hr style={{ border: 0, borderTop: "1px solid rgba(255, 255, 255, 0.1)", margin: "2px 0" }} />
+
+          {/* Quality */}
+          <div>
+            <div style={{ fontSize: "11px", color: "var(--t2)", marginBottom: "6px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Stream Quality
+            </div>
+            <button
+              type="button"
+              className="mobile-sheet-btn"
+              style={{ fontWeight: currentLevelIdx === -1 ? 700 : 400 }}
+              onClick={() => handleSelectQuality(-1)}
+            >
+              <span>Auto ({effectiveQuality.resolution})</span>
+              {currentLevelIdx === -1 && <span>✓</span>}
+            </button>
+            {availableLevels.map((lvl) => (
+              <button
+                key={`m-lvl-${lvl.id}`}
+                type="button"
+                className="mobile-sheet-btn"
+                style={{ fontWeight: currentLevelIdx === lvl.id ? 700 : 400, marginTop: "4px" }}
+                onClick={() => handleSelectQuality(lvl.id)}
+              >
+                <span>{lvl.label}</span>
+                {currentLevelIdx === lvl.id && <span>✓</span>}
+              </button>
+            ))}
+          </div>
+
+          <hr style={{ border: 0, borderTop: "1px solid rgba(255, 255, 255, 0.1)", margin: "2px 0" }} />
+
+          {/* Speed */}
+          <div>
+            <div style={{ fontSize: "11px", color: "var(--t2)", marginBottom: "6px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Playback Speed
+            </div>
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+              {[0.5, 0.75, 1, 1.25, 1.5, 2].map((s) => (
+                <button
+                  key={`m-spd-${s}`}
+                  type="button"
+                  style={{
+                    flex: "1 1 44px",
+                    height: "44px",
+                    borderRadius: "10px",
+                    background: speed === s ? "rgba(99, 102, 241, 0.4)" : "rgba(255,255,255,0.08)",
+                    border: speed === s ? "1px solid #6366f1" : "none",
+                    color: "#fff",
+                    fontWeight: speed === s ? 700 : 500,
+                    cursor: "pointer",
+                  }}
+                  onClick={() => {
+                    setSpeed(s);
+                    if (videoRef.current) videoRef.current.playbackRate = s;
+                    showToast(`Speed ${s === 1 ? "normal" : `${s}×`}`);
+                  }}
+                >
+                  {s}x
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Zoom */}
+          <div>
+            <div style={{ fontSize: "11px", color: "var(--t2)", marginBottom: "6px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Video Aspect & Zoom
+            </div>
+            <div style={{ display: "flex", gap: "6px" }}>
+              {[
+                { id: 0, label: "Fit" },
+                { id: 2, label: "Fill" },
+                { id: 1, label: "Zoom 1.34x" },
+              ].map((z) => (
+                <button
+                  key={`m-zoom-${z.id}`}
+                  type="button"
+                  style={{
+                    flex: 1,
+                    height: "44px",
+                    borderRadius: "10px",
+                    background: zoom === z.id ? "rgba(99, 102, 241, 0.4)" : "rgba(255,255,255,0.08)",
+                    border: zoom === z.id ? "1px solid #6366f1" : "none",
+                    color: "#fff",
+                    fontWeight: zoom === z.id ? 700 : 500,
+                    cursor: "pointer",
+                  }}
+                  onClick={() => {
+                    setZoom(z.id);
+                    showToast(`Zoom: ${z.label}`);
+                  }}
+                >
+                  {z.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <hr style={{ border: 0, borderTop: "1px solid rgba(255, 255, 255, 0.1)", margin: "2px 0" }} />
+
+          {/* Picture in Picture & Native Fullscreen */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <button
+              type="button"
+              className="mobile-sheet-btn"
+              onClick={() => {
+                setIsCtlOverflowOpen(false);
+                handleTogglePiP();
+              }}
+            >
+              <span>Picture-in-Picture</span>
+            </button>
+
+            {videoRef.current && (videoRef.current as any).webkitEnterFullscreen && (
+              <button
+                type="button"
+                className="mobile-sheet-btn"
+                onClick={() => {
+                  setIsCtlOverflowOpen(false);
+                  try {
+                    (videoRef.current as any).webkitEnterFullscreen();
+                  } catch {
+                    setIsPseudoFullscreen(true);
+                  }
+                }}
+              >
+                <span>Native iOS Video Player (Note: loses custom overlays)</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </BottomSheet>
+
+      {/* Subtitle Settings BottomSheet (Max 55% so subtitle remains visible above) */}
+      <BottomSheet
+        isOpen={isSubSettingsOpen}
+        onClose={() => setIsSubSettingsOpen(false)}
+        title="Subtitle Settings"
+        maxHeight="55dvh"
+      >
+        <SubtitleSettingsPanel
+          settings={subSettings}
+          onChange={(updated) => {
+            setSubSettings(updated);
+            saveSubtitleSettings(updated);
+          }}
+          onBack={() => setIsSubSettingsOpen(false)}
+          onClose={() => setIsSubSettingsOpen(false)}
+        />
+      </BottomSheet>
+
+      {/* Settings Modal */}
+      <SettingsModal
+        room={room}
+        isOpen={isSettingsModalOpen}
+        isHost={isHost}
+        onClose={() => setIsSettingsModalOpen(false)}
+        onUpdateSettings={handleUpdateSettings}
+        onUpdateTitle={handleUpdateTitle}
+        onEndRoom={handleEndRoom}
+      />
+
+      {/* Participant Host Actions BottomSheet */}
+      <BottomSheet
+        isOpen={!!selectedParticipantForMenu}
+        onClose={() => setSelectedParticipantForMenu(null)}
+        title={selectedParticipantForMenu ? `Manage ${selectedParticipantForMenu.displayName}` : "Participant"}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <button
+            type="button"
+            className="mobile-sheet-btn"
+            onClick={() => {
+              showToast(`${selectedParticipantForMenu?.displayName} marked as co-host`);
+              setSelectedParticipantForMenu(null);
+            }}
+          >
+            <span>Make Co-Host</span>
+          </button>
+
+          <button
+            type="button"
+            className="mobile-sheet-btn"
+            onClick={() => {
+              showToast(`Host privileges transferred to ${selectedParticipantForMenu?.displayName}`);
+              setSelectedParticipantForMenu(null);
+            }}
+          >
+            <span>Make Host</span>
+          </button>
+
+          <hr style={{ border: 0, borderTop: "1px solid rgba(255, 255, 255, 0.1)", margin: "4px 0" }} />
+
+          <button
+            type="button"
+            className="mobile-sheet-btn destructive"
+            onClick={() => {
+              if (selectedParticipantForMenu) {
+                handleKickParticipant(selectedParticipantForMenu.id);
+                setSelectedParticipantForMenu(null);
+              }
+            }}
+          >
+            <span>Remove from Room</span>
+          </button>
+        </div>
+      </BottomSheet>
+
+      {/* Floating Button for Landscape Slide-over Drawer */}
+      <button
+        type="button"
+        className="landscape-drawer-toggle"
+        aria-label="Toggle chat & video panel"
+        onClick={() => setIsLandscapeDrawerOpen((prev) => !prev)}
+      >
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
+          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+        </svg>
+      </button>
 
       <WebRTCDebugPanel />
     </div>
