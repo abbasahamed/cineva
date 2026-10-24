@@ -1752,7 +1752,38 @@ Measured using automated end-to-end Playwright Chrome benchmark (`scripts/verify
 | **Host Network Check** | Upload probe & viewer estimate | **40.3 Mbps**, supports ~10 viewers at 1080p | **PASS ✅** |
 | **Unit Test Suite (@cineva/web)** | All unit tests passing | **11 test files, 112 passed** | **PASS ✅** |
 | **Unit Test Suite (@cineva/server)** | All unit tests passing | **17 test files, 134 passed** | **PASS ✅** |
+## Mobile Layout Fix & Audit (Phones & Tablets)
 
-
-
+### STEP 1: Diagnosis & Empirical Evidence (Zero Code Changes)
+1. **Viewport Meta Check**:
+   - Confirmed in `apps/web/index.html`:
+     ```html
+     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+     ```
+     Viewport tag is properly configured.
+2. **Empirical Measurements via Playwright**:
+   - Evaluated DOM bounding boxes across Pixel 9 (412×915), iPhone 15 (393×852), and Small Phone (360×640) for both Empty State and Playing State using `scripts/diagnose-mobile-layout.mjs`.
+   - `document.documentElement.scrollWidth` reported matching `innerWidth` (412px, 393px, 360px) **only** because `.room-shell` possessed `width: 100vw; overflow: hidden;`. This artificially clipped the overflow at the viewport boundary, hiding the symptom while severely truncating page contents.
+   - **Widest Offending Elements Across Devices**:
+     - Empty Room State:
+       - `<header class="top gl">`: width **489 px**, right: **505 px** (clipped on 412/393/360 px viewports)
+       - `<div id="main" class="main">`: width **489 px**, right: **505 px**
+       - `<section id="stage" class="stage">`: width **489 px**, right: **505 px**
+       - `<aside class="side gl">`: width **489 px**, right: **505 px**
+       - `<div id="empty" class="empty">`: width **489 px**, right: **505 px**
+     - Playing Room State:
+       - `<header class="top gl">`: width **549 px**, right: **565 px** (exceeds 412 px viewport by **153 px**)
+       - `<div id="main" class="main">`: width **549 px**, right: **565 px**
+       - `<section id="stage" class="stage">`: width **549 px**, right: **565 px**
+       - `<aside class="side gl">`: width **549 px**, right: **565 px**
+       - `<div id="pc" class="pane">`: width **549 px**, right: **565 px**
+       - `<div id="ctl" class="ctl gl">`: width **517 px**, right: **549 px**
+       - `<div id="grid" class="grid">`: width **517 px**, right: **549 px**
+       - `<div id="seg" class="seg">`: width **517 px**, right: **549 px**
+3. **Root Causes Identified**:
+   - **Root Cause 1: Top Bar Intrinsic Width (`header.top`)**: `header.top` has `display: flex; gap: 12px;` containing `.mk` (30px), `.brand` (~50px), `.sep`, `.title` (no truncation / `white-space: nowrap`), `.tag`, `.sp`, and 4 standalone buttons (`Invite #inv`, `People #cnt`, `Sidebar #sb`, `Settings #st`, `Leave #lv`). Total uncollapsed intrinsic width is 549px.
+   - **Root Cause 2: Unresponsive Two-Column Desktop Grid (`div.main`)**: `.main` uses `display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px;` in `apps/web/src/index.css` without a mobile media query. It unconditionally lays out a 340px sidebar column side-by-side with the stage.
+   - **Root Cause 3: Control Bar Row (`#ctl .cr`) Overflow**: Control bar contains 14 buttons and timecode display in a single flex row without wrapping or mobile collapse, demanding ~517px minimum width.
+   - **Root Cause 4: Call Grid (`#grid`) and Controls**: The video call grid and dock lack mobile responsive layouts (such as horizontal snap-scrolling strip or 2-column collapse), stretching the sidebar pane.
+   - **Root Cause 5: Missing Safe-Area & Mobile Breakpoint Abstraction**: The watch room lacked a clean `< 900px` mobile/tablet spec ensuring single-column layout, sticky 16:9 stage, compact 52px top bar with overflow sheet, 44×44px touch targets, and segmented tabbed panel.
 
