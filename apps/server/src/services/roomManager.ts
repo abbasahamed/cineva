@@ -25,7 +25,8 @@ export class RoomManager {
   async pruneStaleRooms(): Promise<number> {
     try {
       const now = new Date();
-      const offlineThreshold = new Date(Date.now() - 15000);
+      const gracePeriodMs = CONFIG.ROOM_GRACE_PERIOD_MS || 30000;
+      const offlineThreshold = new Date(Date.now() - gracePeriodMs);
 
       // 1. Expired active rooms
       const expiredRooms = await prisma.room.findMany({
@@ -37,9 +38,11 @@ export class RoomManager {
       });
 
       // 2. Active rooms with 0 participants or where all participants are offline
+      // Never reap newly created rooms that are younger than the grace period
       const activeRooms = await prisma.room.findMany({
         where: {
           status: 'active',
+          createdAt: { lt: offlineThreshold },
         },
         include: {
           participants: true,
@@ -57,9 +60,9 @@ export class RoomManager {
           continue;
         }
 
-        // Check if ANY participant in the room has been seen in the last 15s AND has isOnline true
+        // Check if ANY participant in the room has been seen in the grace period or is online
         const anyActive = r.participants.some(
-          (p) => p.isOnline && new Date(p.lastSeenAt).getTime() >= Date.now() - 15000
+          (p) => p.isOnline || new Date(p.lastSeenAt).getTime() >= Date.now() - gracePeriodMs
         );
 
         if (!anyActive) {
@@ -67,9 +70,9 @@ export class RoomManager {
           continue;
         }
 
-        // Check if host specifically is active
+        // Check if host specifically is active (online or within grace period)
         const host = r.participants.find((p) => p.isHost || p.sessionId === r.hostSessionId);
-        const isHostActive = host && host.isOnline && new Date(host.lastSeenAt).getTime() >= Date.now() - 15000;
+        const isHostActive = host && (host.isOnline || new Date(host.lastSeenAt).getTime() >= Date.now() - gracePeriodMs);
         if (!isHostActive) {
           roomsToEnd.add(r.id);
         }
@@ -422,23 +425,30 @@ export class RoomManager {
   }
 
   /**
-   * Retrieves active participants list for a room.
+   * Retrieves active participants list for a room, filtered to online users and deduped by sessionId.
    */
   async getParticipants(roomId: string): Promise<ParticipantInfo[]> {
     const participants = await prisma.participant.findMany({
-      where: { roomId },
+      where: { roomId, isOnline: true },
       orderBy: [{ isHost: 'desc' }, { joinedAt: 'asc' }],
     });
 
-    return participants.map((p) => ({
-      id: p.id,
-      sessionId: p.sessionId,
-      displayName: p.displayName,
-      isHost: p.isHost,
-      joinedAt: p.joinedAt.toISOString(),
-      lastSeenAt: p.lastSeenAt.toISOString(),
-      isOnline: p.isOnline,
-    }));
+    const deduped = new Map<string, ParticipantInfo>();
+    for (const p of participants) {
+      if (!deduped.has(p.sessionId)) {
+        deduped.set(p.sessionId, {
+          id: p.id,
+          sessionId: p.sessionId,
+          displayName: p.displayName,
+          isHost: p.isHost,
+          joinedAt: p.joinedAt.toISOString(),
+          lastSeenAt: p.lastSeenAt.toISOString(),
+          isOnline: p.isOnline,
+        });
+      }
+    }
+
+    return Array.from(deduped.values());
   }
 
   /**

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { socketService } from '../services/socket.js';
-import { abortRoom, sendAbortBeacon } from '../services/api.js';
+import { abortRoom } from '../services/api.js';
 import { srtToVtt } from '../utils/subtitleUtils.js';
 import {
   PlaybackState,
@@ -19,6 +19,17 @@ interface UseSyncWatchProps {
   roomCode: string;
   displayName: string;
   sessionId: string;
+}
+
+function dedupeParticipants(list: ParticipantInfo[]): ParticipantInfo[] {
+  if (!Array.isArray(list)) return [];
+  const map = new Map<string, ParticipantInfo>();
+  for (const p of list) {
+    if (p && p.sessionId && p.isOnline !== false) {
+      map.set(p.sessionId, p);
+    }
+  }
+  return Array.from(map.values());
 }
 
 export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchProps) {
@@ -155,7 +166,7 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
     const onRoomState = (snapshot: RoomStateSnapshot) => {
       setConnectionStatus('connected');
       setRoom(snapshot.room);
-      setParticipants(snapshot.participants);
+      setParticipants(dedupeParticipants(snapshot.participants));
 
       // Authoritative Host Determination:
       // 1. Check if the authoritative room.hostSessionId matches the client sessionId
@@ -191,8 +202,9 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
     };
 
     const onParticipantJoined = (data: { participant: ParticipantInfo; participants: ParticipantInfo[] }) => {
-      setParticipants(data.participants);
-      const me = data.participants.find((p) => p.sessionId === sessionId);
+      const deduped = dedupeParticipants(data.participants);
+      setParticipants(deduped);
+      const me = deduped.find((p) => p.sessionId === sessionId);
       if (me) {
         const hostStatus = me.isHost || isHostRef.current;
         setIsHost(hostStatus);
@@ -201,8 +213,9 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
     };
 
     const onParticipantLeft = (data: { sessionId: string; participants: ParticipantInfo[] }) => {
-      setParticipants(data.participants);
-      const me = data.participants.find((p) => p.sessionId === sessionId);
+      const deduped = dedupeParticipants(data.participants);
+      setParticipants(deduped);
+      const me = deduped.find((p) => p.sessionId === sessionId);
       if (me) {
         const hostStatus = me.isHost || isHostRef.current;
         setIsHost(hostStatus);
@@ -211,8 +224,9 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
     };
 
     const onParticipantKicked = (data: { kickedParticipantId: string; participants: ParticipantInfo[] }) => {
-      setParticipants(data.participants);
-      const myId = participants.find((p) => p.sessionId === sessionId)?.id;
+      const deduped = dedupeParticipants(data.participants);
+      setParticipants(deduped);
+      const myId = deduped.find((p) => p.sessionId === sessionId)?.id;
       if (data.kickedParticipantId === myId) {
         setConnectionStatus('ended');
         setErrorMessage('You have been removed from this room by the host.');
@@ -667,20 +681,7 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
     setConnectionStatus('ended');
   }, [room?.id, sessionId]);
 
-  // When the host navigates away, closes the tab, or unloads the window, send abort beacon immediately
-  useEffect(() => {
-    const handleUnload = () => {
-      if (isHostRef.current && room?.id && sessionId) {
-        sendAbortBeacon(room.id, sessionId);
-      }
-    };
-    window.addEventListener('beforeunload', handleUnload);
-    window.addEventListener('pagehide', handleUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleUnload);
-      window.removeEventListener('pagehide', handleUnload);
-    };
-  }, [room?.id, sessionId]);
+
 
   const handleMediaRetry = useCallback(() => {
     socketService.emitMediaRetry();
