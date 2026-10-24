@@ -1816,3 +1816,30 @@ Measured using automated end-to-end Playwright Chrome benchmark (`scripts/verify
    - **Desktop (1280×800)**: Exactly 0 `div.mobile-tabs-area`, 1 `aside.side`, 0 `landscape-drawer-toggle`, 1 video tile, 1 chat form, 0 duplicate IDs.
    - **Landscape Phone (844×390)**: Exactly 1 `div.mobile-tabs-area`, 0 `aside.side`, 1 `landscape-drawer-toggle`, 0 duplicate IDs.
    - **Console Guard**: 0 console errors, 0 console warnings, 0 page errors.
+
+### MOBILE ROUND 2: STEPS 3 & 4 — Mobile Grid Skeleton & Container Query Empty State
+1. **Grid Skeleton & CSS Custom Properties**:
+   - Updated `.room-shell` under `@media (max-width: 899px)`:
+     - Defined `--topbar-h: 52px; --tabs-h: 48px;`.
+     - Set `height: var(--vvh, 100dvh); max-height: var(--vvh, 100dvh);`.
+     - Configured CSS Grid layout: `grid-template-rows: var(--topbar-h) auto minmax(0, 1fr); gap: 8px; overflow: hidden;`.
+     - Set `.top { grid-row: 1; height: var(--topbar-h); min-height: var(--topbar-h); }`.
+     - Set `.main { display: contents !important; }` so `.stage` (row 2) and `.mobile-tabs-area` (row 3) sit directly in the parent grid.
+     - Set `.stage`: `aspect-ratio: 16 / 9; max-height: 40dvh; container-type: size; border-radius: 18px; overflow: hidden; position: relative;`.
+     - Enforced `input, textarea, select { font-size: 16px !important; }` to eliminate iOS Safari virtual keyboard auto-zoom.
+2. **Container Query Empty State (`@container (max-height: 300px)`)**:
+   - Styled `.stage .empty` under container query:
+     - Scaled ring icon to 40×40px with 2px margin.
+     - Scaled h1 heading to 18px with tight line-height (1.2).
+     - Hid long descriptive paragraph (`p { display: none !important; }`) and small codec footnote (`small { display: none !important; }`).
+     - Arranged action buttons in a responsive 2-column grid (`repeat(auto-fit, minmax(110px, 1fr))`) with 44px touch targets.
+     - Kept "Try a sample" guarded by `import.meta.env.DEV`.
+3. **Automated Verification Across Viewports (`scripts/verify-step3-step4.mjs`)**:
+   - Evaluated DOM layout and bounding boxes across 4 mobile devices:
+     - Pixel 9 (412×924): Stage 396×222.75px (aspect 1.778), Ring 40×40px, h1 18px, 0 clipped children.
+     - iPhone 15 (393×852): Stage 377×212.06px (aspect 1.778), Ring 40×40px, h1 18px, 0 clipped children.
+     - Small Phone (360×640): Stage 344×193.5px (aspect 1.778), Ring 40×40px, h1 18px, 0 clipped children.
+     - Minimum Phone (320×568): Stage 310.88×174.86px (aspect 1.778), Ring 40×40px, h1 18px, 0 clipped children.
+   - Stage height verified <= 40dvh on all devices.
+   - All child elements strictly bounded within `.stage` with ZERO clipping.
+   - Console guards clean across all test runs.
