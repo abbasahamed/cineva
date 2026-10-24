@@ -22,6 +22,7 @@ import {
 import Hls from "hls.js";
 import { SOCKET_EVENTS } from "@cineva/shared";
 import { socketService } from "../services/socket.js";
+import { attachSampleMedia } from "../services/api.js";
 import {
   formatAudioTrackList,
   formatSubtitleTrackList,
@@ -779,11 +780,20 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
         }
       })
       .catch((err) => {
-        console.warn("Public invite URL not yet discovered:", err?.message);
+        console.debug("Public invite URL not yet discovered:", err?.message);
       });
     return () => {
       active = false;
     };
+  }, [roomCode]);
+
+  const handleTrySample = useCallback(async () => {
+    if (!roomCode) return;
+    try {
+      await attachSampleMedia(roomCode);
+    } catch (err: any) {
+      console.debug("Failed to attach sample media:", err);
+    }
   }, [roomCode]);
 
   const showToast = useCallback((msg: string) => {
@@ -1845,9 +1855,11 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                 <button type="button" className="b p" id="add" onClick={() => setIsUploadOpen(true)}>
                   Choose a file
                 </button>
-                <button type="button" className="b" id="smp" onClick={handleMediaRetry}>
-                  Try a sample
-                </button>
+                {import.meta.env.DEV && (
+                  <button type="button" className="b" id="smp" onClick={handleTrySample}>
+                    Try a sample
+                  </button>
+                )}
               </div>
               <small>MKV, MP4, WebM and MOV</small>
             </div>

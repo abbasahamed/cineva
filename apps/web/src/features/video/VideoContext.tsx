@@ -10,6 +10,7 @@ import {
 } from '@cineva/shared';
 import { VideoCallManager } from './videoCallManager.js';
 import { VideoPeerDisplayState } from './videoCallTypes.js';
+import { RemoteAudioRenderer } from './RemoteAudioRenderer.js';
 
 interface VideoContextValue {
   isCameraOn: boolean;
@@ -20,6 +21,10 @@ interface VideoContextValue {
   allPeers: VideoPeerDisplayState[];
   currentParticipantId?: string;
   currentDisplayName?: string;
+  participantVolumes: Map<string, number>;
+  participantMutedLocally: Map<string, boolean>;
+  setParticipantVolume: (participantId: string, volume: number) => void;
+  toggleParticipantLocalMute: (participantId: string) => void;
   toggleCamera: () => Promise<void>;
   toggleMute: () => Promise<void>;
   dismissError: () => void;
@@ -47,6 +52,15 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
 
+  // Independent per-remote-participant volume state (0 to 100, default 100)
+  const [participantVolumes, setParticipantVolumes] = useState<Map<string, number>>(new Map());
+  // Independent per-remote-participant local mute state (default unmuted)
+  const [participantMutedLocally, setParticipantMutedLocally] = useState<Map<string, boolean>>(new Map());
+
+  // Track if user explicitly muted to avoid auto-unmuting
+  const hasUserMutedExplicitlyRef = useRef<boolean>(false);
+  const hasAttemptedAutoMicRef = useRef<boolean>(false);
+
   // Map of participantId -> VideoPeerDisplayState (including active streams and debug info)
   const [remotePeers, setRemotePeers] = useState<Map<string, VideoPeerDisplayState>>(new Map());
 
@@ -61,58 +75,61 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
       return managerRef.current;
     }
 
-    const mgr = new VideoCallManager({
-      onRemoteStream: (participantId, stream) => {
-        console.log('[VideoContext DIAG] onRemoteStream received', {
-          participantId,
-          streamId: stream.id,
-          videoTracks: stream.getVideoTracks().length,
-          audioTracks: stream.getAudioTracks().length,
-        });
-        setRemotePeers((prev) => {
-          const existing = prev.get(participantId);
-          const next = new Map(prev);
-          next.set(participantId, {
+    const mgr = new VideoCallManager(
+      {
+        onRemoteStream: (participantId, stream) => {
+          console.log('[VideoContext DIAG] onRemoteStream received', {
             participantId,
-            displayName: existing?.displayName || 'Friend',
-            isLocal: false,
-            isMuted: existing?.isMuted ?? false,
-            isCameraOff: false,
-            connectionState: 'connected',
-            stream,
-            peerDebugId: `PC-${currentParticipantId || 'anon'}-${participantId}`,
+            streamId: stream.id,
+            videoTracks: stream.getVideoTracks().length,
+            audioTracks: stream.getAudioTracks().length,
           });
-          return next;
-        });
-      },
-      onRemotePeerLeft: (participantId) => {
-        setRemotePeers((prev) => {
-          if (!prev.has(participantId)) return prev;
-          const next = new Map(prev);
-          next.delete(participantId);
-          return next;
-        });
-      },
-      onConnectionStateChange: (participantId, connectionState) => {
-        console.log('[VideoContext DIAG] onConnectionStateChange', {
-          participantId,
-          connectionState,
-        });
-        setRemotePeers((prev) => {
-          const existing = prev.get(participantId);
-          if (!existing) return prev;
-          const next = new Map(prev);
-          next.set(participantId, {
-            ...existing,
+          setRemotePeers((prev) => {
+            const existing = prev.get(participantId);
+            const next = new Map(prev);
+            next.set(participantId, {
+              participantId,
+              displayName: existing?.displayName || 'Friend',
+              isLocal: false,
+              isMuted: existing?.isMuted ?? false,
+              isCameraOff: existing?.isCameraOff ?? true,
+              connectionState: 'connected',
+              stream,
+              peerDebugId: `PC-${currentParticipantId || 'anon'}-${participantId}`,
+            });
+            return next;
+          });
+        },
+        onRemotePeerLeft: (participantId) => {
+          setRemotePeers((prev) => {
+            if (!prev.has(participantId)) return prev;
+            const next = new Map(prev);
+            next.delete(participantId);
+            return next;
+          });
+        },
+        onConnectionStateChange: (participantId, connectionState) => {
+          console.log('[VideoContext DIAG] onConnectionStateChange', {
+            participantId,
             connectionState,
           });
-          return next;
-        });
+          setRemotePeers((prev) => {
+            const existing = prev.get(participantId);
+            if (!existing) return prev;
+            const next = new Map(prev);
+            next.set(participantId, {
+              ...existing,
+              connectionState,
+            });
+            return next;
+          });
+        },
+        onError: (err) => {
+          console.warn('WebRTC warning:', err);
+        },
       },
-      onError: (err) => {
-        console.warn('WebRTC warning:', err);
-      },
-    }, currentParticipantId || '');
+      currentParticipantId || ''
+    );
 
     managerRef.current = mgr;
     return mgr;
@@ -126,75 +143,155 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
     setPermissionError(null);
   }, []);
 
+  const setParticipantVolume = useCallback((participantId: string, volume: number) => {
+    setParticipantVolumes((prev) => {
+      const next = new Map(prev);
+      next.set(participantId, Math.max(0, Math.min(100, volume)));
+      return next;
+    });
+  }, []);
+
+  const toggleParticipantLocalMute = useCallback((participantId: string) => {
+    setParticipantMutedLocally((prev) => {
+      const next = new Map(prev);
+      const current = next.get(participantId) || false;
+      next.set(participantId, !current);
+      return next;
+    });
+  }, []);
+
+  // 1. Microphone enabled by default when participant ID is known
+  useEffect(() => {
+    if (!currentParticipantId) return;
+
+    const mgr = getOrCreateManager();
+    mgr.setLocalParticipantId(currentParticipantId);
+
+    // Announce video/voice presence
+    socketService.emitVideoJoin();
+
+    if (!hasAttemptedAutoMicRef.current && !hasUserMutedExplicitlyRef.current) {
+      hasAttemptedAutoMicRef.current = true;
+      mgr
+        .enableMic()
+        .then(() => {
+          setIsMuted(false);
+          socketService.emitVideoStateUpdate({ isMuted: false, isCameraOff: true });
+        })
+        .catch((err: any) => {
+          if (err?.name !== 'NotAllowedError' && err?.name !== 'PermissionDeniedError') {
+            console.warn('[VideoContext] Auto-mic acquisition failed:', err);
+          }
+          setIsMuted(true);
+          if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+            setPermissionError('Microphone permission was denied. Click Mic anytime to enable audio.');
+          } else if (err?.name === 'NotFoundError' || err?.name === 'DevicesNotFoundError') {
+            setPermissionError('No microphone found on this device.');
+          }
+        });
+    }
+  }, [currentParticipantId, getOrCreateManager]);
+
+  // 2. Camera toggle (Reliable camera on/off with mutex against concurrent invocations)
+  const isTogglingCameraRef = useRef<boolean>(false);
+
   const toggleCamera = useCallback(async () => {
-    if (!VideoCallManager.isSupported()) {
-      setPermissionError('WebRTC camera video is not supported in this browser.');
+    if (isTogglingCameraRef.current) {
+      console.warn('[VideoContext] Camera toggle already in flight, ignoring duplicate call.');
       return;
     }
 
+    if (!VideoCallManager.isSupported()) {
+      setPermissionError('[NotSupportedError] WebRTC camera video is not supported in this browser.');
+      return;
+    }
+
+    isTogglingCameraRef.current = true;
     const mgr = getOrCreateManager();
 
-    if (isCameraOn) {
-      // Turn camera OFF
-      mgr.disableCamera();
-      setIsCameraOn(false);
-      socketService.emitVideoStateUpdate({ isCameraOff: true });
-    } else {
-      // Turn camera ON
-      setIsConnecting(true);
-      setPermissionError(null);
-      try {
-        await mgr.enableCamera();
+    try {
+      if (isCameraOn) {
+        // Turn camera OFF
+        mgr.disableCamera();
+        setIsCameraOn(false);
+        socketService.emitVideoStateUpdate({ isCameraOff: true, isMuted });
+      } else {
+        // Turn camera ON
+        setIsConnecting(true);
+        setPermissionError(null);
+
+        const localStream = await mgr.enableCamera();
+        const hasLiveVideo = localStream.getVideoTracks().some((t) => t.readyState === 'live');
+        if (!hasLiveVideo) {
+          throw new Error('[ZeroTracksError] Camera acquisition finished without any live video tracks.');
+        }
+
         setIsCameraOn(true);
         setIsConnecting(false);
 
         // Notify server that our camera is now active
-        socketService.emitVideoJoin();
         socketService.emitVideoStateUpdate({ isCameraOff: false, isMuted });
 
-        // Connect to any known remote peers with active media
+        // Connect or renegotiate with any known remote peers
         for (const peerId of remotePeers.keys()) {
-          mgr.initiateConnectionToPeer(peerId);
-        }
-      } catch (err: any) {
-        setIsConnecting(false);
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          setPermissionError('Camera permission was denied. Please allow camera access in browser settings.');
-        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-          setPermissionError('No camera found on this device.');
-        } else {
-          setPermissionError(err.message || 'Unable to access camera.');
+          mgr.initiateConnectionToPeer(peerId).catch(() => {});
         }
       }
+    } catch (err: any) {
+      setIsConnecting(false);
+      console.error('[VideoContext] Camera toggle failed:', {
+        name: err?.name,
+        message: err?.message,
+        constraint: (err as any)?.constraint,
+        stack: err?.stack,
+        rawError: err,
+      });
+
+      const displayMsg = err?.message || `[${err?.name || 'Error'}] Unable to access camera.`;
+      setPermissionError(displayMsg);
+    } finally {
+      isTogglingCameraRef.current = false;
     }
   }, [isCameraOn, isMuted, getOrCreateManager, remotePeers]);
 
+  // 3. Microphone toggle (Mute / Unmute)
   const toggleMute = useCallback(async () => {
     const mgr = getOrCreateManager();
     const nextMuted = !isMuted;
-    setIsMuted(nextMuted);
 
     if (nextMuted) {
+      hasUserMutedExplicitlyRef.current = true;
       mgr.disableMic();
+      setIsMuted(true);
+      socketService.emitVideoStateUpdate({ isMuted: true, isCameraOff: !isCameraOn });
     } else {
+      hasUserMutedExplicitlyRef.current = false;
       try {
         await mgr.enableMic();
+        setIsMuted(false);
+        setPermissionError(null);
+        socketService.emitVideoStateUpdate({ isMuted: false, isCameraOff: !isCameraOn });
       } catch (err: any) {
-        console.warn('Failed to enable mic:', err);
+        setIsMuted(true);
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          setPermissionError('Microphone permission was denied. Please allow microphone access in settings.');
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          setPermissionError('No microphone found on this device.');
+        } else {
+          setPermissionError('Unable to activate microphone.');
+        }
       }
     }
+  }, [isMuted, isCameraOn, getOrCreateManager]);
 
-    socketService.emitVideoStateUpdate({ isMuted: nextMuted });
-  }, [isMuted, getOrCreateManager]);
-
-  // Setup Socket.IO listeners for room video presence & WebRTC signaling
+  // 4. Setup Socket.IO listeners for room video presence & WebRTC signaling
   useEffect(() => {
     const socket = socketService.getSocket();
     if (!socket) return;
 
     const mgr = getOrCreateManager();
 
-    // 1. Initial participants who already have camera on in this room
+    // 1. Initial participants who are in the call
     const handleParticipants = async (data: { participants: VideoParticipant[] }) => {
       console.log('[VideoContext DIAG] handleParticipants received', {
         count: data.participants.length,
@@ -221,7 +318,7 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
         return next;
       });
 
-      // Connect to peers so we can send/receive media (one-way or two-way)
+      // Initiate WebRTC connection to existing participants
       for (const p of data.participants) {
         if (p.participantId !== currentParticipantId) {
           await mgr.initiateConnectionToPeer(p.participantId);
@@ -229,13 +326,8 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
       }
     };
 
-    // 2. A remote peer in the room turned their camera ON
+    // 2. A remote peer joined the call
     const handlePeerJoined = async (data: { participant: VideoParticipant }) => {
-      console.log('[VideoContext DIAG] handlePeerJoined received', {
-        id: data.participant.participantId,
-        displayName: data.participant.displayName,
-        isCameraOff: data.participant.isCameraOff,
-      });
       if (data.participant.participantId === currentParticipantId) return;
 
       setRemotePeers((prev) => {
@@ -256,9 +348,8 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
       });
     };
 
-    // 3. A remote peer turned off media or left
+    // 3. A remote peer left
     const handlePeerLeft = (data: { participantId: string }) => {
-      console.log('[VideoContext DIAG] handlePeerLeft received', data.participantId);
       mgr.closePeerConnection(data.participantId);
       setRemotePeers((prev) => {
         if (!prev.has(data.participantId)) return prev;
@@ -270,13 +361,11 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
 
     // 4. Remote peer updated camera / mic state
     const handlePeerState = (data: RelayedVideoStatePayload) => {
-      console.log('[VideoContext DIAG] handlePeerState received', data);
       setRemotePeers((prev) => {
         const existing = prev.get(data.participantId);
         if (!existing) return prev;
         const next = new Map(prev);
         const stream = existing.stream || mgr.getStream(data.participantId) || null;
-        const hasLiveVideo = !!(stream && stream.getVideoTracks().some((t) => t.readyState === 'live'));
         const nextCameraOff = typeof data.isCameraOff === 'boolean'
           ? data.isCameraOff
           : existing.isCameraOff;
@@ -292,7 +381,6 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
 
     // 5. Inbound SDP Offer
     const handleOffer = async (data: RelayedVideoOfferPayload) => {
-      console.log('[VideoContext DIAG] handleOffer received from', data.fromParticipantId);
       setRemotePeers((prev) => {
         const next = new Map(prev);
         const existing = next.get(data.fromParticipantId);
@@ -302,7 +390,7 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
           displayName: data.fromDisplayName || existing?.displayName || 'Friend',
           isLocal: false,
           isMuted: existing?.isMuted ?? false,
-          isCameraOff: existing?.isCameraOff ?? false,
+          isCameraOff: existing?.isCameraOff ?? true,
           connectionState: existing?.connectionState || (stream ? 'connected' : 'connecting'),
           stream,
           peerDebugId: `PC-${currentParticipantId || 'anon'}-${data.fromParticipantId}`,
@@ -315,7 +403,6 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
 
     // 6. Inbound SDP Answer
     const handleAnswer = async (data: RelayedVideoAnswerPayload) => {
-      console.log('[VideoContext DIAG] handleAnswer received from', data.fromParticipantId);
       await mgr.handleIncomingAnswer(data.fromParticipantId, data.sdp);
     };
 
@@ -343,22 +430,7 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
     };
   }, [currentParticipantId, isCameraOn, getOrCreateManager]);
 
-  // Development React state diagnostic observer (item 8 in requirements)
-  useEffect(() => {
-    for (const [id, peer] of remotePeers.entries()) {
-      console.log('[VideoContext DIAG] remotePeers state entry:', {
-        participantId: id,
-        displayName: peer.displayName,
-        isCameraOff: peer.isCameraOff,
-        connectionState: peer.connectionState,
-        hasStream: Boolean(peer.stream),
-        streamId: peer.stream?.id,
-        videoTrackCount: peer.stream?.getVideoTracks().length || 0,
-      });
-    }
-  }, [remotePeers]);
-
-  // Clean up all hardware tracks on unmount (e.g. leaving watch room)
+  // Clean up all hardware tracks on unmount
   useEffect(() => {
     return () => {
       if (managerRef.current) {
@@ -369,7 +441,6 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
     };
   }, []);
 
-  // Filter peers to only those whose camera is currently ON or who have a live incoming stream
   const cameraPeers = Array.from(remotePeers.values()).filter((p) => {
     if (!p.isCameraOff) return true;
     const s = p.stream || (managerRef.current ? managerRef.current.getStream(p.participantId) : null);
@@ -378,6 +449,7 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
     }
     return false;
   });
+
   const allPeers = Array.from(remotePeers.values());
 
   const getPeerDiagnostics = useCallback((participantId: string) => {
@@ -393,6 +465,10 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
     allPeers,
     currentParticipantId,
     currentDisplayName,
+    participantVolumes,
+    participantMutedLocally,
+    setParticipantVolume,
+    toggleParticipantLocalMute,
     toggleCamera,
     toggleMute,
     dismissError,
@@ -400,7 +476,18 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
     getPeerDiagnostics,
   };
 
-  return <VideoContext.Provider value={contextValue}>{children}</VideoContext.Provider>;
+  return (
+    <VideoContext.Provider value={contextValue}>
+      {children}
+      {/* Persistent Independent Remote Audio Renderer */}
+      <RemoteAudioRenderer
+        peers={allPeers}
+        participantVolumes={participantVolumes}
+        participantMutedLocally={participantMutedLocally}
+        getStream={getStream}
+      />
+    </VideoContext.Provider>
+  );
 };
 
 export function useVideoControls() {
@@ -431,6 +518,12 @@ export function useVideoPeers() {
     allPeers: ctx.allPeers,
     currentDisplayName: ctx.currentDisplayName || 'You',
     currentParticipantId: ctx.currentParticipantId || '',
+    participantVolumes: ctx.participantVolumes,
+    participantMutedLocally: ctx.participantMutedLocally,
+    setParticipantVolume: ctx.setParticipantVolume,
+    toggleParticipantLocalMute: ctx.toggleParticipantLocalMute,
+    toggleCamera: ctx.toggleCamera,
+    toggleMute: ctx.toggleMute,
     getStream: ctx.getStream,
     getPeerDiagnostics: ctx.getPeerDiagnostics,
   };

@@ -29,6 +29,7 @@ export class VideoCallManager {
   private localParticipantId: string = '';
   private isMuted: boolean = false;
   private isCameraOff: boolean = false;
+  private inFlightCameraPromise: Promise<MediaStream> | null = null;
 
   constructor(callbacks: VideoCallManagerCallbacks, localParticipantId: string = '') {
     this.callbacks = callbacks;
@@ -62,101 +63,283 @@ export class VideoCallManager {
     return this.enableCamera();
   }
 
+  /**
+   * Safe entry-point for camera activation with in-flight mutex to prevent
+   * concurrent/duplicate getUserMedia() calls and conflicting track teardowns.
+   */
   public async enableCamera(): Promise<MediaStream> {
+    if (this.inFlightCameraPromise) {
+      console.log('[VideoCallManager] Camera acquisition already in flight; sharing promise.');
+      return this.inFlightCameraPromise;
+    }
+
+    this.inFlightCameraPromise = this.performEnableCamera();
+    try {
+      return await this.inFlightCameraPromise;
+    } finally {
+      this.inFlightCameraPromise = null;
+    }
+  }
+
+  private async performEnableCamera(): Promise<MediaStream> {
     if (!VideoCallManager.isSupported()) {
-      throw new Error('WebRTC is not supported in this browser.');
+      const notSupportedErr = new Error('[NotSupportedError] WebRTC camera video is not supported in this browser.');
+      notSupportedErr.name = 'NotSupportedError';
+      throw notSupportedErr;
     }
 
     try {
-      // Optimal webcam constraints: 1280x720 max, 30fps max
-      const constraints: MediaStreamConstraints = {
-        video: {
-          width: { ideal: 640, max: 1280 },
-          height: { ideal: 480, max: 720 },
-          frameRate: { ideal: 24, max: 30 },
-        },
-        audio: !this.localStream?.getAudioTracks().length
-          ? {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-            }
-          : false,
-      };
+      // 1. If we already have a live, non-ended video track in localStream, reuse it without re-requesting hardware
+      const existingVideoTrack = this.localStream?.getVideoTracks().find((t) => t.readyState === 'live');
+      if (existingVideoTrack) {
+        existingVideoTrack.enabled = true;
+        this.isCameraOff = false;
+        await this.publishVideoTrackToPeers(existingVideoTrack, this.localStream!);
+        return this.localStream!;
+      }
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      // 2. Clean up any prior ended or non-live video tracks (preserves audio tracks untouched)
+      let hadPriorVideoTrack = false;
+      if (this.localStream) {
+        this.localStream.getVideoTracks().forEach((track) => {
+          try {
+            track.stop();
+            hadPriorVideoTrack = true;
+          } catch {}
+          this.localStream!.removeTrack(track);
+        });
+      }
+
+      // Also clean any globally tracked active video tracks across the window
+      if (typeof window !== 'undefined' && (window as any).__cineva_active_video_tracks) {
+        (window as any).__cineva_active_video_tracks.forEach((track: MediaStreamTrack) => {
+          try {
+            track.stop();
+            hadPriorVideoTrack = true;
+          } catch {}
+        });
+        (window as any).__cineva_active_video_tracks.clear();
+      }
+
+      // If a track was just stopped, allow macOS AVFoundation 120ms to release the capture session
+      if (hadPriorVideoTrack) {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+
+      // 3. Verify camera device existence via enumerateDevices if supported
+      let videoDevices: MediaDeviceInfo[] = [];
+      if (typeof navigator?.mediaDevices?.enumerateDevices === 'function') {
+        try {
+          const allDevices = await navigator.mediaDevices.enumerateDevices();
+          videoDevices = allDevices.filter((d) => d.kind === 'videoinput');
+          if (allDevices.length > 0 && videoDevices.length === 0) {
+            const notFoundErr = new Error('No camera found on this device (0 video input devices detected).');
+            notFoundErr.name = 'NotFoundError';
+            throw notFoundErr;
+          }
+        } catch (enumErr: any) {
+          if (enumErr?.name === 'NotFoundError') throw enumErr;
+          console.warn('[VideoCallManager] enumerateDevices pre-check warning:', enumErr);
+        }
+      }
+
+      // 4. Resilient multi-tier camera acquisition waterfall (strictly video, never bundled with audio):
+      // Tier 1: 640x480 ideal (up to 1280x720 / 30fps)
+      // Tier 2: 720p ideal
+      // Tier 3: 480p ideal
+      // Tier 4: video: true (unconstrained default camera)
+      let stream: MediaStream | null = null;
+      let lastError: any = null;
+
+      const attempts: MediaStreamConstraints[] = [
+        {
+          video: {
+            width: { ideal: 640, max: 1280 },
+            height: { ideal: 480, max: 720 },
+            frameRate: { ideal: 24, max: 30 },
+          },
+        },
+        {
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        },
+        {
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+          },
+        },
+        {
+          video: true,
+        },
+      ];
+
+      for (let i = 0; i < attempts.length; i++) {
+        const attemptConstraints = attempts[i];
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(attemptConstraints);
+          if (stream && stream.getVideoTracks().length > 0) {
+            console.log(`[VideoCallManager] Camera acquisition tier ${i + 1} succeeded.`);
+            break;
+          }
+        } catch (err: any) {
+          lastError = err;
+          console.warn(`[VideoCallManager] Camera acquisition tier ${i + 1} failed:`, {
+            errorName: err?.name,
+            errorMessage: err?.message,
+            constraint: (err as any)?.constraint,
+          });
+
+          if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+            break;
+          }
+
+          // On hardware lock / NotReadableError, pause 180ms before next tier to let driver settle
+          if (err?.name === 'NotReadableError' || err?.name === 'TrackStartError') {
+            await new Promise((resolve) => setTimeout(resolve, 180));
+          }
+        }
+      }
+
+      // Tier 5: Explicit deviceId fallback for each discovered video device
+      if (!stream && lastError?.name !== 'NotAllowedError' && videoDevices.length > 0) {
+        for (const dev of videoDevices) {
+          if (!dev.deviceId) continue;
+          for (const constr of [{ deviceId: { exact: dev.deviceId } }, { deviceId: { ideal: dev.deviceId } }]) {
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({ video: constr });
+              if (stream && stream.getVideoTracks().length > 0) {
+                console.log('[VideoCallManager] Camera acquired via deviceId fallback:', dev.label || dev.deviceId);
+                break;
+              }
+            } catch (devErr: any) {
+              lastError = devErr;
+              await new Promise((resolve) => setTimeout(resolve, 150));
+            }
+          }
+          if (stream) break;
+        }
+      }
+
+      if (!stream || stream.getVideoTracks().length === 0) {
+        throw lastError || new Error('No video track returned by media device.');
+      }
+
       const newVideoTrack = stream.getVideoTracks()[0];
-      const newAudioTrack = stream.getAudioTracks()[0];
+
+      // Track globally to prevent orphaned streams across navigation
+      if (typeof window !== 'undefined') {
+        if (!(window as any).__cineva_active_video_tracks) {
+          (window as any).__cineva_active_video_tracks = new Set<MediaStreamTrack>();
+        }
+        if (newVideoTrack) {
+          (window as any).__cineva_active_video_tracks.add(newVideoTrack);
+        }
+      }
 
       const local: MediaStream = this.localStream || (typeof MediaStream !== 'undefined' ? new MediaStream() : (stream as any));
       this.localStream = local;
 
-      if (newAudioTrack && !local.getAudioTracks().length) {
-        newAudioTrack.enabled = !this.isMuted;
-        local.addTrack(newAudioTrack);
-      }
-
-      // Stop and remove old video tracks
+      // Stop and remove any prior video tracks
       local.getVideoTracks().forEach((track) => {
-        try {
-          track.stop();
-        } catch {}
-        local.removeTrack(track);
+        if (track !== newVideoTrack) {
+          try {
+            track.stop();
+          } catch {}
+          local.removeTrack(track);
+        }
       });
 
-      if (newVideoTrack) {
+      if (newVideoTrack && !local.getVideoTracks().includes(newVideoTrack)) {
         local.addTrack(newVideoTrack);
       }
 
       this.isCameraOff = false;
 
-      // Update video sender on all active peer connections without teardown
-      for (const pc of this.peerConnections.values()) {
-        if (!newVideoTrack) continue;
-        const videoTransceiver = typeof pc.getTransceivers === 'function'
-          ? pc.getTransceivers().find(
-              (t) => t.sender.track?.kind === 'video' || t.receiver.track?.kind === 'video'
-            )
-          : null;
-        if (videoTransceiver && videoTransceiver.sender) {
-          try {
-            await videoTransceiver.sender.replaceTrack(newVideoTrack);
-          } catch {
-            pc.addTrack(newVideoTrack, local);
-          }
-          this.applySenderBitrate(videoTransceiver.sender);
-        } else {
-          const videoSender = typeof pc.getSenders === 'function'
-            ? pc.getSenders().find((s) => s.track?.kind === 'video')
-            : null;
-          if (videoSender) {
-            try {
-              await videoSender.replaceTrack(newVideoTrack);
-            } catch {
-              pc.addTrack(newVideoTrack, local);
-            }
-            this.applySenderBitrate(videoSender);
-          } else {
-            const sender = pc.addTrack(newVideoTrack, local);
-            this.applySenderBitrate(sender);
-          }
-        }
-      }
+      // Publish video track to all active peer connections
+      await this.publishVideoTrackToPeers(newVideoTrack, local);
 
       return local;
     } catch (err: any) {
-      if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        // Fallback to audio only if camera hardware is missing
-        try {
-          const audioOnlyStream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true },
-          });
-          this.localStream = audioOnlyStream;
-          this.isCameraOff = true;
-          return audioOnlyStream;
-        } catch {}
+      this.isCameraOff = true;
+      const rawName = err?.name || 'Error';
+      const rawMsg = err?.message || 'Camera acquisition failed.';
+      const rawConstraint = (err as any)?.constraint;
+
+      console.error('[VideoCallManager] Camera initialization error diagnostics:', {
+        name: rawName,
+        message: rawMsg,
+        constraint: rawConstraint,
+        stack: err?.stack,
+        rawError: err,
+      });
+
+      const error = new Error();
+      error.name = rawName;
+      error.stack = err?.stack || error.stack;
+      (error as any).constraint = rawConstraint;
+
+      if (rawName === 'NotFoundError' || rawName === 'DevicesNotFoundError') {
+        error.message = `No camera found on this device. [NotFoundError: ${rawMsg}]`;
+      } else if (rawName === 'NotAllowedError' || rawName === 'PermissionDeniedError') {
+        error.message = `Camera permission was denied. [NotAllowedError: ${rawMsg}]. Please allow camera access in browser and macOS System Settings (Privacy & Security > Camera).`;
+      } else if (rawName === 'OverconstrainedError' || rawName === 'ConstraintNotSatisfiedError') {
+        error.message = `Camera constraints could not be satisfied. [OverconstrainedError: constraint '${rawConstraint || 'unknown'}', ${rawMsg}].`;
+      } else if (rawName === 'NotReadableError' || rawName === 'TrackStartError') {
+        error.message = `Camera hardware failed to start. [NotReadableError: ${rawMsg}]. macOS AVFoundation could not start capture session. Check System Settings > Privacy & Security > Camera or restart Chrome.`;
+      } else if (rawName === 'AbortError') {
+        error.message = `Camera acquisition was aborted. [AbortError: ${rawMsg}]`;
+      } else if (rawName === 'SecurityError') {
+        error.message = `Camera access blocked due to security restrictions. [SecurityError: ${rawMsg}]`;
+      } else {
+        error.message = `[${rawName}] ${rawMsg}`;
       }
-      throw err;
+
+      throw error;
+    }
+  }
+
+  private async publishVideoTrackToPeers(newVideoTrack: MediaStreamTrack, local: MediaStream): Promise<void> {
+    for (const [peerId, pc] of this.peerConnections.entries()) {
+      if (!newVideoTrack) continue;
+      const videoTransceiver = typeof pc.getTransceivers === 'function'
+        ? pc.getTransceivers().find(
+            (t) => t.sender.track?.kind === 'video' || t.receiver.track?.kind === 'video'
+          )
+        : null;
+      if (videoTransceiver && videoTransceiver.sender) {
+        try {
+          if (videoTransceiver.direction !== 'sendrecv') {
+            videoTransceiver.direction = 'sendrecv';
+          }
+          await videoTransceiver.sender.replaceTrack(newVideoTrack);
+        } catch {
+          pc.addTrack(newVideoTrack, local);
+        }
+        this.applySenderBitrate(videoTransceiver.sender);
+      } else {
+        const videoSender = typeof pc.getSenders === 'function'
+          ? pc.getSenders().find((s) => s.track?.kind === 'video')
+          : null;
+        if (videoSender) {
+          try {
+            await videoSender.replaceTrack(newVideoTrack);
+          } catch {
+            pc.addTrack(newVideoTrack, local);
+          }
+          this.applySenderBitrate(videoSender);
+        } else {
+          const sender = pc.addTrack(newVideoTrack, local);
+          this.applySenderBitrate(sender);
+        }
+      }
+
+      // If peer connection is in stable state, negotiate new video track
+      if (pc.signalingState === 'stable') {
+        this.initiateConnectionToPeer(peerId).catch(() => {});
+      }
     }
   }
 
@@ -486,7 +669,7 @@ export class VideoCallManager {
           remoteParticipantId: fromParticipantId,
         });
       } catch (err: any) {
-        console.error('[WebRTC DIAG] ICE_CANDIDATE_ERROR', {
+        console.debug('[WebRTC DIAG] ICE_CANDIDATE_ERROR', {
           errorName: err?.name || 'Error',
           errorMessage: err?.message || String(err),
         });
@@ -593,7 +776,7 @@ export class VideoCallManager {
         .reverse()
         .find((t) => t.receiver.track?.kind === 'video' || t.sender.track?.kind === 'video');
 
-      if (!videoTransceiver && isOfferer && typeof pc.addTransceiver === 'function') {
+      if (!videoTransceiver && typeof pc.addTransceiver === 'function') {
         videoTransceiver = pc.addTransceiver('video', { direction: 'sendrecv' });
       }
 
@@ -614,7 +797,7 @@ export class VideoCallManager {
         .reverse()
         .find((t) => t.receiver.track?.kind === 'audio' || t.sender.track?.kind === 'audio');
 
-      if (!audioTransceiver && isOfferer && typeof pc.addTransceiver === 'function') {
+      if (!audioTransceiver && typeof pc.addTransceiver === 'function') {
         audioTransceiver = pc.addTransceiver('audio', { direction: 'sendrecv' });
       }
 
@@ -815,7 +998,7 @@ export class VideoCallManager {
           remoteParticipantId: participantId,
         });
       } catch (err: any) {
-        console.error('[WebRTC DIAG] ICE_CANDIDATE_ERROR', {
+        console.debug('[WebRTC DIAG] ICE_CANDIDATE_ERROR', {
           errorName: err?.name || 'Error',
           errorMessage: err?.message || String(err),
         });

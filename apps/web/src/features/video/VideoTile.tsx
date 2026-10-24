@@ -118,7 +118,7 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
           updateMetrics();
         })
         .catch((err: any) => {
-          if (err?.name !== 'AbortError') {
+          if (err?.name !== 'AbortError' && err?.name !== 'NotAllowedError') {
             console.warn(
               `[VideoTile] video.play() error for ${participantId || (isLocal ? 'local' : 'unknown')}:`,
               err

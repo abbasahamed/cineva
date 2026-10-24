@@ -1,6 +1,7 @@
 import { prisma } from "../db.js";
 import { Router, Request, Response } from 'express';
 import { roomManager } from '../services/roomManager.js';
+import { mediaStorage } from '../services/mediaStorage.js';
 import { CreateRoomSchema, JoinRoomSchema } from '@cineva/shared';
 
 const router = Router();
@@ -33,6 +34,34 @@ router.post('/demo', async (req: Request, res: Response) => {
     res.status(status).json({ error: err.message || 'Failed to create demo room' });
   }
 });
+
+// POST /api/rooms/:roomCode/sample-media - Attach demo media to room
+router.post('/:roomCode/sample-media', async (req: Request, res: Response) => {
+  try {
+    const rawCode = req.params.roomCode;
+    const roomCode = Array.isArray(rawCode) ? rawCode[0] : rawCode;
+    const room = await roomManager.getRoomByCode(roomCode);
+    if (!room) {
+      res.status(404).json({ error: 'Room not found' });
+      return;
+    }
+    const demoMedia = mediaStorage.ensureDemoMedia();
+    await roomManager.attachMedia(room.id, {
+      title: 'Big Buck Bunny (Sample HD)',
+      filename: demoMedia.filename,
+      mimeType: demoMedia.mimeType,
+      size: demoMedia.size,
+      storageKey: demoMedia.storageKey,
+      duration: 60,
+    });
+    const updated = await roomManager.getRoomInfo(room.id);
+    res.json({ success: true, room: updated });
+  } catch (err: any) {
+    const status = typeof err.statusCode === 'number' ? err.statusCode : 500;
+    res.status(status).json({ error: err.message || 'Failed to attach sample media' });
+  }
+});
+
 
 // GET /api/rooms/:roomCode - Get Room Details or Privacy-Safe Check
 router.get('/:roomCode', async (req: Request, res: Response) => {

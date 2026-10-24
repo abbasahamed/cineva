@@ -23,17 +23,41 @@ export interface UploadProgressInfo {
 }
 
 export async function createRoom(data: CreateRoomInput): Promise<CreateRoomResponse> {
-  const res = await fetch(`${API_BASE}/rooms`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/rooms`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  } catch {
+    throw new Error(
+      "Cannot connect to server. Ensure the backend is running on port 4000 (run 'npm run dev')."
+    );
+  }
 
   if (!res.ok) {
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      throw new Error("Backend server is offline. Please make sure 'npm run dev' is running.");
+    }
     const err = await res.json().catch(() => ({ error: "Failed to create room" }));
     throw new Error(err.error || "Failed to create room");
   }
 
+  return res.json();
+}
+
+/**
+ * Attaches synthetic demo/sample media to an existing room in development.
+ */
+export async function attachSampleMedia(roomCode: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/rooms/${encodeURIComponent(roomCode)}/sample-media`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    throw new Error("Failed to attach sample media to room");
+  }
   return res.json();
 }
 
@@ -104,13 +128,23 @@ export function sendAbortBeacon(roomId: string, sessionId: string): void {
 }
 
 export async function createDemoRoom(displayName: string = "Host"): Promise<CreateRoomResponse> {
-  const res = await fetch(`${API_BASE}/rooms/demo`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ displayName }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/rooms/demo`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ displayName }),
+    });
+  } catch {
+    throw new Error(
+      "Cannot connect to server. Ensure the backend is running on port 4000 (run 'npm run dev')."
+    );
+  }
 
   if (!res.ok) {
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      throw new Error("Backend server is offline. Please make sure 'npm run dev' is running.");
+    }
     const err = await res.json().catch(() => ({ error: "Failed to create demo room" }));
     throw new Error(err.error || "Failed to create demo room");
   }
