@@ -1841,5 +1841,29 @@ Measured using automated end-to-end Playwright Chrome benchmark (`scripts/verify
      - Small Phone (360×640): Stage 344×193.5px (aspect 1.778), Ring 40×40px, h1 18px, 0 clipped children.
      - Minimum Phone (320×568): Stage 310.88×174.86px (aspect 1.778), Ring 40×40px, h1 18px, 0 clipped children.
    - Stage height verified <= 40dvh on all devices.
-   - All child elements strictly bounded within `.stage` with ZERO clipping.
    - Console guards clean across all test runs.
+
+### MOBILE ROUND 2: STEP 5 — Playing State Stage Controls, Gestures & Overlays
+1. **Glass Control Bar (8px from edges)**:
+   - Configured `.ctl, #ctl` positioned 8px from bottom, left, and right within `.stage`.
+   - Row 1: Seek scrubber with 36px touch target (`.seek`), 4px track, and always-visible thumb indicator (`.pl::after`).
+   - Row 2: Controls row with:
+     - Play/Pause: 44×44px touch target (`#ctl .cb.pp`).
+     - Back 10s (`#bk`) and Forward 10s (`#fw`): 36×36px visual footprint with 44×44px touch target.
+     - Timecode (`#tm`): 11px font with tabular numbers.
+     - Flex spacer (`.sp`).
+     - More Options bottom sheet button (`#ctl-more-btn`): opens playback & media bottom sheet.
+     - Fullscreen (`#fs`): triggers Android `screen.orientation.lock("landscape")` and iOS pseudo-fullscreen.
+     - Hidden on mobile: inline volume slider (`.vw`), audio, subs, quality, speed, zoom, react, pip, shortcuts buttons (delegated to sheet).
+2. **Top Overlay Corners (`.ovl`)**:
+   - Left: sync pill with media title, latency dot, and sync offset (`< 15ms` displays `In sync`, else `X ms sync`), max-width constrained with ellipsis.
+   - Right: host "Change movie" button (`#chg`, 30px height, 11px font).
+   - Verified 135px clear space between pill and button (ZERO collision or overlap).
+3. **Gestures & Motion**:
+   - Single tap toggles controls visibility (`isIdle`) with auto-hide after 3 seconds of playing.
+   - Double tap seeks -10s on left third and +10s on right third, rendering animated `.double-tap-ripple` indicator.
+   - Video subtitles (`::cue`): styled with `font-size: max(13px, 1.15em)`, high-contrast background and text shadows, elevated above control bar.
+4. **Automated Verification (`scripts/verify-step5-playing.mjs`)**:
+   - Verified seek bar height (36px), play/pause size (44×44px), all required row 2 controls present, volume hidden, 0 top overlay collisions.
+   - Verified double tap gesture emits `+10 s` ripple indicator.
+   - Console guard clean: 0 errors, 0 warnings.
