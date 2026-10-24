@@ -1,15 +1,22 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Mic, MicOff, VideoOff, WifiOff } from 'lucide-react';
+import { Mic, MicOff, VideoOff, WifiOff, Volume2, VolumeX } from 'lucide-react';
 
 export interface VideoTileProps {
   displayName: string;
   participantId?: string;
   stream?: MediaStream | null;
   isLocal?: boolean;
+  isHost?: boolean;
   isMuted?: boolean;
   isCameraOff?: boolean;
   connectionState?: RTCPeerConnectionState;
+  volume?: number; // 0 - 100
+  isLocallyMuted?: boolean;
+  onVolumeChange?: (volume: number) => void;
+  onToggleLocalMute?: () => void;
   getStream?: (participantId: string, isLocal?: boolean) => MediaStream | null;
+  showVolumeControl?: boolean;
+  className?: string;
 }
 
 export const VideoTile: React.FC<VideoTileProps> = React.memo(({
@@ -17,13 +24,21 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
   participantId,
   stream,
   isLocal = false,
+  isHost = false,
   isMuted = false,
   isCameraOff = false,
   connectionState = 'connected',
+  volume = 100,
+  isLocallyMuted = false,
+  onVolumeChange,
+  onToggleLocalMute,
   getStream,
+  showVolumeControl = true,
+  className = '',
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isVolumeMenuOpen, setIsVolumeMenuOpen] = useState(false);
+  const [streamVersion, setStreamVersion] = useState(0);
 
   const [videoMetrics, setVideoMetrics] = useState({
     videoWidth: 0,
@@ -34,45 +49,6 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
 
   const streamFromManager = getStream ? getStream(participantId || '', isLocal) : null;
   const resolvedStream = streamFromManager || (stream !== undefined ? stream : null);
-  const videoTrack = resolvedStream ? resolvedStream.getVideoTracks()[0] : null;
-
-  const hasStream = !!resolvedStream;
-  const videoTrackCount = resolvedStream ? resolvedStream.getVideoTracks().length : 0;
-  const videoTrackReadyState = videoTrack ? videoTrack.readyState : 'none';
-  const videoTrackEnabled = videoTrack ? videoTrack.enabled : false;
-  const srcObjectAssigned = !!(videoRef.current && videoRef.current.srcObject);
-  const readyState = videoRef.current ? Math.max(videoRef.current.readyState, videoMetrics.readyState) : videoMetrics.readyState;
-  const videoWidth = videoRef.current ? Math.max(videoRef.current.videoWidth, videoMetrics.videoWidth) : videoMetrics.videoWidth;
-  const videoHeight = videoRef.current ? Math.max(videoRef.current.videoHeight, videoMetrics.videoHeight) : videoMetrics.videoHeight;
-
-  // Single Definitive Remote Video State Log per Section 2
-  useEffect(() => {
-    if (isLocal) return;
-    console.log('[VideoTile] REMOTE_VIDEO_STATE', {
-      participantId: participantId || 'unknown',
-      connectionState,
-      hasStream,
-      videoTrackCount,
-      videoTrackReadyState,
-      videoTrackEnabled,
-      srcObjectAssigned,
-      readyState,
-      videoWidth,
-      videoHeight,
-    });
-  }, [
-    isLocal,
-    participantId,
-    connectionState,
-    hasStream,
-    videoTrackCount,
-    videoTrackReadyState,
-    videoTrackEnabled,
-    srcObjectAssigned,
-    readyState,
-    videoWidth,
-    videoHeight,
-  ]);
 
   const updateMetrics = useCallback(() => {
     const el = videoRef.current;
@@ -95,41 +71,60 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
     });
   }, []);
 
+  // Reactive listener for tracks dynamically added or removed on the stream
+  useEffect(() => {
+    if (!resolvedStream || typeof resolvedStream.addEventListener !== 'function') return;
+    const onTrackChange = () => {
+      setStreamVersion((v) => v + 1);
+      updateMetrics();
+    };
+
+    resolvedStream.addEventListener('addtrack', onTrackChange);
+    resolvedStream.addEventListener('removetrack', onTrackChange);
+
+    return () => {
+      resolvedStream.removeEventListener('addtrack', onTrackChange);
+      resolvedStream.removeEventListener('removetrack', onTrackChange);
+    };
+  }, [resolvedStream, updateMetrics]);
+
+  const videoTrack = resolvedStream && typeof resolvedStream.getVideoTracks === 'function'
+    ? resolvedStream.getVideoTracks()[0] || null
+    : null;
+  const videoTrackId = videoTrack ? videoTrack.id : null;
+  const hasLiveVideoTrack = !!videoTrack && videoTrack.readyState === 'live' && videoTrack.enabled;
+  const shouldRenderVideo = !isCameraOff && hasLiveVideoTrack;
+
   useEffect(() => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
-    if (!isLocal && isCameraOff) {
+    if (!shouldRenderVideo || !resolvedStream) {
       if (videoElement.srcObject) {
         videoElement.srcObject = null;
         updateMetrics();
       }
       return;
     }
-    if (resolvedStream && videoElement.srcObject !== resolvedStream) {
+
+    if (videoElement.srcObject !== resolvedStream) {
       videoElement.srcObject = resolvedStream;
-      videoElement
-        .play()
+    }
+
+    const playPromise = videoElement.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise
         .then(() => {
           updateMetrics();
-          console.log('[VideoTile DIAG] video.play() resolved', {
-            participantId: participantId || (isLocal ? 'local' : 'unknown'),
-            paused: videoElement.paused,
-            readyState: videoElement.readyState,
-            videoWidth: videoElement.videoWidth,
-            videoHeight: videoElement.videoHeight,
-          });
         })
         .catch((err: any) => {
-          console.warn(
-            `[VideoTile DIAG] video.play() rejected for ${participantId || (isLocal ? 'local' : 'unknown')}:`,
-            err?.name || 'DOMException',
-            err?.message || err
-          );
+          if (err?.name !== 'AbortError') {
+            console.warn(
+              `[VideoTile] video.play() error for ${participantId || (isLocal ? 'local' : 'unknown')}:`,
+              err
+            );
+          }
         });
-    } else if (!resolvedStream && videoElement.srcObject) {
-      videoElement.srcObject = null;
-      updateMetrics();
     }
 
     videoElement.addEventListener('loadedmetadata', updateMetrics);
@@ -147,176 +142,227 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
       videoElement.removeEventListener('resize', updateMetrics);
       videoElement.removeEventListener('timeupdate', updateMetrics);
     };
-  }, [participantId, isLocal, resolvedStream, isCameraOff, updateMetrics]);
-
-  // Keep unmuted audio element in sync for remote peer microphone output
-  useEffect(() => {
-    if (isLocal) return;
-    const audioEl = audioRef.current;
-    if (!audioEl) return;
-
-    if (resolvedStream && audioEl.srcObject !== resolvedStream) {
-      audioEl.srcObject = resolvedStream;
-      audioEl.play().catch(() => {});
-    } else if (!resolvedStream && audioEl.srcObject) {
-      audioEl.srcObject = null;
-    }
-  }, [isLocal, resolvedStream]);
+  }, [participantId, isLocal, resolvedStream, videoTrackId, shouldRenderVideo, streamVersion, updateMetrics]);
 
   const initials = displayName
     .split(' ')
+    .filter(Boolean)
     .map((n) => n[0])
     .join('')
     .substring(0, 2)
     .toUpperCase() || 'P';
 
-  // 1. Live video track condition
-  const hasLiveRemoteVideoTrack =
-    hasStream && videoTrackCount > 0 && videoTrackReadyState === 'live' && videoTrackEnabled;
+  const readyState = videoRef.current ? Math.max(videoRef.current.readyState, videoMetrics.readyState) : videoMetrics.readyState;
+  const videoWidth = videoRef.current ? Math.max(videoRef.current.videoWidth, videoMetrics.videoWidth) : videoMetrics.videoWidth;
+  const videoHeight = videoRef.current ? Math.max(videoRef.current.videoHeight, videoMetrics.videoHeight) : videoMetrics.videoHeight;
 
-  // 2. Video actively playing condition: dimensions > 0 and live track
-  const isVideoPlaying =
-    videoWidth > 0 && videoHeight > 0 && readyState >= 2 && (isLocal || hasLiveRemoteVideoTrack);
+  // Active video feed condition
+  const isCameraActive = shouldRenderVideo && (
+    isLocal ? hasLiveVideoTrack : (readyState >= 2 || (videoWidth > 0 && videoHeight > 0))
+  );
 
-  // 3. Exact UI status conditions per Section 3
   const isConnecting =
-    !isLocal && !isVideoPlaying && (connectionState === 'connecting' || connectionState === 'new');
+    !isLocal && !isCameraActive && (connectionState === 'connecting' || connectionState === 'new');
 
   const isFailed =
-    !isLocal && !isVideoPlaying && (connectionState === 'failed' || connectionState === 'disconnected');
-
-  const isConnectedNoVideo =
-    !isLocal &&
-    !isCameraOff &&
-    !isVideoPlaying &&
-    connectionState === 'connected' &&
-    (!hasLiveRemoteVideoTrack || videoWidth === 0);
-
-  // 4. Overlay is completely hidden when video is actively playing
-  const showOverlay = isLocal
-    ? isCameraOff
-    : !isVideoPlaying && (isCameraOff || isConnecting || isFailed || isConnectedNoVideo);
-
-  const isCameraActive = isLocal ? !isCameraOff : isVideoPlaying;
+    !isLocal && !isCameraActive && (connectionState === 'failed' || connectionState === 'disconnected');
 
   return (
     <div
-      className={`relative rounded-2xl overflow-hidden flex items-center justify-center select-none w-full aspect-video transition-[border-color,box-shadow] duration-300 ${
+      className={`relative w-full h-full rounded-2xl overflow-hidden bg-[#0c0e17] border select-none group transition-all duration-300 ${
         isCameraActive
-          ? 'border border-brand-500/40 shadow-[0_0_14px_rgba(99,102,241,0.22)]'
-          : 'border border-white/[0.08]'
-      }`}
-      style={{
-        position: 'relative',
-        overflow: 'hidden',
-        backgroundColor: '#0a0c14',
-        contain: 'layout paint',
-        isolation: 'isolate',
-      }}
+          ? 'border-brand-500/30 shadow-[0_0_12px_rgba(99,102,241,0.15)]'
+          : 'border-white/[0.08]'
+      } ${className}`}
       role="region"
       aria-label={`${displayName}'s video feed`}
     >
-      {/* Clean Hardware-Friendly HTML5 Video Element (muted so autoplay always succeeds without gesture) */}
+      {/* HTML5 Video Element (always muted so browser never blocks autoplay) */}
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted={true}
+        className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
         style={{
-          display: isCameraOff && !isVideoPlaying ? 'none' : 'block',
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          backgroundColor: '#0a0c14',
+          opacity: isCameraActive ? 1 : 0,
           transform: isLocal ? 'scaleX(-1) translateZ(0)' : 'translateZ(0)',
           backfaceVisibility: 'hidden',
           WebkitBackfaceVisibility: 'hidden',
         }}
       />
 
-      {/* Remote Audio Track output */}
-      {!isLocal && (
-        <audio
-          ref={audioRef}
-          autoPlay
-          playsInline
-        />
-      )}
-
-      {/* Camera Off / Connecting / Status Overlay */}
-      {showOverlay && (
-        <div
-          className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center z-0"
-          style={{ backgroundColor: '#0a0c14' }}
-        >
-          <div className="w-10 h-10 rounded-2xl bg-brand-950/60 border border-brand-500/25 flex items-center justify-center text-brand-200 font-bold text-sm mb-1.5 shadow-xs">
-            {initials}
+      {/* Centered Avatar Region (Cleanly floating in middle, zero overlap with top badges or bottom bar) */}
+      {!isCameraActive && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center bg-[#0d0f18] z-10 pointer-events-none">
+          <div className="relative">
+            <div className="w-12 h-12 rounded-full bg-slate-800/90 border border-white/10 flex items-center justify-center text-white font-bold text-base shadow-inner tracking-wider">
+              {initials}
+            </div>
+            <div
+              role="img"
+              className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-slate-900 border border-white/20 flex items-center justify-center text-slate-400 shadow-sm"
+              title="Camera off"
+              aria-label="Camera off"
+            >
+              <VideoOff className="w-2.5 h-2.5" />
+            </div>
           </div>
           {isConnecting ? (
-            <span className="text-[10px] text-brand-300 font-mono flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-brand-400"></span>
+            <span className="text-[10px] text-brand-300 font-mono flex items-center gap-1 mt-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse"></span>
               Connecting...
             </span>
           ) : isFailed ? (
-            <span className="text-[10px] text-rose-400 font-mono flex items-center gap-1">
+            <span className="text-[10px] text-rose-400 font-mono flex items-center gap-1 mt-1.5">
               <WifiOff className="w-3 h-3" />
               Reconnecting
             </span>
           ) : (
-            <span className="text-[10px] text-slate-400 flex items-center gap-1 font-mono">
-              <VideoOff className="w-3 h-3 text-slate-400" />
+            <span className="sr-only">
               Camera off
             </span>
           )}
         </div>
       )}
 
-      {/* Static Overlay: Name & Mute Badge */}
-      <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between pointer-events-none z-10">
-        <div
-          className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-white text-[10px] font-medium truncate max-w-[75%] shadow-xs"
-          style={{
-            backgroundColor: 'rgba(5, 7, 12, 0.85)',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-          }}
-        >
-          <span className="truncate">{displayName}</span>
+      {/* Top Left: Host Badge (Isolated region) */}
+      {isHost && (
+        <div className="absolute top-2 left-2 z-20 pointer-events-none">
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-white text-black shadow-md border border-white/20">
+            Host
+          </span>
+        </div>
+      )}
+
+      {/* Top Right: Volume & Mute Control (Only for Remote Participants) */}
+      {!isLocal && showVolumeControl && (
+        <div className="absolute top-2 right-2 z-30">
+          <div className="relative">
+            <button
+              type="button"
+              className={`p-1.5 rounded-lg border backdrop-blur-md transition-all ${
+                isLocallyMuted
+                  ? 'bg-rose-500/30 border-rose-500/40 text-rose-300'
+                  : 'bg-black/60 border-white/10 text-slate-300 hover:text-white hover:bg-black/80'
+              }`}
+              title={isLocallyMuted ? `Unmute ${displayName}` : `Adjust ${displayName}'s volume`}
+              aria-label={`Adjust ${displayName}'s volume`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsVolumeMenuOpen(!isVolumeMenuOpen);
+              }}
+            >
+              {isLocallyMuted || volume === 0 ? (
+                <VolumeX className="w-3.5 h-3.5" />
+              ) : (
+                <Volume2 className="w-3.5 h-3.5" />
+              )}
+            </button>
+
+            {/* Volume Slider Popover */}
+            {isVolumeMenuOpen && (
+              <div
+                className="absolute right-0 mt-1.5 w-44 p-2.5 rounded-xl bg-[#090b13]/95 border border-white/15 shadow-2xl backdrop-blur-xl z-40 flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-150"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between text-[11px] text-slate-300 font-medium">
+                  <span className="truncate max-w-[100px]">{displayName}</span>
+                  <span className="font-mono text-brand-300 font-bold">{isLocallyMuted ? 'Muted' : `${volume}%`}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={isLocallyMuted ? 0 : volume}
+                    disabled={isLocallyMuted}
+                    onChange={(e) => {
+                      const newVol = parseInt(e.target.value, 10);
+                      onVolumeChange?.(newVol);
+                    }}
+                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-500"
+                    aria-label={`${displayName} volume slider`}
+                  />
+                </div>
+                {onToggleLocalMute && (
+                  <button
+                    type="button"
+                    className={`w-full py-1 px-2 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+                      isLocallyMuted
+                        ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30'
+                        : 'bg-white/10 text-slate-200 hover:bg-white/15'
+                    }`}
+                    onClick={() => onToggleLocalMute()}
+                  >
+                    {isLocallyMuted ? (
+                      <>
+                        <Volume2 className="w-3 h-3" />
+                        Unmute user
+                      </>
+                    ) : (
+                      <>
+                        <VolumeX className="w-3 h-3" />
+                        Mute user
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Bottom Overlay Bar: Participant Name (Left) + Mic Status (Right) */}
+      <div className="absolute bottom-0 inset-x-0 z-20 px-2.5 py-1.5 bg-gradient-to-t from-black/95 via-black/70 to-transparent pointer-events-none flex items-center justify-between gap-1.5">
+        {/* Name with Safe Truncation */}
+        <div className="flex items-center gap-1.5 min-w-0 max-w-[calc(100%-32px)]">
+          <span className="text-white text-xs font-medium truncate drop-shadow-sm" title={displayName}>
+            {displayName}
+          </span>
           {isLocal && (
-            <span className="text-[9px] font-mono text-brand-300 uppercase shrink-0 font-bold">
+            <span className="text-[9px] font-bold text-brand-300 shrink-0 uppercase tracking-tight">
               (You)
             </span>
           )}
         </div>
 
-        {/* Mic Indicator */}
-        <div className="flex items-center gap-1">
+        {/* Microphone and Connection Status Icons */}
+        <div className="flex items-center gap-1 shrink-0">
           {isMuted ? (
-            <div
-              className="p-1 rounded-md text-rose-300"
-              style={{
-                backgroundColor: 'rgba(244, 63, 94, 0.2)',
-                border: '1px solid rgba(244, 63, 94, 0.35)',
-              }}
+            <span
+              role="img"
+              className="w-5 h-5 rounded-md bg-rose-500/20 border border-rose-500/35 text-rose-400 flex items-center justify-center"
               title="Microphone muted"
               aria-label="Microphone muted"
             >
-              <MicOff className="w-2.5 h-2.5" />
-            </div>
+              <MicOff className="w-3 h-3" />
+            </span>
           ) : (
-            <div
-              className="p-1 rounded-md text-emerald-400"
-              style={{
-                backgroundColor: 'rgba(5, 7, 12, 0.75)',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
-              }}
+            <span
+              role="img"
+              className="w-5 h-5 rounded-md bg-emerald-500/20 border border-emerald-500/35 text-emerald-400 flex items-center justify-center"
               title="Microphone active"
               aria-label="Microphone active"
             >
-              <Mic className="w-2.5 h-2.5" />
-            </div>
+              <Mic className="w-3 h-3" />
+            </span>
+          )}
+
+          {connectionState === 'connecting' && (
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse ml-0.5" title="Connecting..." />
+          )}
+          {(connectionState === 'failed' || connectionState === 'disconnected') && (
+            <span className="text-rose-400 ml-0.5" title="Connection issue">
+              <WifiOff className="w-3 h-3" />
+            </span>
           )}
         </div>
       </div>
     </div>
   );
 });
+
+VideoTile.displayName = 'VideoTile';

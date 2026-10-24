@@ -29,7 +29,7 @@ export class SynchronizationEngine {
     if (!state.isPlaying) {
       return state.position;
     }
-    const elapsedSeconds = ((now - state.lastUpdatedAt) / 1000) * state.playbackRate;
+    const elapsedSeconds = ((Math.max(0, now - state.lastUpdatedAt)) / 1000) * state.playbackRate;
     return Math.max(0, state.position + elapsedSeconds);
   }
 

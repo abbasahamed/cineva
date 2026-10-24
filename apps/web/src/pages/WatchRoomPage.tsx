@@ -359,7 +359,6 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     mode: "Direct play",
   });
   const [stalledNames, setStalledNames] = useState<string[]>([]);
-  const [countdownSec, setCountdownSec] = useState<number | null>(null);
 
   // Subtitle settings, custom layer, and control bar height observer
   const [subSettings, setSubSettings] = useState<SubtitleSettings>(() => loadSubtitleSettings());
@@ -732,23 +731,6 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       }
     };
 
-    const handleBufferingCountdown = (data: { resumeAt: number; position: number }) => {
-      setStalledNames([]);
-      const diff = Math.max(0, data.resumeAt - Date.now());
-      const s = Math.ceil(diff / 1000) || 1;
-      setCountdownSec(s);
-      const iv = setInterval(() => {
-        const remaining = Math.max(0, data.resumeAt - Date.now());
-        const sec = Math.ceil(remaining / 1000);
-        if (sec <= 0) {
-          clearInterval(iv);
-          setCountdownSec(null);
-        } else {
-          setCountdownSec(sec);
-        }
-      }, 250);
-    };
-
     const handleRenditionsUpdated = (data: { masterPlaylistUrl?: string; renditions?: any[] }) => {
       if (hlsRef.current && data.masterPlaylistUrl) {
         hlsRef.current.loadSource(data.masterPlaylistUrl);
@@ -756,12 +738,10 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     };
 
     sock.on(SOCKET_EVENTS.BUFFERING_WAIT, handleBufferingWait);
-    sock.on(SOCKET_EVENTS.BUFFERING_COUNTDOWN, handleBufferingCountdown);
     sock.on(SOCKET_EVENTS.RENDITIONS_UPDATED, handleRenditionsUpdated);
 
     return () => {
       sock.off(SOCKET_EVENTS.BUFFERING_WAIT, handleBufferingWait);
-      sock.off(SOCKET_EVENTS.BUFFERING_COUNTDOWN, handleBufferingCountdown);
       sock.off(SOCKET_EVENTS.RENDITIONS_UPDATED, handleRenditionsUpdated);
     };
   }, [connectionStatus]);
@@ -1739,102 +1719,73 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             </div>
           )}
 
-          {/* Buffering Wait Overlay */}
+          {/* Buffering Wait Top Pill (Non-blocking, never covers center of stage) */}
           {stalledNames.length > 0 && (
             <div
               id="buffering-wait-overlay"
               style={{
                 position: "absolute",
-                inset: 0,
+                top: "16px",
+                left: "50%",
+                transform: "translateX(-50%)",
                 zIndex: 25,
+                pointerEvents: "none",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                background: "rgba(0, 0, 0, 0.45)",
-                backdropFilter: "blur(6px)",
-                WebkitBackdropFilter: "blur(6px)",
-                pointerEvents: "auto",
+                maxWidth: "calc(100% - 32px)",
               }}
             >
               <div
                 style={{
-                  background: "rgba(10, 12, 22, 0.85)",
-                  border: "1px solid rgba(255, 255, 255, 0.12)",
-                  borderRadius: "20px",
-                  padding: "16px 24px",
+                  pointerEvents: "auto",
+                  background: "rgba(10, 12, 22, 0.88)",
+                  border: "1px solid rgba(255, 255, 255, 0.16)",
+                  backdropFilter: "blur(12px)",
+                  WebkitBackdropFilter: "blur(12px)",
+                  borderRadius: "9999px",
+                  padding: "6px 14px",
                   color: "#ffffff",
-                  textAlign: "center",
-                  maxWidth: "360px",
-                  boxShadow: "0 12px 32px rgba(0, 0, 0, 0.6)",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  boxShadow: "0 8px 24px rgba(0, 0, 0, 0.5)",
                   display: "flex",
-                  flexDirection: "column",
                   alignItems: "center",
                   gap: "10px",
+                  whiteSpace: "nowrap",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: 600 }}>
-                  <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#f59e0b", display: "inline-block" }} />
-                  <span>Waiting for {stalledNames.join(", ")}...</span>
-                </div>
-                <p style={{ margin: 0, fontSize: "12px", color: "rgba(255, 255, 255, 0.6)", lineHeight: "1.4" }}>
-                  Paused so everyone stays synchronized at the exact same frame.
-                </p>
+                <span
+                  style={{
+                    width: "7px",
+                    height: "7px",
+                    borderRadius: "50%",
+                    background: "#f59e0b",
+                    flexShrink: 0,
+                    boxShadow: "0 0 8px #f59e0b",
+                  }}
+                />
+                <span>Waiting for {stalledNames.join(", ")}...</span>
                 {isHost && (
                   <button
                     type="button"
                     onClick={handleSkipBuffering}
                     style={{
-                      marginTop: "4px",
-                      padding: "6px 14px",
-                      borderRadius: "10px",
-                      background: "rgba(255, 255, 255, 0.12)",
-                      border: "1px solid rgba(255, 255, 255, 0.2)",
+                      padding: "3px 10px",
+                      borderRadius: "9999px",
+                      background: "rgba(255, 255, 255, 0.15)",
+                      border: "1px solid rgba(255, 255, 255, 0.25)",
                       color: "#ffffff",
-                      fontSize: "12px",
-                      fontWeight: 500,
+                      fontSize: "11px",
+                      fontWeight: 600,
                       cursor: "pointer",
                       transition: "all 0.15s ease",
+                      lineHeight: "1.4",
                     }}
                   >
                     Continue without {stalledNames[0]}
                   </button>
                 )}
-              </div>
-            </div>
-          )}
-
-          {/* Buffering Countdown Overlay */}
-          {countdownSec !== null && (
-            <div
-              id="buffering-countdown-overlay"
-              style={{
-                position: "absolute",
-                inset: 0,
-                zIndex: 26,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "rgba(0, 0, 0, 0.35)",
-                pointerEvents: "none",
-              }}
-            >
-              <div
-                style={{
-                  width: "72px",
-                  height: "72px",
-                  borderRadius: "50%",
-                  background: "rgba(10, 12, 22, 0.9)",
-                  border: "2px solid rgba(255, 255, 255, 0.25)",
-                  color: "#ffffff",
-                  fontSize: "32px",
-                  fontWeight: 700,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  boxShadow: "0 12px 32px rgba(0, 0, 0, 0.7)",
-                }}
-              >
-                {countdownSec}
               </div>
             </div>
           )}
@@ -1988,7 +1939,9 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                         videoRef.current.muted = isVideoMuted;
                         videoRef.current.play().catch(() => {});
                       }
-                      handlePlay();
+                      if (!playback.isPlaying) {
+                        handlePlay();
+                      }
                     }}
                   >
                     <svg viewBox="0 0 24 24" style={{ width: "20px", height: "20px", fill: "currentColor" }}>
@@ -2606,6 +2559,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
               type="button"
               role="tab"
               id="m-tab-call"
+              aria-controls="m-pane-call"
               aria-selected={mobileTab === "call"}
               onClick={() => setMobileTab("call")}
             >
@@ -2615,6 +2569,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
               type="button"
               role="tab"
               id="m-tab-chat"
+              aria-controls="m-pane-chat"
               aria-selected={mobileTab === "chat"}
               onClick={() => setMobileTab("chat")}
             >
@@ -2625,6 +2580,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
               type="button"
               role="tab"
               id="m-tab-people"
+              aria-controls="m-pane-people"
               aria-selected={mobileTab === "participants"}
               onClick={() => setMobileTab("participants")}
             >
@@ -2634,7 +2590,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
 
           {/* Call Pane */}
           {mobileTab === "call" && (
-            <div className="mobile-call-pane" id="m-pane-call">
+            <div className="mobile-call-pane" id="m-pane-call" role="tabpanel" aria-labelledby="m-tab-call">
               <div className={participants.length <= 4 ? "mobile-call-grid" : "mobile-call-strip"}>
                 {/* Local user tile */}
                 <div className="tile" id="t-me-m">
@@ -2744,6 +2700,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             <div
               className="mobile-chat-pane"
               id="m-pane-chat"
+              role="tabpanel"
+              aria-labelledby="m-tab-chat"
               style={{ paddingBottom: keyboardPadding ? `${keyboardPadding}px` : undefined }}
             >
               <div ref={mobileMsgStreamRef} className="msgs" id="ms-mobile">
@@ -2797,7 +2755,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
 
           {/* People Pane */}
           {mobileTab === "participants" && (
-            <div className="mobile-people-pane" id="m-pane-people">
+            <div className="mobile-people-pane" id="m-pane-people" role="tabpanel" aria-labelledby="m-tab-people">
               {participants.map((p) => {
                 const isMe = p.sessionId === sessionId;
                 const initial = (p.displayName || "A").charAt(0).toUpperCase();

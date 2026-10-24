@@ -236,7 +236,6 @@ export const SOCKET_EVENTS = {
   BUFFERING_START: 'playback:buffering_start',
   BUFFERING_READY: 'playback:buffering_ready',
   BUFFERING_WAIT: 'playback:buffering_wait',
-  BUFFERING_COUNTDOWN: 'playback:resume_countdown',
   BUFFERING_SKIP: 'playback:buffering_skip',
 
   // WebRTC Video Calling Signaling Events

@@ -120,19 +120,29 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
         video.currentTime = expected;
       }
       video.playbackRate = targetState.playbackRate;
-      const playPromise = video.play();
-      if (playPromise !== undefined) {
-        playPromise.catch((err) => {
-          console.warn('Autoplay blocked by browser policy:', err);
-          if (video) {
-            video.muted = true;
-            video.play().then(() => {
-              setNeedsUserGesture(true);
-            }).catch(() => {
-              setNeedsUserGesture(true);
-            });
-          }
-        });
+      const delay = Math.max(0, targetState.lastUpdatedAt - estimatedServerNow);
+      const executePlay = () => {
+        if (!videoRef.current || !latestPlaybackRef.current.isPlaying) return;
+        const playPromise = videoRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((err) => {
+            console.warn('Autoplay blocked by browser policy:', err);
+            if (videoRef.current) {
+              videoRef.current.muted = true;
+              videoRef.current.play().then(() => {
+                setNeedsUserGesture(true);
+              }).catch(() => {
+                setNeedsUserGesture(true);
+              });
+            }
+          });
+        }
+      };
+
+      if (delay > 0 && delay <= 400) {
+        setTimeout(executePlay, delay);
+      } else {
+        executePlay();
       }
     } else {
       video.pause();

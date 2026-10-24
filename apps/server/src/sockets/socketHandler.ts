@@ -66,7 +66,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
   interface RoomBufferingTracker {
     stalledParticipants: Set<string>;
     stalledNames: Map<string, string>;
-    resumeCountdownTimer: NodeJS.Timeout | null;
+    resumeTimer: NodeJS.Timeout | null;
   }
   const roomBufferingTrackers = new Map<string, RoomBufferingTracker>();
 
@@ -431,15 +431,15 @@ export function setupSocketHandlers(io: SocketIOServer) {
       if (!socketData.roomId || !socketData.participantId || !socketData.displayName) return;
       let tracker = roomBufferingTrackers.get(socketData.roomId);
       if (!tracker) {
-        tracker = { stalledParticipants: new Set(), stalledNames: new Map(), resumeCountdownTimer: null };
+        tracker = { stalledParticipants: new Set(), stalledNames: new Map(), resumeTimer: null };
         roomBufferingTrackers.set(socketData.roomId, tracker);
       }
       tracker.stalledParticipants.add(socketData.participantId);
       tracker.stalledNames.set(socketData.participantId, socketData.displayName);
 
-      if (tracker.resumeCountdownTimer) {
-        clearTimeout(tracker.resumeCountdownTimer);
-        tracker.resumeCountdownTimer = null;
+      if (tracker.resumeTimer) {
+        clearTimeout(tracker.resumeTimer);
+        tracker.resumeTimer = null;
       }
 
       // Temporarily pause playback if it was running
@@ -468,27 +468,31 @@ export function setupSocketHandlers(io: SocketIOServer) {
       tracker.stalledParticipants.delete(socketData.participantId);
       tracker.stalledNames.delete(socketData.participantId);
 
-      // If everyone is ready, start countdown resume
+      // If everyone is ready, resume immediately with a short fixed lead (200ms)
       if (tracker.stalledParticipants.size === 0) {
-        const targetPos = syncEngine.calculateCurrentPosition(socketData.roomId);
-        const resumeAt = Date.now() + 3000;
-        io.to(socketData.roomId).emit(SOCKET_EVENTS.BUFFERING_COUNTDOWN, {
-          resumeAt,
-          position: targetPos,
+        io.to(socketData.roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
+          stalledNames: [],
         });
 
-        if (tracker.resumeCountdownTimer) {
-          clearTimeout(tracker.resumeCountdownTimer);
+        if (tracker.resumeTimer) {
+          clearTimeout(tracker.resumeTimer);
+          tracker.resumeTimer = null;
         }
-        tracker.resumeCountdownTimer = setTimeout(() => {
-          tracker.resumeCountdownTimer = null;
-          const now = Date.now();
-          const newState = syncEngine.play(socketData.roomId!, targetPos, undefined, now);
-          io.to(socketData.roomId!).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
-            playback: newState,
-            serverTimestamp: now,
-          });
-        }, 3000);
+
+        const targetPos = syncEngine.calculateCurrentPosition(socketData.roomId);
+        const now = Date.now();
+        const resumeLeadMs = 200; // fixed lead <= 300ms
+        const resumeAt = now + resumeLeadMs;
+        const newState = syncEngine.play(socketData.roomId!, targetPos, undefined, resumeAt);
+
+        io.to(socketData.roomId!).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
+          playback: newState,
+          serverTimestamp: now,
+        });
+      } else {
+        io.to(socketData.roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
+          stalledNames: Array.from(tracker.stalledNames.values()),
+        });
       }
     });
 
@@ -508,25 +512,31 @@ export function setupSocketHandlers(io: SocketIOServer) {
         tracker.stalledNames.clear();
       }
 
-      const targetPos = syncEngine.calculateCurrentPosition(socketData.roomId);
-      const resumeAt = Date.now() + 1500;
-      io.to(socketData.roomId).emit(SOCKET_EVENTS.BUFFERING_COUNTDOWN, {
-        resumeAt,
-        position: targetPos,
-      });
-
-      if (tracker.resumeCountdownTimer) {
-        clearTimeout(tracker.resumeCountdownTimer);
+      if (tracker.resumeTimer) {
+        clearTimeout(tracker.resumeTimer);
+        tracker.resumeTimer = null;
       }
-      tracker.resumeCountdownTimer = setTimeout(() => {
-        tracker.resumeCountdownTimer = null;
+
+      if (tracker.stalledParticipants.size === 0) {
+        io.to(socketData.roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
+          stalledNames: [],
+        });
+
+        const targetPos = syncEngine.calculateCurrentPosition(socketData.roomId);
         const now = Date.now();
-        const newState = syncEngine.play(socketData.roomId!, targetPos, undefined, now);
+        const resumeLeadMs = 200; // fixed lead <= 300ms
+        const resumeAt = now + resumeLeadMs;
+        const newState = syncEngine.play(socketData.roomId!, targetPos, undefined, resumeAt);
+
         io.to(socketData.roomId!).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
           playback: newState,
           serverTimestamp: now,
         });
-      }, 1500);
+      } else {
+        io.to(socketData.roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
+          stalledNames: Array.from(tracker.stalledNames.values()),
+        });
+      }
     });
 
     // 4. Room Management & Settings
@@ -960,21 +970,27 @@ export function setupSocketHandlers(io: SocketIOServer) {
         if (tracker && tracker.stalledParticipants.has(participantId)) {
           tracker.stalledParticipants.delete(participantId);
           tracker.stalledNames.delete(participantId);
+          if (tracker.resumeTimer) {
+            clearTimeout(tracker.resumeTimer);
+            tracker.resumeTimer = null;
+          }
           if (tracker.stalledParticipants.size === 0) {
-            const targetPos = syncEngine.calculateCurrentPosition(roomId);
-            const resumeAt = Date.now() + 1500;
-            io.to(roomId).emit(SOCKET_EVENTS.BUFFERING_COUNTDOWN, {
-              resumeAt,
-              position: targetPos,
+            io.to(roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
+              stalledNames: [],
             });
-            setTimeout(() => {
-              const now = Date.now();
-              const newState = syncEngine.play(roomId, targetPos, undefined, now);
-              io.to(roomId).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
-                playback: newState,
-                serverTimestamp: now,
-              });
-            }, 1500);
+            const targetPos = syncEngine.calculateCurrentPosition(roomId);
+            const now = Date.now();
+            const resumeLeadMs = 200; // fixed lead <= 300ms
+            const resumeAt = now + resumeLeadMs;
+            const newState = syncEngine.play(roomId, targetPos, undefined, resumeAt);
+            io.to(roomId).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
+              playback: newState,
+              serverTimestamp: now,
+            });
+          } else {
+            io.to(roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
+              stalledNames: Array.from(tracker.stalledNames.values()),
+            });
           }
         }
       }
