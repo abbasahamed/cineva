@@ -131,26 +131,65 @@ export class HlsPackager {
     }
 
     // 2. Determine Video Encoding Strategy
-    // Browser-safe: H.264, 8-bit yuv420p, max 1080p
+    // Browser-safe: H.264, High profile <= 4.2, 8-bit, yuv420p, <= 1080p
     const vStream = analysis.streams.find((s) => s.codecType === 'video');
     const isH264 = vStream && (vStream.codecName === 'h264' || vStream.codecName === 'avc1');
     const isYuv420p = !vStream?.pixFmt || vStream.pixFmt === 'yuv420p';
     const isWithin1080p = (vStream?.width || 0) <= 1920 && (vStream?.height || 0) <= 1080;
-    const canCopyVideo = isH264 && isYuv420p && isWithin1080p;
+    const is8Bit = !vStream?.bitsPerRawSample || vStream.bitsPerRawSample === 8;
+    const profile = (vStream?.profile || '').toLowerCase();
+    const isSupportedProfile = !profile || profile.includes('high') || profile.includes('main') || profile.includes('baseline');
+    const isSupportedLevel = !vStream?.level || vStream.level <= 42;
+    const canCopyVideo = isH264 && isYuv420p && isWithin1080p && is8Bit && isSupportedProfile && isSupportedLevel;
 
     const videoArgs: string[] = [];
     if (canCopyVideo) {
       videoArgs.push('-c:v', 'copy');
     } else {
+      // Quality-based encoding per A2 specifications
+      const sourceBitrate = vStream?.bitrate || (analysis.sizeBytes && analysis.duration ? Math.round((analysis.sizeBytes * 8) / analysis.duration) : 8000000);
+      const targetBitrate = Math.max(6000000, Math.min(14000000, Math.round(sourceBitrate * 0.9)));
+      const maxRate = Math.round(targetBitrate * 1.5);
+      const bufSize = Math.round(targetBitrate * 2.0);
+
       const useHw = this.checkHardwareAcceleration();
       if (useHw) {
-        videoArgs.push('-c:v', 'h264_videotoolbox', '-b:v', '4500k');
+        videoArgs.push(
+          '-c:v', 'h264_videotoolbox',
+          '-b:v', `${targetBitrate}`,
+          '-maxrate', `${maxRate}`,
+          '-bufsize', `${bufSize}`,
+          '-profile:v', 'high',
+          '-level', '4.2',
+          '-allow_sw', '0'
+        );
       } else {
-        videoArgs.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21');
+        videoArgs.push(
+          '-c:v', 'libx264',
+          '-crf', '18',
+          '-preset', 'veryfast',
+          '-profile:v', 'high',
+          '-level', '4.2'
+        );
       }
       videoArgs.push('-pix_fmt', 'yuv420p');
-      videoArgs.push('-vf', "scale='min(1920,iw)':min'(1080,ih)':force_original_aspect_ratio=decrease,format=yuv420p");
-      videoArgs.push('-force_key_frames', 'expr:gte(t,n_forced*4)');
+
+      // Tone-map HDR to SDR if source is HDR
+      const isHdr = vStream?.colorSpace === 'bt2020nc' ||
+                    (vStream?.colorTransfer && (vStream.colorTransfer.includes('smpte2084') || vStream.colorTransfer.includes('arib')));
+
+      if (isHdr) {
+        videoArgs.push('-vf', "scale='min(1920,iw)':min'(1080,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,tonemap=mobius,format=yuv420p");
+      } else {
+        videoArgs.push('-vf', "scale='min(1920,iw)':min'(1080,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p");
+      }
+
+      // Tag BT.709 color metadata
+      videoArgs.push('-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709');
+
+      // Force keyframes at 4-second segment boundaries
+      const fps = Math.round(vStream?.fps || 24);
+      videoArgs.push('-g', `${fps * 4}`, '-keyint_min', `${fps * 4}`, '-sc_threshold', '0', '-force_key_frames', 'expr:gte(t,n_forced*4)');
     }
 
     // 3. Audio Streams Mapping
@@ -174,8 +213,8 @@ export class HlsPackager {
           // Can stream copy AAC
           audioCodecArgs.push(`-c:a:${idx}`, 'copy');
         } else {
-          // Re-encode to stereo AAC
-          audioCodecArgs.push(`-c:a:${idx}`, 'aac', `-ac:${idx}`, '2', `-b:a:${idx}`, '192k');
+          // Re-encode other audio codecs to AAC 256k stereo (5.1 downmix default)
+          audioCodecArgs.push(`-c:a:${idx}`, 'aac', `-ac:${idx}`, '2', `-b:a:${idx}`, '256k');
         }
 
         const lang = aStream.language || 'und';
@@ -201,6 +240,8 @@ export class HlsPackager {
       ...audioMaps,
       ...videoArgs,
       ...audioCodecArgs,
+      '-movflags',
+      '+frag_keyframe+empty_moov+default_base_moof',
       '-f',
       'hls',
       '-hls_time',
@@ -470,16 +511,135 @@ export class HlsPackager {
   }
 
   /**
+   * Generates lower renditions (720p ~3.5M, 480p ~1.2M) in background with low CPU priority.
+   */
+  async generateAdaptiveRenditionsInBackground(
+    jobId: string,
+    inputPath: string,
+    outputDir: string,
+    analysis: MediaAnalysis,
+    onRenditionReady?: (rendition: { name: string; resolution: string; bandwidth: number; url: string }) => void
+  ): Promise<void> {
+    const vStream = analysis.streams.find((s) => s.codecType === 'video');
+    const srcW = vStream?.width || analysis.width || 1920;
+    const srcH = vStream?.height || analysis.height || 1080;
+
+    const targets: Array<{
+      label: string;
+      maxW: number;
+      maxH: number;
+      bitrate: string;
+      bandwidth: number;
+      avgBandwidth: number;
+    }> = [
+      { label: '720p', maxW: 1280, maxH: 720, bitrate: '3500k', bandwidth: 4200000, avgBandwidth: 3500000 },
+      { label: '480p', maxW: 854, maxH: 480, bitrate: '1200k', bandwidth: 1500000, avgBandwidth: 1200000 },
+    ];
+
+    // Filter out renditions at or above source resolution
+    const renditionsToBuild = targets.filter((t) => srcW > t.maxW || srcH > t.maxH);
+    if (renditionsToBuild.length === 0) {
+      return;
+    }
+
+    const masterPath = path.join(outputDir, 'master.m3u8');
+
+    for (const r of renditionsToBuild) {
+      if (!this.activeProcesses.has(jobId) && !this.activeProcesses.has(`${jobId}_${r.label}`)) {
+        // Check if job was cancelled
+        if (this.cancelledJobs && this.cancelledJobs.has(jobId)) break;
+      }
+
+      const calcW = Math.min(r.maxW, srcW);
+      const calcH = Math.round((srcH * calcW) / srcW);
+      const targetW = calcW % 2 === 0 ? calcW : calcW - 1;
+      const targetH = calcH % 2 === 0 ? calcH : calcH - 1;
+
+      const streamM3u8 = `stream_${r.label}.m3u8`;
+      const streamPath = path.join(outputDir, streamM3u8);
+
+      const ffmpegArgs = [
+        '-y',
+        '-nostdin',
+        '-i', inputPath,
+        '-vf', `scale='min(${targetW},iw)':min'(${targetH},ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p`,
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-b:v', r.bitrate,
+        '-maxrate', `${Math.round(parseInt(r.bitrate, 10) * 1.3)}k`,
+        '-bufsize', `${Math.round(parseInt(r.bitrate, 10) * 2.0)}k`,
+        '-profile:v', 'high',
+        '-level', '4.1',
+        '-an',
+        '-f', 'hls',
+        '-hls_time', '4',
+        '-hls_playlist_type', 'vod',
+        '-hls_segment_type', 'fmp4',
+        '-hls_flags', 'independent_segments',
+        '-hls_segment_filename', path.join(outputDir, `stream_${r.label}_%03d.m4s`),
+        streamPath,
+      ];
+
+      try {
+        const proc = spawn(getFfmpegPath(), ffmpegArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
+        const procKey = `${jobId}_${r.label}`;
+        this.activeProcesses.set(procKey, proc);
+
+        await new Promise<void>((resolve, reject) => {
+          proc.on('close', (code) => {
+            this.activeProcesses.delete(procKey);
+            if (code === 0 && fs.existsSync(streamPath)) resolve();
+            else reject(new Error(`FFmpeg lower rendition ${r.label} failed with code ${code}`));
+          });
+          proc.on('error', (err) => {
+            this.activeProcesses.delete(procKey);
+            reject(err);
+          });
+        });
+
+        // Inject stream entry into master.m3u8 if not already present
+        if (fs.existsSync(masterPath)) {
+          let masterContent = fs.readFileSync(masterPath, 'utf-8');
+          if (!masterContent.includes(streamM3u8)) {
+            const streamEntry = `\n#EXT-X-STREAM-INF:BANDWIDTH=${r.bandwidth},AVERAGE-BANDWIDTH=${r.avgBandwidth},RESOLUTION=${targetW}x${targetH},CODECS="avc1.640028,mp4a.40.2",AUDIO="group_audio",SUBTITLES="subs"\n${streamM3u8}\n`;
+            masterContent = masterContent.trim() + streamEntry;
+            fs.writeFileSync(masterPath, masterContent, 'utf-8');
+          }
+        }
+
+        logger.info(`[HlsPackager] Background rendition ${r.label} completed (${targetW}x${targetH})`, { jobId });
+        if (onRenditionReady) {
+          onRenditionReady({
+            name: r.label,
+            resolution: `${targetW}x${targetH}`,
+            bandwidth: r.bandwidth,
+            url: streamM3u8,
+          });
+        }
+      } catch (renditionErr: any) {
+        logger.warn(`[HlsPackager] Background rendition ${r.label} skipped or failed`, { error: renditionErr.message });
+      }
+    }
+  }
+
+  private cancelledJobs: Set<string> = new Set();
+
+  /**
    * Cancels an active HLS packaging job.
    */
   cancelJob(jobId: string): boolean {
-    const proc = this.activeProcesses.get(jobId);
-    if (proc) {
-      proc.kill('SIGKILL');
-      this.activeProcesses.delete(jobId);
-      return true;
+    this.cancelledJobs.add(jobId);
+    let cancelled = false;
+    for (const [key, proc] of this.activeProcesses.entries()) {
+      if (key === jobId || key.startsWith(`${jobId}_`)) {
+        try {
+          proc.kill('SIGKILL');
+          cancelled = true;
+        } catch {}
+        this.activeProcesses.delete(key);
+      }
     }
-    return false;
+    return cancelled;
   }
 
   /**

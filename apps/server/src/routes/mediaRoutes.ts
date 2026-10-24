@@ -603,4 +603,18 @@ router.post("/presigned-get-url", async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/media/network-check (Measures upload throughput from client to calculate host bandwidth)
+router.post("/network-check", express.raw({ type: "*/*", limit: "15mb" }), (req: Request, res: Response) => {
+  const startTime = req.headers["x-upload-start"] ? parseInt(req.headers["x-upload-start"] as string, 10) : Date.now();
+  const durationMs = Math.max(1, Date.now() - startTime);
+  const bytes = Buffer.isBuffer(req.body) ? req.body.length : (typeof req.body === 'string' ? Buffer.byteLength(req.body) : 0);
+  const mbps = bytes > 0 ? (bytes * 8) / (durationMs * 1000) : 0;
+  res.json({
+    bytes,
+    durationMs,
+    mbps: Math.round(mbps * 10) / 10,
+    viewersAt1080p: Math.max(1, Math.floor(mbps / 4.0)),
+  });
+});
+
 export default router;

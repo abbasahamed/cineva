@@ -230,6 +230,14 @@ export const SOCKET_EVENTS = {
   MEDIA_PROGRESS: 'media:progress',
   MEDIA_READY: 'media:ready',
   MEDIA_FAILED: 'media:failed',
+  RENDITIONS_UPDATED: 'media:renditions_updated',
+
+  // Buffering-aware Sync Events (Part A3)
+  BUFFERING_START: 'playback:buffering_start',
+  BUFFERING_READY: 'playback:buffering_ready',
+  BUFFERING_WAIT: 'playback:buffering_wait',
+  BUFFERING_COUNTDOWN: 'playback:resume_countdown',
+  BUFFERING_SKIP: 'playback:buffering_skip',
 
   // WebRTC Video Calling Signaling Events
   VIDEO_JOIN: 'video:join',

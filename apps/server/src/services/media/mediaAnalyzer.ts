@@ -17,6 +17,12 @@ export interface MediaStreamInfo {
   channelLayout?: string;
   sampleRate?: number;
   profile?: string;
+  level?: number;
+  bitsPerRawSample?: number;
+  colorSpace?: string;
+  colorPrimaries?: string;
+  colorTransfer?: string;
+  fps?: number;
   language?: string;
   title?: string;
   isDefault?: boolean;
@@ -86,6 +92,14 @@ export async function analyzeMediaFile(filePath: string): Promise<MediaAnalysis>
       channelLayout: s.channel_layout || undefined,
       sampleRate: s.sample_rate ? parseInt(s.sample_rate, 10) : undefined,
       profile: s.profile || undefined,
+      level: typeof s.level === 'number' ? s.level : undefined,
+      bitsPerRawSample: s.bits_per_raw_sample ? parseInt(s.bits_per_raw_sample, 10) : undefined,
+      colorSpace: s.color_space || undefined,
+      colorPrimaries: s.color_primaries || undefined,
+      colorTransfer: s.color_transfer || undefined,
+      fps: s.r_frame_rate && s.r_frame_rate.includes('/')
+        ? Math.round((parseInt(s.r_frame_rate.split('/')[0], 10) / parseInt(s.r_frame_rate.split('/')[1] || '1', 10)) * 100) / 100
+        : undefined,
       language: language || undefined,
       title,
       isDefault,

@@ -131,6 +131,9 @@ export class LocalMediaStorage implements MediaStorage {
 
   async deleteFile(storageKey: string): Promise<void> {
     try {
+      if (storageKey.startsWith("demo/") || storageKey.startsWith("fixtures/")) {
+        return;
+      }
       const filePath = this.getSafeFilePath(storageKey);
       if (fs.existsSync(filePath)) {
         await fs.promises.unlink(filePath);
@@ -163,16 +166,20 @@ export class LocalMediaStorage implements MediaStorage {
 
       const stat = await fs.promises.stat(filePath);
       const fileSize = stat.size;
+      const mtime = stat.mtime;
+      const etag = `W/"${fileSize.toString(16)}-${Math.round(stat.mtimeMs).toString(16)}"`;
+      const lastModified = mtime.toUTCString();
       const range = req.headers.range;
 
       const ext = path.extname(filePath).toLowerCase();
+      const baseName = path.basename(filePath).toLowerCase();
       let contentType = "video/mp4";
       let cacheControl = "no-cache";
 
       if (ext === ".m3u8") {
         contentType = "application/vnd.apple.mpegurl";
         cacheControl = "no-cache, no-store, must-revalidate";
-      } else if (ext === ".m4s") {
+      } else if (ext === ".m4s" || baseName.startsWith("init_")) {
         contentType = "video/mp4";
         cacheControl = "public, max-age=31536000, immutable";
       } else if (ext === ".vtt") {
@@ -194,12 +201,25 @@ export class LocalMediaStorage implements MediaStorage {
         "Access-Control-Allow-Credentials": "true",
         "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
         "Access-Control-Allow-Headers": "Range, Content-Type, Accept, Origin",
-        "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
+        "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges, ETag, Last-Modified",
         "Cross-Origin-Resource-Policy": "cross-origin",
+        "Connection": "keep-alive",
       };
 
       if (req.method === "OPTIONS") {
         res.writeHead(204, corsHeaders);
+        res.end();
+        return;
+      }
+
+      // Handle conditional GET (304 Not Modified)
+      if (req.headers["if-none-match"] === etag || req.headers["if-modified-since"] === lastModified) {
+        res.writeHead(304, {
+          ...corsHeaders,
+          "ETag": etag,
+          "Last-Modified": lastModified,
+          "Cache-Control": cacheControl,
+        });
         res.end();
         return;
       }
@@ -227,6 +247,8 @@ export class LocalMediaStorage implements MediaStorage {
           "Content-Length": chunkSize,
           "Content-Type": contentType,
           "Cache-Control": cacheControl,
+          "ETag": etag,
+          "Last-Modified": lastModified,
         });
 
         fileStream.pipe(res);
@@ -237,6 +259,8 @@ export class LocalMediaStorage implements MediaStorage {
           "Content-Type": contentType,
           "Accept-Ranges": "bytes",
           "Cache-Control": cacheControl,
+          "ETag": etag,
+          "Last-Modified": lastModified,
         });
 
         fs.createReadStream(filePath).pipe(res);

@@ -20,6 +20,8 @@ import {
   isPrivateAddress,
 } from "../utils/inviteUtils.js";
 import Hls from "hls.js";
+import { SOCKET_EVENTS } from "@cineva/shared";
+import { socketService } from "../services/socket.js";
 import {
   formatAudioTrackList,
   formatSubtitleTrackList,
@@ -340,11 +342,22 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   const [volume, setVolume] = useState(80);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
   const [bufferPercent, setBufferPercent] = useState(0);
-  const [activeMenu, setActiveMenu] = useState<"audio" | "subs" | "sub-settings" | "speed" | "zoom" | "react" | null>(null);
+  const [activeMenu, setActiveMenu] = useState<"audio" | "subs" | "sub-settings" | "quality" | "speed" | "zoom" | "react" | null>(null);
   const [menuLeft, setMenuLeft] = useState<number>(0);
   const [speed, setSpeed] = useState<number>(1);
   const [zoom, setZoom] = useState<number>(0);
   const [isIdle, setIsIdle] = useState(false);
+
+  // Quality & buffering state
+  const [availableLevels, setAvailableLevels] = useState<Array<{ id: number; height: number; width: number; bitrate: number; label: string }>>([]);
+  const [currentLevelIdx, setCurrentLevelIdx] = useState<number>(-1);
+  const [effectiveQuality, setEffectiveQuality] = useState<{ resolution: string; bitrate: string; mode: string }>({
+    resolution: "1080p",
+    bitrate: "2.8 Mbps",
+    mode: "Direct play",
+  });
+  const [stalledNames, setStalledNames] = useState<string[]>([]);
+  const [countdownSec, setCountdownSec] = useState<number | null>(null);
 
   // Subtitle settings, custom layer, and control bar height observer
   const [subSettings, setSubSettings] = useState<SubtitleSettings>(() => loadSubtitleSettings());
@@ -419,6 +432,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
+      delete (window as any).__hlsInstance;
     }
 
     if (!mediaUrl) {
@@ -431,17 +445,74 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
-        backBufferLength: 90,
+        capLevelToPlayerSize: false,
+        startLevel: -1,
+        abrEwmaDefaultEstimate: 10000000,
+        maxBufferLength: 60,
+        maxMaxBufferLength: 120,
+        backBufferLength: 30,
+        maxBufferHole: 0.5,
+        fragLoadingTimeOut: 20000,
+        fragLoadingMaxRetry: 4,
       });
       (hls as any).subtitleDisplay = false;
       hlsRef.current = hls;
+      (window as any).__hlsInstance = hls;
 
       hls.loadSource(mediaUrl);
       hls.attachMedia(el);
 
+      const updateQualityLevels = () => {
+        if (!hls.levels || hls.levels.length === 0) return;
+        const levels = hls.levels.map((lvl, idx) => {
+          let label = `${lvl.height || 0}p`;
+          if ((lvl.height && lvl.height >= 1000) || (lvl.width && lvl.width >= 1900)) label = "1080p";
+          else if ((lvl.height && lvl.height >= 700) || (lvl.width && lvl.width >= 1200)) label = "720p";
+          else if ((lvl.height && lvl.height >= 400) || (lvl.width && lvl.width >= 800)) label = "480p";
+          return {
+            id: idx,
+            width: lvl.width || 0,
+            height: lvl.height || 0,
+            bitrate: lvl.bitrate || 0,
+            label,
+          };
+        });
+        setAvailableLevels(levels);
+
+        const savedPref = localStorage.getItem("cineva_quality_preference");
+        if (savedPref && savedPref !== "auto") {
+          const matched = levels.find((l) => l.label.toLowerCase() === savedPref.toLowerCase());
+          if (matched) {
+            hls.currentLevel = matched.id;
+            setCurrentLevelIdx(matched.id);
+          }
+        }
+      };
+
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        updateQualityLevels();
         if (hls.audioTracks && hls.audioTracks.length > 0) {
           setHlsAudioTracks([...hls.audioTracks]);
+        }
+      });
+
+      hls.on(Hls.Events.LEVELS_UPDATED, () => {
+        updateQualityLevels();
+      });
+
+      hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
+        const activeLevel = hls.levels[data.level];
+        if (activeLevel) {
+          const resLabel = ((activeLevel.height && activeLevel.height >= 1000) || (activeLevel.width && activeLevel.width >= 1900))
+            ? "1080p"
+            : `${activeLevel.height}p`;
+          const mbps = activeLevel.bitrate ? `${(activeLevel.bitrate / 1000000).toFixed(1)} Mbps` : "2.8 Mbps";
+          const isDirect = !manifest?.videoStream || (manifest.videoStream.codecName === "h264" && (activeLevel.height || 0) >= 720);
+          setEffectiveQuality({
+            resolution: resLabel,
+            bitrate: mbps,
+            mode: isDirect ? "Direct play" : "Converted",
+          });
         }
       });
 
@@ -486,6 +557,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
+        delete (window as any).__hlsInstance;
       }
     };
   }, [mediaUrl, isHls, videoRef]);
@@ -496,13 +568,29 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
 
     const onPlay = () => setRealVideoPaused(false);
     const onPause = () => setRealVideoPaused(true);
-    const onWaiting = () => setIsBuffering(true);
+    const onWaiting = () => {
+      setIsBuffering(true);
+      const sock = socketService.getSocket();
+      if (sock && sock.connected) {
+        sock.emit(SOCKET_EVENTS.BUFFERING_START, { position: el.currentTime });
+      }
+    };
     const onPlaying = () => {
       setIsBuffering(false);
       setRealVideoPaused(false);
       setIsAutoplayBlocked(false);
+      const sock = socketService.getSocket();
+      if (sock && sock.connected) {
+        sock.emit(SOCKET_EVENTS.BUFFERING_READY, { position: el.currentTime });
+      }
     };
-    const onCanPlay = () => setIsBuffering(false);
+    const onCanPlay = () => {
+      setIsBuffering(false);
+      const sock = socketService.getSocket();
+      if (sock && sock.connected) {
+        sock.emit(SOCKET_EVENTS.BUFFERING_READY, { position: el.currentTime });
+      }
+    };
     const onEnded = () => setRealVideoPaused(true);
     const onTimeUpdate = () => {
       if (Number.isFinite(el.currentTime)) {
@@ -519,6 +607,13 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
         setVideoDuration(el.duration);
       }
       setVideoError(null);
+      if (el.videoWidth && el.videoHeight) {
+        const resLabel = el.videoHeight >= 1000 || el.videoWidth >= 1900 ? "1080p" : `${el.videoHeight}p`;
+        setEffectiveQuality((prev) => ({
+          ...prev,
+          resolution: resLabel,
+        }));
+      }
     };
     const onError = () => {
       const err = el.error;
@@ -562,6 +657,63 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     };
   }, [videoRef, mediaUrl]);
 
+  // Buffering sync & adaptive renditions listeners
+  useEffect(() => {
+    const sock = socketService.getSocket();
+    if (!sock) return;
+
+    const handleBufferingWait = (data: { stalledNames?: string[]; waitingFor?: string }) => {
+      if (data.stalledNames && data.stalledNames.length > 0) {
+        setStalledNames(data.stalledNames);
+      } else if (data.waitingFor) {
+        setStalledNames([data.waitingFor]);
+      } else {
+        setStalledNames([]);
+      }
+    };
+
+    const handleBufferingCountdown = (data: { resumeAt: number; position: number }) => {
+      setStalledNames([]);
+      const diff = Math.max(0, data.resumeAt - Date.now());
+      const s = Math.ceil(diff / 1000) || 1;
+      setCountdownSec(s);
+      const iv = setInterval(() => {
+        const remaining = Math.max(0, data.resumeAt - Date.now());
+        const sec = Math.ceil(remaining / 1000);
+        if (sec <= 0) {
+          clearInterval(iv);
+          setCountdownSec(null);
+        } else {
+          setCountdownSec(sec);
+        }
+      }, 250);
+    };
+
+    const handleRenditionsUpdated = (data: { masterPlaylistUrl?: string; renditions?: any[] }) => {
+      if (hlsRef.current && data.masterPlaylistUrl) {
+        hlsRef.current.loadSource(data.masterPlaylistUrl);
+      }
+    };
+
+    sock.on(SOCKET_EVENTS.BUFFERING_WAIT, handleBufferingWait);
+    sock.on(SOCKET_EVENTS.BUFFERING_COUNTDOWN, handleBufferingCountdown);
+    sock.on(SOCKET_EVENTS.RENDITIONS_UPDATED, handleRenditionsUpdated);
+
+    return () => {
+      sock.off(SOCKET_EVENTS.BUFFERING_WAIT, handleBufferingWait);
+      sock.off(SOCKET_EVENTS.BUFFERING_COUNTDOWN, handleBufferingCountdown);
+      sock.off(SOCKET_EVENTS.RENDITIONS_UPDATED, handleRenditionsUpdated);
+    };
+  }, [connectionStatus]);
+
+  const handleSkipBuffering = useCallback(() => {
+    const sock = socketService.getSocket();
+    if (sock && sock.connected) {
+      sock.emit(SOCKET_EVENTS.BUFFERING_SKIP, {});
+    }
+    setStalledNames([]);
+  }, []);
+
   const manifest = room?.media?.trackManifest;
 
   const [scrubTip, setScrubTip] = useState<{ text: string; left: number }>({ text: "0:00", left: 0 });
@@ -601,6 +753,17 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       setToastMessage(null);
     }, 2200);
   }, []);
+
+  const handleSelectQuality = useCallback((levelIdx: number) => {
+    setCurrentLevelIdx(levelIdx);
+    if (hlsRef.current) {
+      hlsRef.current.currentLevel = levelIdx;
+    }
+    const label = levelIdx === -1 ? "auto" : availableLevels.find((l) => l.id === levelIdx)?.label || "auto";
+    localStorage.setItem("cineva_quality_preference", label);
+    showToast(`Quality: ${levelIdx === -1 ? `Auto (${effectiveQuality.resolution})` : label}`);
+    setActiveMenu(null);
+  }, [availableLevels, effectiveQuality.resolution, showToast]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -864,8 +1027,25 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
 
 
 
+  const handlePlayerSeek = useCallback(
+    (newPosition: number) => {
+      if (hlsRef.current) {
+        try {
+          hlsRef.current.stopLoad();
+        } catch {}
+      }
+      handleSeek(newPosition);
+      if (hlsRef.current) {
+        try {
+          hlsRef.current.startLoad();
+        } catch {}
+      }
+    },
+    [handleSeek]
+  );
+
   useEffect(() => {
-    (window as any).__cinevaSeek = handleSeek;
+    (window as any).__cinevaSeek = handlePlayerSeek;
     (window as any).__cinevaPlay = handlePlay;
     (window as any).__cinevaPause = handlePause;
     return () => {
@@ -873,7 +1053,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       delete (window as any).__cinevaPlay;
       delete (window as any).__cinevaPause;
     };
-  }, [handleSeek, handlePlay, handlePause]);
+  }, [handlePlayerSeek, handlePlay, handlePause]);
 
   const handleCopyInvite = async () => {
     try {
@@ -968,7 +1148,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {}
     const r = getScrubRatio(e.clientX);
-    handleSeek(r * totalDuration);
+    handlePlayerSeek(r * totalDuration);
     wakeControls();
   };
 
@@ -977,7 +1157,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     const time = r * totalDuration;
     setScrubTip({ text: fmtTime(time, totalDuration >= 3600), left: r * 100 });
     if (isScrubbing && canControl && totalDuration) {
-      handleSeek(r * totalDuration);
+      handlePlayerSeek(r * totalDuration);
     }
   };
 
@@ -999,7 +1179,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
         showToast("The host controls playback");
         return;
       }
-      handleSeek(Math.max(0, curTime - 10));
+      handlePlayerSeek(Math.max(0, curTime - 10));
       wakeControls();
     } else if (e.key === "ArrowRight") {
       e.preventDefault();
@@ -1007,12 +1187,12 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
         showToast("The host controls playback");
         return;
       }
-      handleSeek(Math.min(totalDuration, curTime + 10));
+      handlePlayerSeek(Math.min(totalDuration, curTime + 10));
       wakeControls();
     }
   };
 
-  const handleMenuClick = (menu: "audio" | "subs" | "speed" | "zoom" | "react", e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleMenuClick = (menu: "audio" | "subs" | "quality" | "speed" | "zoom" | "react", e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     if (activeMenu === menu) {
       setActiveMenu(null);
@@ -1368,6 +1548,106 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
               }}
             >
               {indicator.text}
+            </div>
+          )}
+
+          {/* Buffering Wait Overlay */}
+          {stalledNames.length > 0 && (
+            <div
+              id="buffering-wait-overlay"
+              style={{
+                position: "absolute",
+                inset: 0,
+                zIndex: 25,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "rgba(0, 0, 0, 0.45)",
+                backdropFilter: "blur(6px)",
+                WebkitBackdropFilter: "blur(6px)",
+                pointerEvents: "auto",
+              }}
+            >
+              <div
+                style={{
+                  background: "rgba(10, 12, 22, 0.85)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  borderRadius: "20px",
+                  padding: "16px 24px",
+                  color: "#ffffff",
+                  textAlign: "center",
+                  maxWidth: "360px",
+                  boxShadow: "0 12px 32px rgba(0, 0, 0, 0.6)",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: 600 }}>
+                  <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#f59e0b", display: "inline-block" }} />
+                  <span>Waiting for {stalledNames.join(", ")}...</span>
+                </div>
+                <p style={{ margin: 0, fontSize: "12px", color: "rgba(255, 255, 255, 0.6)", lineHeight: "1.4" }}>
+                  Paused so everyone stays synchronized at the exact same frame.
+                </p>
+                {isHost && (
+                  <button
+                    type="button"
+                    onClick={handleSkipBuffering}
+                    style={{
+                      marginTop: "4px",
+                      padding: "6px 14px",
+                      borderRadius: "10px",
+                      background: "rgba(255, 255, 255, 0.12)",
+                      border: "1px solid rgba(255, 255, 255, 0.2)",
+                      color: "#ffffff",
+                      fontSize: "12px",
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    Continue without {stalledNames[0]}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Buffering Countdown Overlay */}
+          {countdownSec !== null && (
+            <div
+              id="buffering-countdown-overlay"
+              style={{
+                position: "absolute",
+                inset: 0,
+                zIndex: 26,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "rgba(0, 0, 0, 0.35)",
+                pointerEvents: "none",
+              }}
+            >
+              <div
+                style={{
+                  width: "72px",
+                  height: "72px",
+                  borderRadius: "50%",
+                  background: "rgba(10, 12, 22, 0.9)",
+                  border: "2px solid rgba(255, 255, 255, 0.25)",
+                  color: "#ffffff",
+                  fontSize: "32px",
+                  fontWeight: 700,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 12px 32px rgba(0, 0, 0, 0.7)",
+                }}
+              >
+                {countdownSec}
+              </div>
             </div>
           )}
 
@@ -1741,6 +2021,22 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                   <button
                     type="button"
                     className="cb"
+                    id="ql"
+                    data-m="quality"
+                    aria-label="Quality"
+                    aria-expanded={activeMenu === "quality"}
+                    onClick={(e) => handleMenuClick("quality", e)}
+                    title={`Quality: ${currentLevelIdx === -1 ? `Auto (${effectiveQuality.resolution})` : effectiveQuality.resolution}`}
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <rect x="2.5" y="4.5" width="19" height="15" rx="3" />
+                      <path d="M7 9v6M7 12h3.5M10.5 9v6M14.5 9v6c0 .8.6 1.5 1.5 1.5h1c.8 0 1.5-.7 1.5-1.5V9" />
+                    </svg>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="cb"
                     data-m="speed"
                     aria-label="Speed"
                     aria-expanded={activeMenu === "speed"}
@@ -1962,8 +2258,49 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                         </button>
                       </>
                     )}
-
-
+                    {activeMenu === "quality" && (
+                      <>
+                        <h4>Quality</h4>
+                        <small>Only you see this choice.</small>
+                        <div style={{ padding: "6px 12px 10px 12px", borderBottom: "1px solid rgba(255,255,255,0.08)", marginBottom: "6px" }}>
+                          <div style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--t2)", fontWeight: 600 }}>Active Stream</div>
+                          <div style={{ fontSize: "12px", color: "var(--t1)", display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
+                            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#34d399", display: "inline-block" }} />
+                            <span>{effectiveQuality.resolution} · {effectiveQuality.bitrate}</span>
+                            <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "4px", background: "rgba(255,255,255,0.08)", color: "var(--t2)" }}>
+                              {effectiveQuality.mode}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          role="menuitemradio"
+                          aria-checked={currentLevelIdx === -1}
+                          onClick={() => handleSelectQuality(-1)}
+                        >
+                          <span>Auto ({effectiveQuality.resolution})</span>
+                          {currentLevelIdx === -1 && (
+                            <svg className="ck" viewBox="0 0 24 24">
+                              <path d="M5 12.5l4.5 4.5L19 7.5" />
+                            </svg>
+                          )}
+                        </button>
+                        {availableLevels.map((lvl) => (
+                          <button
+                            key={lvl.id}
+                            role="menuitemradio"
+                            aria-checked={currentLevelIdx === lvl.id}
+                            onClick={() => handleSelectQuality(lvl.id)}
+                          >
+                            <span>{lvl.label}</span>
+                            {currentLevelIdx === lvl.id && (
+                              <svg className="ck" viewBox="0 0 24 24">
+                                <path d="M5 12.5l4.5 4.5L19 7.5" />
+                              </svg>
+                            )}
+                          </button>
+                        ))}
+                      </>
+                    )}
 
                     {activeMenu === "speed" && (
                       <>

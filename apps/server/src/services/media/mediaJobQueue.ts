@@ -449,6 +449,23 @@ export class MediaJobQueue {
           audioTracks: finalManifest.audioTracks.length,
           subtitleTracks: finalManifest.subtitleTracks.length,
         });
+
+        // Part A4: Trigger background generation of 720p / 480p lower renditions with low CPU priority
+        hlsPackager.generateAdaptiveRenditionsInBackground(
+          job.id,
+          actualSourcePath,
+          hlsOutputDir,
+          analysis,
+          (rendition) => {
+            broadcastToRoom(roomId, SOCKET_EVENTS.RENDITIONS_UPDATED, {
+              roomId,
+              rendition,
+              hlsMasterUrl: mediaStorage.getUrl(hlsMasterStorageKey),
+            });
+          }
+        ).catch((err) => {
+          logger.warn('[MediaJobQueue] Background rendition generation encountered error', { error: err.message });
+        });
       } catch (hlsErr: any) {
         logger.warn("[MediaJobQueue] HLS packaging failed; attempting progressive MP4 fallback", {
           roomId,
