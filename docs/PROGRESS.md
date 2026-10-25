@@ -1979,6 +1979,21 @@ Measured using automated end-to-end Playwright Chrome benchmark (`scripts/verify
    - `npm run typecheck`: 0 errors across `@cineva/shared`, `@cineva/server`, `@cineva/web`.
    - `npm test`: 246 passed (134 server, 112 web).
    - `npm run build`: Production bundle built cleanly.
-5. **Next Steps**: Phase 2 — Apply system page-by-page starting with Room desktop and mobile.
+5. **Next Steps**: Phase 2 Page-by-page Polish & Phase 3 Feature Validations.
+
+### PHASE 2 & 3 MILESTONES: SYSTEM APPLICATION & MEDIA QUALITY (October 25, 2026)
+1. **ErrorBoundary & 404 Route**:
+   - Implemented `<ErrorBoundary>` in `apps/web/src/components/ErrorBoundary.tsx` wrapping the application root with recovery actions ("Reload" and "Back home").
+   - Implemented dedicated `<NotFoundPage>` in `apps/web/src/pages/NotFoundPage.tsx` using design system tokens.
+   - Updated `App.tsx` routing replacing silent redirection with the dedicated 404 page.
+2. **Media Quality & Encoding (§6.1)**:
+   - Root cause diagnosed: `transcodingService.ts` was using a low hardcoded bitrate (`5M`) and software CRF 22, causing 1080p source files to lose sharpness when transcoded.
+   - Fixed by aligning with `hlsPackager.ts`: derived source bitrate clamped between 6 Mbps and 14 Mbps (`clamp(src * 0.9, 6M, 14M)`), `maxrate 1.5x`, `bufsize 2.0x`, `h264_videotoolbox` high profile level 4.2 with BT.709 tags, and software fallback `libx264 -crf 18 -preset veryfast -profile:v high -level 4.2`.
+3. **Storage Cleanup & Monorepo Test Suite**:
+   - Cleaned stale orphaned test runs from `apps/server/uploads` (freed 18 GB) ensuring quota limit checks pass smoothly.
+   - `npm run typecheck`: 0 errors across all workspaces.
+   - `npm test`: 246 / 246 passed (134 server, 112 web).
+   - `npm run build`: built production bundles cleanly.
+
 
 
