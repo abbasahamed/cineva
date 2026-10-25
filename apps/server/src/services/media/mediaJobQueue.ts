@@ -242,8 +242,8 @@ export class MediaJobQueue {
             const totalMB = (total / (1024 * 1024)).toFixed(0);
             const stage = `Retrieving video from storage (${dlMB}/${totalMB} MB)...`;
 
-            await prisma.media.update({
-              where: { roomId },
+            await prisma.media.updateMany({
+              where: { roomId, status: "processing" },
               data: { transcodeProgress: dlPercent },
             }).catch(() => {});
 
@@ -391,8 +391,8 @@ export class MediaJobQueue {
           analysis,
           onProgress: async (progressPercent, speed, etaSeconds, stage) => {
             const scaledPercent = Math.min(99, Math.max(5, progressPercent));
-            await prisma.media.update({
-              where: { roomId },
+            await prisma.media.updateMany({
+              where: { roomId, status: "processing" },
               data: { transcodeProgress: scaledPercent },
             }).catch(() => {});
 
@@ -485,8 +485,8 @@ export class MediaJobQueue {
           durationSeconds: analysis.duration,
           onProgress: async (progressPercent, speed, etaSeconds, stage) => {
             const scaledPercent = Math.min(99, 10 + Math.round(progressPercent * 0.89));
-            await prisma.media.update({
-              where: { roomId },
+            await prisma.media.updateMany({
+              where: { roomId, status: "processing" },
               data: { transcodeProgress: scaledPercent },
             }).catch(() => {});
 

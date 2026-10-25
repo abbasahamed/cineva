@@ -1994,6 +1994,10 @@ Measured using automated end-to-end Playwright Chrome benchmark (`scripts/verify
    - `npm run typecheck`: 0 errors across all workspaces.
    - `npm test`: 246 / 246 passed (134 server, 112 web).
    - `npm run build`: built production bundles cleanly.
+4. **Transcode Progress Race Condition Fix**:
+   - Diagnosed sporadic test failure in `mediaTranscoding.test.ts` where `transcodeProgress` was 99 instead of 100 on finished media.
+   - Root cause: un-awaited asynchronous `onProgress` callbacks from FFmpeg/HLS packaging were updating DB rows unconditionally after `status: 'ready'` had already been written.
+   - Fixed in `mediaJobQueue.ts` by scoping intermediate progress updates with `where: { roomId, status: 'processing' }` using `prisma.media.updateMany`.
 
 
 
