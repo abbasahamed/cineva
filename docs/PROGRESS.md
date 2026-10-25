@@ -2002,6 +2002,10 @@ Measured using automated end-to-end Playwright Chrome benchmark (`scripts/verify
    - Upgraded top navigation bar, stage wrapper, empty screening state, sidebar panel, call grid tiles, media controls dock, segmented tabs, and composer.
    - Implemented 60% liquid glass tokens (`--g-bg: rgba(18, 20, 28, 0.60)`), `-webkit-backdrop-filter: blur(28px) saturate(190%) brightness(1.08)`, 1px specular highlight borders (`rgba(255, 255, 255, 0.14)` with top inner bevel `inset 0 1.2px 1px 0 rgba(255, 255, 255, 0.28)`), and deep ambient aurora backlighting.
    - Verified 112/112 web unit tests and 0 typecheck errors.
+6. **Modal Windows 60% Liquid Glassmorphism**:
+   - Upgraded `MediaUploadModal`, `ShareModal`, and `SettingsModal` from heavy opaque containers to 60% translucent liquid glass cards (`bg-[#0e111d]/60`, `backdrop-blur-2xl`, top specular highlight line, dual ambient aurora glow underlay, and specular top bevel `inset 0 1.2px 1px 0 rgba(255, 255, 255, 0.32)`).
+   - Refined frosted upload dropzone with indigo halo, circular action buttons, and luminous buttons.
+   - Verified 112/112 web unit tests and 0 typecheck errors.
 
 
 
