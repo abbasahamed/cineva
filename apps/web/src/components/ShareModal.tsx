@@ -113,26 +113,29 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/55 backdrop-blur-md animate-fadeIn"
     >
-      <div className="relative w-full max-w-md bg-[#0a0c16]/90 backdrop-blur-2xl border border-white/[0.12] rounded-3xl shadow-glass-elevated p-6 sm:p-7 overflow-hidden glass-reflection animate-scaleUp">
+      <div className="relative w-full max-w-md bg-[#0e111d]/60 backdrop-blur-2xl border border-white/[0.15] rounded-3xl shadow-[inset_0_1.2px_1px_0_rgba(255,255,255,0.32),inset_0_-1px_0_rgba(0,0,0,0.5),0_24px_60px_-12px_rgba(0,0,0,0.85)] p-6 sm:p-7 overflow-hidden animate-scaleUp">
         {/* Subtle top ambient highlight accent */}
-        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-brand-400/35 to-transparent pointer-events-none" />
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/40 to-transparent pointer-events-none" />
+        <div className="absolute -top-24 -left-24 w-48 h-48 rounded-full bg-indigo-500/20 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -right-24 w-48 h-48 rounded-full bg-violet-500/15 blur-3xl pointer-events-none" />
 
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-white/[0.08] mb-5">
+        <div className="relative flex items-center justify-between pb-4 border-b border-white/[0.10] mb-5">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-brand-500/20 to-indigo-500/10 border border-brand-500/30 flex items-center justify-center text-brand-400 shadow-glass-sm">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500/25 to-violet-500/15 border border-white/20 flex items-center justify-center text-indigo-300 shadow-[inset_0_1px_1px_rgba(255,255,255,0.35),0_4px_14px_rgba(99,102,241,0.25)]">
               <Share2 className="w-4.5 h-4.5" />
             </div>
             <div>
               <h3 className="font-semibold text-base text-slate-100 tracking-tight">Invite Friends</h3>
-              <p className="text-xs text-surface-muted">Share room link or 6-character code</p>
+              <p className="text-xs text-slate-300/80">Share room link or 6-character code</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-xl hover:bg-white/[0.08] text-slate-400 hover:text-white transition-colors"
+            aria-label="Close modal"
+            className="w-8 h-8 rounded-full bg-white/[0.06] hover:bg-white/[0.14] border border-white/[0.12] text-slate-300 hover:text-white transition-all flex items-center justify-center active:scale-95 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
           >
             <X className="w-4 h-4" />
           </button>
