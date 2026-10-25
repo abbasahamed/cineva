@@ -150,6 +150,12 @@ export class TranscodingService {
         : 'Transcoding video & audio...';
 
       const useHw = this.checkHardwareAcceleration();
+      const approxBitrate = (inputStat.size && durationSeconds)
+        ? Math.round((inputStat.size * 8) / durationSeconds)
+        : 8_000_000;
+      const targetBitrate = Math.max(6_000_000, Math.min(14_000_000, Math.round(approxBitrate * 0.9)));
+      const maxRate = Math.round(targetBitrate * 1.5);
+      const bufSize = Math.round(targetBitrate * 2.0);
 
       if (useHw) {
         args = [
@@ -166,16 +172,30 @@ export class TranscodingService {
           '-c:v',
           'h264_videotoolbox',
           '-b:v',
-          '5M',
+          `${targetBitrate}`,
+          '-maxrate',
+          `${maxRate}`,
+          '-bufsize',
+          `${bufSize}`,
+          '-profile:v',
+          'high',
+          '-level',
+          '4.2',
           '-pix_fmt',
           'yuv420p',
+          '-colorspace',
+          'bt709',
+          '-color_primaries',
+          'bt709',
+          '-color_trc',
+          'bt709',
           ...audioCodecArgs,
           '-movflags',
           '+faststart',
           absOutput,
         ];
       } else {
-        // Optimized software encoder: libx264 -preset veryfast -crf 22
+        // High quality software encoder: libx264 -crf 18 -preset veryfast -profile:v high -level 4.2
         args = [
           '-y',
           '-progress',
@@ -192,9 +212,19 @@ export class TranscodingService {
           '-preset',
           'veryfast',
           '-crf',
-          '22',
+          '18',
+          '-profile:v',
+          'high',
+          '-level',
+          '4.2',
           '-pix_fmt',
           'yuv420p',
+          '-colorspace',
+          'bt709',
+          '-color_primaries',
+          'bt709',
+          '-color_trc',
+          'bt709',
           ...audioCodecArgs,
           '-movflags',
           '+faststart',
