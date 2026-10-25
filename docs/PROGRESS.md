@@ -1998,6 +1998,10 @@ Measured using automated end-to-end Playwright Chrome benchmark (`scripts/verify
    - Diagnosed sporadic test failure in `mediaTranscoding.test.ts` where `transcodeProgress` was 99 instead of 100 on finished media.
    - Root cause: un-awaited asynchronous `onProgress` callbacks from FFmpeg/HLS packaging were updating DB rows unconditionally after `status: 'ready'` had already been written.
    - Fixed in `mediaJobQueue.ts` by scoping intermediate progress updates with `where: { roomId, status: 'processing' }` using `prisma.media.updateMany`.
+5. **Watch Room UI Polish & 60% Glassmorphism**:
+   - Upgraded top navigation bar, stage wrapper, empty screening state, sidebar panel, call grid tiles, media controls dock, segmented tabs, and composer.
+   - Implemented 60% liquid glass tokens (`--g-bg: rgba(18, 20, 28, 0.60)`), `-webkit-backdrop-filter: blur(28px) saturate(190%) brightness(1.08)`, 1px specular highlight borders (`rgba(255, 255, 255, 0.14)` with top inner bevel `inset 0 1.2px 1px 0 rgba(255, 255, 255, 0.28)`), and deep ambient aurora backlighting.
+   - Verified 112/112 web unit tests and 0 typecheck errors.
 
 
 
