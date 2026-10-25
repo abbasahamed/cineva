@@ -121,7 +121,7 @@ export class RoomManager {
     const room = await prisma.room.create({
       data: {
         roomCode,
-        name: input.roomName,
+        name: (input.roomName && input.roomName !== 'Watch Room') ? input.roomName : `${input.displayName}'s Room`,
         hostParticipantId: '', // updated right after participant creation
         hostSessionId: sessionId,
         allowGuestControl: input.allowGuestControl ?? true,

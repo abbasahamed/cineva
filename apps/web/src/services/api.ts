@@ -40,8 +40,15 @@ export async function createRoom(data: CreateRoomInput): Promise<CreateRoomRespo
     if (res.status === 502 || res.status === 503 || res.status === 504) {
       throw new Error("Backend server is offline. Please make sure 'npm run dev' is running.");
     }
-    const err = await res.json().catch(() => ({ error: "Failed to create room" }));
-    throw new Error(err.error || "Failed to create room");
+    let errMsg = "Failed to create room";
+    try {
+      const err = await res.json();
+      errMsg = err.error || err.message || errMsg;
+    } catch {
+      const text = await res.text().catch(() => "");
+      if (text) errMsg = text;
+    }
+    throw new Error(errMsg);
   }
 
   return res.json();

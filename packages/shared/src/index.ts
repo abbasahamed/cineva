@@ -323,7 +323,12 @@ export interface RelayedVideoStatePayload {
 
 export const CreateRoomSchema = z.object({
   displayName: z.string().trim().min(1, 'Display name is required').max(30, 'Display name too long'),
-  roomName: z.string().trim().min(1, 'Room name is required').max(60, 'Room name too long'),
+  roomName: z
+    .string()
+    .trim()
+    .max(60, 'Room name too long')
+    .optional()
+    .transform((val) => (val && val.trim().length > 0 ? val.trim() : 'Watch Room')),
   mediaTitle: z.string().trim().max(100).optional(),
   allowGuestControl: z.boolean().default(true),
 });
