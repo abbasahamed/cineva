@@ -126,6 +126,13 @@ export const DiagnosticsPage: React.FC = () => {
     stopWebRtc();
   };
 
+  // Ensure camera hardware is released when navigating away
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
   const updateTrackDiagnostics = (stream: MediaStream) => {
     const tracks = stream.getTracks();
     setTrackCount(tracks.length);
@@ -327,9 +334,9 @@ export const DiagnosticsPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#05070d] text-slate-100 p-4 sm:p-6 font-sans">
       {/* Header Bar */}
-      <div className="max-w-6xl mx-auto flex items-center justify-between pb-4 border-b border-white/[0.08] mb-6">
+      <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/[0.08] mb-6">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-brand-500/20 border border-brand-500/30 flex items-center justify-center text-brand-300">
+          <div className="w-9 h-9 rounded-xl bg-brand-500/20 border border-brand-500/30 flex items-center justify-center text-brand-300 flex-shrink-0">
             <Activity className="w-5 h-5 text-brand-400" />
           </div>
           <div>
@@ -345,7 +352,7 @@ export const DiagnosticsPage: React.FC = () => {
         {/* Minimal Black Page Toggle (Step 10) */}
         <button
           onClick={() => setMode(mode === 'full' ? 'black-minimal' : 'full')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+          className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all min-h-[44px] ${
             mode === 'black-minimal'
               ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
               : 'bg-white/[0.05] border-white/[0.1] text-slate-300'
@@ -399,7 +406,7 @@ export const DiagnosticsPage: React.FC = () => {
                 <span>1. Camera Capture Constraints (Step 5)</span>
               </h2>
 
-              <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mb-3">
                 {[
                   { id: '320x240@15', label: '320x240 @ 15fps' },
                   { id: '640x360@15', label: '640x360 @ 15fps' },
@@ -417,7 +424,7 @@ export const DiagnosticsPage: React.FC = () => {
                         setTimeout(() => startCamera(), 50);
                       }
                     }}
-                    className={`p-2 rounded-xl border text-left font-medium transition-all ${
+                    className={`p-2.5 min-h-[44px] flex items-center rounded-xl border text-left font-medium transition-all ${
                       selectedConstraint === item.id
                         ? 'bg-brand-500/20 border-brand-500/40 text-brand-300 shadow-sm'
                         : 'bg-white/[0.03] border-white/[0.06] text-slate-400 hover:text-white'
@@ -521,7 +528,7 @@ export const DiagnosticsPage: React.FC = () => {
           {/* Right Column: Live Viewports & Real-Time Telemetry */}
           <div className="lg:col-span-7 flex flex-col gap-4">
             {/* Viewports Container */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Local Camera Viewport */}
               <div className="relative rounded-2xl bg-black border border-white/[0.1] overflow-hidden aspect-video flex items-center justify-center shadow-lg">
                 <video
@@ -592,7 +599,7 @@ export const DiagnosticsPage: React.FC = () => {
                           {track.readyState}
                         </span>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-slate-400 text-[11px] mt-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1 text-slate-400 text-[11px] mt-1 break-words">
                         <div>Resolution: <span className="text-white">{track.settings.width}x{track.settings.height}</span></div>
                         <div>Frame Rate: <span className="text-white">{track.settings.frameRate} fps</span></div>
                         <div>Aspect Ratio: <span className="text-white">{track.settings.aspectRatio?.toFixed(2)}</span></div>
@@ -625,7 +632,7 @@ export const DiagnosticsPage: React.FC = () => {
                   WebRTC loopback inactive. Start WebRTC Sender to measure live encoder statistics.
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs font-mono">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs font-mono">
                   <div className="p-2.5 rounded-xl bg-black/40 border border-white/[0.06]">
                     <div className="text-slate-400 text-[10px]">Negotiated Codec</div>
                     <div className="text-white font-bold text-sm mt-0.5">{webrtcStats.codec}</div>

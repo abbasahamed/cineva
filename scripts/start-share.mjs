@@ -29,7 +29,8 @@ function checkBinary(bin) {
 
 async function main() {
   // 1. Check required binaries and print the exact install command if missing.
-  const missing = ['ffmpeg', 'ffprobe', 'cloudflared'].filter((bin) => !checkBinary(bin));
+  // 1. Check required media binaries (ffmpeg, ffprobe).
+  const missing = ['ffmpeg', 'ffprobe'].filter((bin) => !checkBinary(bin));
   if (missing.length > 0) {
     console.log('\n\u274c Missing required tools:\n');
     const formulas = [...new Set(missing.map((b) => BREW_FORMULA[b]))];
@@ -40,11 +41,15 @@ async function main() {
     process.exit(1);
   }
 
+  if (!checkBinary('cloudflared')) {
+    console.log('\u2139\ufe0f  cloudflared not detected in PATH; CINEVA will use native SSH-HTTPS tunnel fallback.\n');
+  }
+
   // 2. Build the server and web app (idempotent, picks up latest changes).
   console.log('\u{1F528} Building Cineva (server + web)...\n');
   execFileSync('npm', ['run', 'build'], { cwd: ROOT, stdio: 'inherit' });
 
-  // 3. Start the server with the tunnel enabled. The server spawns cloudflared
+  // 3. Start the server with the tunnel enabled. The server spawns cloudflared (or SSH tunnel)
   //    and `caffeinate -dims` (tied to its own lifetime).
   const server = spawn('node', ['dist/index.js'], {
     cwd: path.join(ROOT, 'apps', 'server'),
@@ -61,12 +66,15 @@ async function main() {
   process.on('exit', () => forwardSignal('SIGTERM'));
   server.on('exit', (code) => process.exit(code ?? 0));
 
-  // 4. Poll for the tunnel URL and print the banner.
+  // 4. Poll for the tunnel URL and wait until it is available before announcing readiness.
   const port = process.env.PORT || '4000';
   const base = `http://localhost:${port}`;
   let publicUrl = null;
+  let lastTunnelError = null;
+  process.stdout.write('⏳ Waiting for public HTTPS tunnel to establish...');
   for (let i = 0; i < 60; i += 1) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
+    process.stdout.write('.');
     try {
       const res = await fetch(`${base}/api/system/public-url`);
       const data = await res.json();
@@ -74,10 +82,14 @@ async function main() {
         publicUrl = data.publicUrl;
         break;
       }
+      if (data && data.tunnelError) {
+        lastTunnelError = data.tunnelError;
+      }
     } catch {
       // Server not ready yet; keep polling.
     }
   }
+  console.log('\n');
 
   const bar = '='.repeat(64);
   console.log(`\n${bar}`);
@@ -86,8 +98,12 @@ async function main() {
   if (publicUrl) {
     console.log(`  Public link:   ${publicUrl}`);
     console.log(`  Create a room: ${publicUrl}/create`);
+    console.log(`  Status:        READY \u2014 friends can join from any network`);
   } else {
     console.log(`  Local:         ${base}`);
+    if (lastTunnelError) {
+      console.log(`  \u26a0\ufe0f  Tunnel error: ${lastTunnelError}`);
+    }
     let dnsFailed = false;
     try {
       const dns = await import('node:dns/promises');
@@ -96,14 +112,13 @@ async function main() {
       dnsFailed = true;
     }
     if (dnsFailed) {
-      console.log('  ⚠️  DNS lookup failed for api.trycloudflare.com.');
+      console.log('  \u26a0\ufe0f  DNS lookup failed for api.trycloudflare.com.');
       console.log('     Your local Wi-Fi or router DNS cannot resolve Cloudflare quick tunnels.');
       console.log('     To fix, you can manually switch macOS DNS to 1.1.1.1 / 8.8.8.8:');
       console.log('     networksetup -setdnsservers Wi-Fi 1.1.1.1 8.8.8.8');
     } else {
-      console.log('  (The public tunnel URL did not appear yet. It usually takes a');
-      console.log('   few seconds after cloudflared starts. If it never appears,');
-      console.log('   run: brew install cloudflared, then retry.)');
+      console.log('  (The public tunnel URL did not appear yet.');
+      console.log('   Check server logs or re-run `npm run start:share`.)');
     }
   }
   console.log('  Room code:    created when you start a screening \u2014 open the');

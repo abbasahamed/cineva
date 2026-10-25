@@ -150,6 +150,13 @@ export const WebRTCCameraPage: React.FC = () => {
     };
   }, []);
 
+  // Ensure WebRTC and camera hardware is released when navigating away
+  useEffect(() => {
+    return () => {
+      stopWebRTC();
+    };
+  }, []);
+
   return (
     <div style={{ backgroundColor: '#000', color: '#fff', minHeight: '100vh', padding: '24px', fontFamily: 'monospace' }}>
       <h1 style={{ fontSize: '18px', margin: '0 0 16px 0' }}>/diagnostics/webrtc-camera — Camera + WebRTC Send (NO Remote Render)</h1>

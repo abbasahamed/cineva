@@ -65,6 +65,13 @@ export const MovieCameraPage: React.FC = () => {
     }
   }, [activeMode]);
 
+  // Ensure camera hardware is released when navigating away
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
   // rAF monitor
   useEffect(() => {
     const loop = (timestamp: number) => {

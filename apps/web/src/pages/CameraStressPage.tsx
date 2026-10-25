@@ -59,6 +59,13 @@ export const CameraStressPage: React.FC = () => {
     setTrackSettings(null);
   };
 
+  // Ensure camera hardware is released when navigating away
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
   // rAF Responsiveness Probe
   useEffect(() => {
     const loop = (timestamp: number) => {

@@ -7,3 +7,5 @@ export * from './VideoCallsPanel.js';
 export * from './VideoCallPanel.js';
 export * from './useVideoCall.js';
 export * from './WebRTCDebugPanel.js';
+export * from './ParticipantGalleryModal.js';
+export * from './RemoteAudioRenderer.js';

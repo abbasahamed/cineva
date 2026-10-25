@@ -6,8 +6,13 @@ import {
   uploadMedia,
   abortRoom,
   sendAbortBeacon,
-  getPublicUrl,
 } from '../services/api.js';
+import {
+  getRoomInviteUrl,
+  shareOnWhatsApp,
+  copyToClipboard,
+  isPrivateAddress,
+} from '../utils/inviteUtils.js';
 import { socketService } from '../services/socket.js';
 import { SOCKET_EVENTS } from '@cineva/shared';
 
@@ -35,6 +40,7 @@ export const CreateRoomPage: React.FC = () => {
   const [etaText, setEtaText] = useState('');
   const [inviteLink, setInviteLink] = useState('');
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState('');
   const [createdRoomCode, setCreatedRoomCode] = useState<string | null>(null);
 
   // Refs
@@ -110,20 +116,39 @@ export const CreateRoomPage: React.FC = () => {
   };
 
   const handleCopy = async () => {
-    if (!inviteLink) return;
+    if (!createdRoomCode) return;
     try {
-      await navigator.clipboard.writeText(inviteLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      const textarea = document.createElement('textarea');
-      textarea.value = inviteLink;
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      const link = await getRoomInviteUrl(createdRoomCode, {
+        forceRefresh: !inviteLink || isPrivateAddress(inviteLink),
+      });
+      const ok = await copyToClipboard(link);
+      if (ok) {
+        setInviteLink(link);
+        setCopied(true);
+        setCopyError('');
+        setTimeout(() => setCopied(false), 2000);
+      } else {
+        setCopyError('Failed to copy link to clipboard');
+      }
+    } catch (err: any) {
+      setCopyError(err.message || 'Public invite link unavailable: active public tunnel or deployed domain required.');
+    }
+  };
+
+  const handleWhatsAppShare = async () => {
+    if (!createdRoomCode) return;
+    try {
+      const link = await getRoomInviteUrl(createdRoomCode, {
+        forceRefresh: !inviteLink || isPrivateAddress(inviteLink),
+      });
+      setInviteLink(link);
+      setCopyError('');
+      const win = shareOnWhatsApp(link);
+      if (!win) {
+        setCopyError('Popup blocked: please allow popups to open WhatsApp.');
+      }
+    } catch (err: any) {
+      setCopyError(err.message || 'Public invite link unavailable: active public tunnel or deployed domain required.');
     }
   };
 
@@ -211,14 +236,14 @@ export const CreateRoomPage: React.FC = () => {
         setProgressStateText('Ready');
         setEtaText('');
 
-        let publicBase = window.location.origin;
         try {
-          const pubUrl = await getPublicUrl();
-          if (pubUrl) publicBase = pubUrl;
+          const invite = await getRoomInviteUrl(demoResult.room.roomCode);
+          if (invite && !isPrivateAddress(invite)) {
+            setInviteLink(invite);
+          }
         } catch {
-          // fallback to origin
+          // Public link will be resolved on demand or prompt error when user clicks copy/whatsapp
         }
-        setInviteLink(`${publicBase}/join/${demoResult.room.roomCode}`);
 
         await new Promise((r) => setTimeout(r, 300));
         if (isCancelledRef.current) return;
@@ -244,14 +269,14 @@ export const CreateRoomPage: React.FC = () => {
         sessionStorage.setItem(`sw_name_${roomResult.room.roomCode}`, trimmedName);
 
         // Resolve public base invite URL
-        let publicBase = window.location.origin;
         try {
-          const pubUrl = await getPublicUrl();
-          if (pubUrl) publicBase = pubUrl;
+          const invite = await getRoomInviteUrl(roomResult.room.roomCode);
+          if (invite && !isPrivateAddress(invite)) {
+            setInviteLink(invite);
+          }
         } catch {
-          // fallback to origin
+          // Public link will be resolved on demand or prompt error when user clicks copy/whatsapp
         }
-        setInviteLink(`${publicBase}/join/${roomResult.room.roomCode}`);
 
         // Upload media with real progress tracking
         await uploadMedia(
@@ -308,14 +333,14 @@ export const CreateRoomPage: React.FC = () => {
         sessionStorage.setItem(`cineva_session_${roomResult.room.roomCode}`, roomResult.hostSessionId);
         sessionStorage.setItem(`sw_name_${roomResult.room.roomCode}`, trimmedName);
 
-        let publicBase = window.location.origin;
         try {
-          const pubUrl = await getPublicUrl();
-          if (pubUrl) publicBase = pubUrl;
+          const invite = await getRoomInviteUrl(roomResult.room.roomCode);
+          if (invite && !isPrivateAddress(invite)) {
+            setInviteLink(invite);
+          }
         } catch {
-          // fallback to origin
+          // Public link will be resolved on demand or prompt error when user clicks copy/whatsapp
         }
-        setInviteLink(`${publicBase}/join/${roomResult.room.roomCode}`);
 
         setProgressBarWidth(100);
         setCurrentStage(3);
@@ -603,11 +628,73 @@ export const CreateRoomPage: React.FC = () => {
               {createdRoomCode || 'CN-8892'}
             </span>
           </div>
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', marginTop: 16, width: '100%', maxWidth: '340px', margin: '16px auto 0' }}>
+            <div style={{ display: 'flex', gap: 10, width: '100%' }}>
+              <button
+                type="button"
+                className="btn frost"
+                id="createCopyLinkBtn"
+                style={{
+                  flex: 1,
+                  height: 38,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  borderRadius: 12,
+                }}
+                onClick={handleCopy}
+              >
+                <span>{copied ? 'Copied Link!' : 'Copy Link'}</span>
+              </button>
+              <button
+                type="button"
+                className="btn"
+                id="createWaShareBtn"
+                style={{
+                  flex: 1,
+                  height: 38,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  borderRadius: 12,
+                  background: '#25D366',
+                  color: '#072412',
+                  border: 'none',
+                }}
+                onClick={handleWhatsAppShare}
+              >
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                  <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0012.04 2zm.01 1.67c4.54 0 8.24 3.7 8.24 8.24 0 2.2-.86 4.28-2.42 5.84-1.56 1.56-3.64 2.41-5.84 2.41-1.49 0-2.95-.39-4.23-1.15l-.3-.18-3.13.82.83-3.05-.2-.31a8.196 8.196 0 01-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24zm4.52 11.66c-.25-.13-1.47-.72-1.7-.81-.23-.08-.39-.13-.56.13-.17.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.13-1.06-.39-2.03-1.25-.75-.67-1.26-1.5-1.41-1.75-.14-.25-.02-.39.11-.51.11-.11.25-.29.37-.44.13-.14.17-.25.25-.42.08-.17.04-.31-.02-.44-.06-.13-.56-1.35-.77-1.85-.2-.49-.41-.42-.56-.43h-.48c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1 0 1.24.9 2.44 1.03 2.61.13.17 1.78 2.72 4.31 3.81.6.26 1.07.42 1.44.54.61.19 1.16.17 1.6.1.49-.07 1.47-.6 1.68-1.18.21-.58.21-1.08.15-1.18-.06-.1-.23-.17-.48-.29z" />
+                </svg>
+                <span>WhatsApp</span>
+              </button>
+            </div>
+            {copyError && (
+              <p
+                id="createCopyError"
+                style={{
+                  fontSize: 12,
+                  color: '#fb7185',
+                  marginTop: 8,
+                  marginBottom: 10,
+                  textAlign: 'center',
+                  lineHeight: 1.4,
+                }}
+                role="alert"
+              >
+                {copyError}
+              </p>
+            )}
             <button
               type="button"
               className="btn-primary"
-              style={{ marginTop: 0 }}
+              style={{ marginTop: 0, width: '100%' }}
               onClick={handleEnterRoom}
             >
               Enter Theater
