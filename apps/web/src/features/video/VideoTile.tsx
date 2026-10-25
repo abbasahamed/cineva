@@ -169,10 +169,10 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
 
   return (
     <div
-      className={`relative w-full h-full rounded-2xl overflow-hidden bg-[#0c0e17] border select-none group transition-all duration-300 ${
+      className={`relative w-full h-full rounded-2xl overflow-hidden bg-slate-900/60 backdrop-blur-md border select-none group transition-all duration-300 ${
         isCameraActive
-          ? 'border-brand-500/30 shadow-[0_0_12px_rgba(99,102,241,0.15)]'
-          : 'border-white/[0.08]'
+          ? 'border-brand-500/40 shadow-[0_0_16px_rgba(99,102,241,0.2)]'
+          : 'border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]'
       } ${className}`}
       role="region"
       aria-label={`${displayName}'s video feed`}
@@ -194,14 +194,14 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
 
       {/* Centered Avatar Region (Cleanly floating in middle, zero overlap with top badges or bottom bar) */}
       {!isCameraActive && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center bg-[#0d0f18] z-10 pointer-events-none">
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center bg-gradient-to-b from-[#161a29]/65 via-[#0e101a]/75 to-[#090b12]/90 backdrop-blur-md z-10 pointer-events-none">
           <div className="relative">
-            <div className="w-12 h-12 rounded-full bg-slate-800/90 border border-white/10 flex items-center justify-center text-white font-bold text-base shadow-inner tracking-wider">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-white/20 to-white/5 border border-white/20 flex items-center justify-center text-white font-bold text-base shadow-[0_8px_20px_rgba(0,0,0,0.4),inset_0_1px_1px_rgba(255,255,255,0.3)] tracking-wider">
               {initials}
             </div>
             <div
               role="img"
-              className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-slate-900 border border-white/20 flex items-center justify-center text-slate-400 shadow-sm"
+              className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-slate-900/90 border border-white/25 flex items-center justify-center text-slate-300 shadow-sm"
               title="Camera off"
               aria-label="Camera off"
             >
@@ -229,7 +229,7 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
       {/* Top Left: Host Badge (Isolated region) */}
       {isHost && (
         <div className="absolute top-2 left-2 z-20 pointer-events-none">
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-white text-black shadow-md border border-white/20">
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-white/95 text-slate-950 shadow-md border border-white/40">
             Host
           </span>
         </div>
