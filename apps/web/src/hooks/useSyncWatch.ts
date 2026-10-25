@@ -126,14 +126,19 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
         const playPromise = videoRef.current.play();
         if (playPromise !== undefined) {
           playPromise.catch((err) => {
-            console.warn('Autoplay blocked by browser policy:', err);
+            console.warn('Autoplay with sound restricted by browser, starting muted and awaiting user interaction:', err);
             if (videoRef.current) {
               videoRef.current.muted = true;
               videoRef.current.play().then(() => {
-                setNeedsUserGesture(true);
-              }).catch(() => {
-                setNeedsUserGesture(true);
-              });
+                const autoUnmute = () => {
+                  if (videoRef.current) {
+                    videoRef.current.muted = false;
+                  }
+                };
+                window.addEventListener('pointerdown', autoUnmute, { once: true, capture: true });
+                window.addEventListener('keydown', autoUnmute, { once: true, capture: true });
+                window.addEventListener('touchstart', autoUnmute, { once: true, capture: true });
+              }).catch(() => {});
             }
           });
         }

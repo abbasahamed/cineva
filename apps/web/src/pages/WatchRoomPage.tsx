@@ -845,13 +845,6 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   const [videoDuration, setVideoDuration] = useState<number>(0);
   const [videoCurrentTime, setVideoCurrentTime] = useState<number>(0);
   const [videoError, setVideoError] = useState<string | null>(null);
-  const [isAutoplayBlocked, setIsAutoplayBlocked] = useState(false);
-
-  useEffect(() => {
-    if (needsUserGesture) {
-      setIsAutoplayBlocked(true);
-    }
-  }, [needsUserGesture]);
 
   const mediaUrl = room?.media && room.media.status === "ready" && room.media.url ? room.media.url : undefined;
   const isMediaProcessing = room?.media && (room.media.status === "processing" || room.media.status === "uploading");
@@ -1014,7 +1007,15 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     const el = videoRef.current;
     if (!el) return;
 
-    const onPlay = () => setRealVideoPaused(false);
+    const onPlay = () => {
+      setRealVideoPaused(false);
+      if (el) {
+        el.volume = volume / 100;
+        if (!isVideoMuted && el.muted) {
+          el.muted = false;
+        }
+      }
+    };
     const onPause = () => setRealVideoPaused(true);
     const onWaiting = () => {
       setIsBuffering(true);
@@ -1026,7 +1027,12 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     const onPlaying = () => {
       setIsBuffering(false);
       setRealVideoPaused(false);
-      setIsAutoplayBlocked(false);
+      if (el) {
+        el.volume = volume / 100;
+        if (!isVideoMuted && el.muted) {
+          el.muted = false;
+        }
+      }
       const sock = socketService.getSocket();
       if (sock && sock.connected) {
         sock.emit(SOCKET_EVENTS.BUFFERING_READY, { position: el.currentTime });
@@ -1208,6 +1214,28 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       videoRef.current.muted = isVideoMuted;
     }
   }, [volume, isVideoMuted, videoRef]);
+
+  // Ensure audio is immediately unmuted on any user interaction without needing to move sound bar
+  useEffect(() => {
+    const unlockAudio = () => {
+      const el = videoRef.current;
+      if (el) {
+        if (!isVideoMuted && el.muted) {
+          el.muted = false;
+        }
+        el.volume = volume / 100;
+      }
+    };
+
+    window.addEventListener("pointerdown", unlockAudio, { capture: true });
+    window.addEventListener("keydown", unlockAudio, { capture: true });
+    window.addEventListener("touchstart", unlockAudio, { capture: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio, { capture: true });
+      window.removeEventListener("keydown", unlockAudio, { capture: true });
+      window.removeEventListener("touchstart", unlockAudio, { capture: true });
+    };
+  }, [isVideoMuted, volume, videoRef]);
 
   useEffect(() => {
     const el = videoRef.current;
@@ -2275,59 +2303,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             </div>
           ) : (
             <>
-              {/* Autoplay Blocked Overlay Prompt */}
-              {isAutoplayBlocked && (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background: "rgba(0,0,0,0.68)",
-                    backdropFilter: "blur(6px)",
-                    zIndex: 10,
-                  }}
-                >
-                  <button
-                    type="button"
-                    className="b p"
-                    style={{
-                      height: "48px",
-                      padding: "0 28px",
-                      fontSize: "15px",
-                      fontWeight: 600,
-                      borderRadius: "99px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "10px",
-                    }}
-                    onClick={() => {
-                      setIsAutoplayBlocked(false);
-                      handleUserGestureStart();
-                      if (videoRef.current) {
-                        videoRef.current.muted = isVideoMuted;
-                        videoRef.current.play().catch(() => {});
-                      }
-                      if (!playback.isPlaying) {
-                        handlePlay();
-                      }
-                    }}
-                  >
-                    <svg viewBox="0 0 24 24" style={{ width: "20px", height: "20px", fill: "currentColor" }}>
-                      <path d="M7 4.5v15L19.5 12z" />
-                    </svg>
-                    <span>Press play to start</span>
-                  </button>
-                  <p style={{ color: "var(--t2)", fontSize: "13px", marginTop: "12px" }}>
-                    Browser autoplay policy requires an initial user interaction.
-                  </p>
-                </div>
-              )}
-
               {/* Buffering Indicator */}
-              {isBuffering && !isAutoplayBlocked && (
+              {isBuffering && (
                 <div
                   style={{
                     position: "absolute",
