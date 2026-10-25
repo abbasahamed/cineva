@@ -38,15 +38,16 @@ export function useIdleControls({
   const isPausedOrEndedOrLoadingRef = useRef(isPausedOrEndedOrLoading);
   const hasActiveMenuOrModalRef = useRef(hasActiveMenuOrModal);
   const isDraggingSliderRef = useRef(isDraggingSlider);
-  const isPointerOverControlsRef = useRef(false);
-  const pointerOverRegionsCountRef = useRef(0);
-  const isFocusInsideControlsRef = useRef(false);
+  const onVideoClickDesktopRef = useRef(onVideoClickDesktop);
+  const onDoubleTapSeekRef = useRef(onDoubleTapSeek);
 
   isPlayingRef.current = isPlaying;
   isMediaReadyRef.current = isMediaReady;
   isPausedOrEndedOrLoadingRef.current = isPausedOrEndedOrLoading;
   hasActiveMenuOrModalRef.current = hasActiveMenuOrModal;
   isDraggingSliderRef.current = isDraggingSlider;
+  onVideoClickDesktopRef.current = onVideoClickDesktop;
+  onDoubleTapSeekRef.current = onDoubleTapSeek;
 
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const singleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -60,15 +61,10 @@ export function useIdleControls({
     );
   }, []);
 
-  // Determine if controls MUST remain visible
+  // Determine if controls MUST remain visible (e.g. while actively dragging seek thumb or before media is ready)
   const shouldControlsBeVisible = useCallback((): boolean => {
     if (!isMediaReadyRef.current) return true;
-    if (!isPlayingRef.current) return true;
-    if (isPausedOrEndedOrLoadingRef.current) return true;
-    if (hasActiveMenuOrModalRef.current) return true;
     if (isDraggingSliderRef.current) return true;
-    if (isPointerOverControlsRef.current || pointerOverRegionsCountRef.current > 0) return true;
-    if (isFocusInsideControlsRef.current) return true;
     return false;
   }, []);
 
@@ -80,7 +76,7 @@ export function useIdleControls({
     }
   }, []);
 
-  // Evaluates idle state and starts 3000ms timer if applicable
+  // Evaluates idle state and starts 5000ms timer
   const scheduleIdleTimer = useCallback(() => {
     clearTimers();
     if (shouldControlsBeVisible()) {
@@ -91,10 +87,10 @@ export function useIdleControls({
       if (!shouldControlsBeVisible()) {
         setIsIdle(true);
       }
-    }, 3000);
+    }, 5000);
   }, [clearTimers, shouldControlsBeVisible]);
 
-  // Wake controls immediately on any user interaction
+  // Wake controls immediately on any user interaction (fresh 5000ms countdown)
   const wakeControls = useCallback(() => {
     setIsIdle(false);
     scheduleIdleTimer();
@@ -105,33 +101,20 @@ export function useIdleControls({
     if (!el) return () => {};
     el.setAttribute('data-controls', 'true');
 
-    const onEnter = (e: PointerEvent) => {
-      if (e.pointerType === 'touch') return;
-      pointerOverRegionsCountRef.current++;
-      isPointerOverControlsRef.current = true;
-      setIsIdle(false);
-      clearTimers();
+    const onInteraction = () => {
+      wakeControls();
     };
 
-    const onLeave = (e: PointerEvent) => {
-      if (e.pointerType === 'touch') return;
-      pointerOverRegionsCountRef.current = Math.max(0, pointerOverRegionsCountRef.current - 1);
-      if (pointerOverRegionsCountRef.current === 0) {
-        isPointerOverControlsRef.current = false;
-      }
-      scheduleIdleTimer();
-    };
-
-    el.addEventListener('pointerenter', onEnter);
-    el.addEventListener('pointerleave', onLeave);
+    el.addEventListener('pointermove', onInteraction, { passive: true });
+    el.addEventListener('pointerdown', onInteraction);
 
     return () => {
-      el.removeEventListener('pointerenter', onEnter);
-      el.removeEventListener('pointerleave', onLeave);
+      el.removeEventListener('pointermove', onInteraction);
+      el.removeEventListener('pointerdown', onInteraction);
     };
-  }, [clearTimers, scheduleIdleTimer]);
+  }, [wakeControls]);
 
-  // Synchronize state when external inputs change (e.g. paused, menu opened, slider drag)
+  // Synchronize state when dragging or media readiness changes
   useEffect(() => {
     if (shouldControlsBeVisible()) {
       setIsIdle(false);
@@ -139,7 +122,7 @@ export function useIdleControls({
     } else {
       scheduleIdleTimer();
     }
-  }, [isPlaying, isMediaReady, isPausedOrEndedOrLoading, hasActiveMenuOrModal, isDraggingSlider, shouldControlsBeVisible, clearTimers, scheduleIdleTimer]);
+  }, [isPlaying, isMediaReady, isDraggingSlider, shouldControlsBeVisible, clearTimers, scheduleIdleTimer]);
 
   // Attach stage & global listeners
   useEffect(() => {
@@ -152,23 +135,16 @@ export function useIdleControls({
       unregisterCtl = registerInteractiveRegion(ctlRef.current);
     }
 
-    const handlePointerMove = (e: PointerEvent) => {
-      if (e.pointerType !== 'touch') {
-        const interactive = isTargetInteractive(e.target);
-        if (interactive) {
-          isPointerOverControlsRef.current = true;
-        }
-      }
+    const handlePointerMove = () => {
       wakeControls();
     };
 
     const handlePointerDown = (e: PointerEvent) => {
-      wakeControls();
-
       // Check if click was on control bar, button, slider, menu, or modal
       const interactive = isTargetInteractive(e.target);
       if (interactive) {
-        // Clicks on controls NEVER toggle or hide controls!
+        // Clicks on controls NEVER toggle or hide controls; wake controls with fresh 5s countdown
+        wakeControls();
         return;
       }
 
@@ -191,21 +167,29 @@ export function useIdleControls({
           const relX = e.clientX - rect.left;
           const width = rect.width;
           if (relX < width / 3) {
-            onDoubleTapSeek?.('left');
+            onDoubleTapSeekRef.current?.('left');
           } else if (relX > (width * 2) / 3) {
-            onDoubleTapSeek?.('right');
+            onDoubleTapSeekRef.current?.('right');
           } else {
-            onVideoClickDesktop?.();
+            onVideoClickDesktopRef.current?.();
           }
         } else {
           lastTapTimeRef.current = now;
           if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
           singleTapTimerRef.current = setTimeout(() => {
             // Touch single tap on video surface toggles controls
-            setIsIdle((prev) => !prev);
+            setIsIdle((prev) => {
+              const next = !prev;
+              if (!next) {
+                scheduleIdleTimer();
+              }
+              return next;
+            });
             singleTapTimerRef.current = null;
           }, 300);
         }
+      } else {
+        wakeControls();
       }
     };
 
@@ -219,31 +203,21 @@ export function useIdleControls({
         (typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)')?.matches);
       if (!isTouch) {
         // Desktop click on video background toggles play/pause
-        onVideoClickDesktop?.();
+        onVideoClickDesktopRef.current?.();
       }
     };
 
     const handleFocusIn = (e: FocusEvent) => {
       if (isTargetInteractive(e.target)) {
-        isFocusInsideControlsRef.current = true;
-        setIsIdle(false);
-        clearTimers();
+        wakeControls();
       }
     };
 
     const handleFocusOut = () => {
-      setTimeout(() => {
-        const active = document.activeElement;
-        if (active && isTargetInteractive(active)) {
-          isFocusInsideControlsRef.current = true;
-        } else {
-          isFocusInsideControlsRef.current = false;
-          scheduleIdleTimer();
-        }
-      }, 10);
+      scheduleIdleTimer();
     };
 
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = () => {
       // Any key press inside stage or room wakes controls
       wakeControls();
     };
@@ -275,7 +249,7 @@ export function useIdleControls({
       stage.removeEventListener('keydown', handleKeyDown);
       stage.removeEventListener('wheel', handleWheel);
     };
-  }, [stageRef, ctlRef, isTargetInteractive, wakeControls, scheduleIdleTimer, clearTimers, registerInteractiveRegion, onVideoClickDesktop, onDoubleTapSeek]);
+  }, [stageRef, ctlRef, isTargetInteractive, wakeControls, scheduleIdleTimer, clearTimers, registerInteractiveRegion]);
 
   return {
     isIdle,

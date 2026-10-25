@@ -730,7 +730,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   const [volume, setVolume] = useState(80);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
   const [bufferPercent, setBufferPercent] = useState(0);
-  const [activeMenu, setActiveMenu] = useState<"audio" | "subs" | "sub-settings" | "quality" | "speed" | "zoom" | "react" | null>(null);
+  const [activeMenu, setActiveMenu] = useState<"audio" | "subs" | "sub-settings" | "zoom" | "react" | null>(null);
   const [menuLeft, setMenuLeft] = useState<number>(0);
   const [speed, setSpeed] = useState<number>(1);
   const [zoom, setZoom] = useState<number>(0);
@@ -1478,6 +1478,14 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     },
   });
 
+  // When bar hides after 5s idle, close any open popover menu so whole bar disappears cleanly
+  useEffect(() => {
+    if (isIdle) {
+      setActiveMenu(null);
+      setIsCtlOverflowOpen(false);
+    }
+  }, [isIdle]);
+
   // Ambient canvas color extractor from video
   useEffect(() => {
     const v = videoRef.current;
@@ -1681,7 +1689,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     }
   };
 
-  const handleMenuClick = (menu: "audio" | "subs" | "quality" | "speed" | "zoom" | "react", e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleMenuClick = (menu: "audio" | "subs" | "zoom" | "react", e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     if (activeMenu === menu) {
       setActiveMenu(null);
@@ -2507,35 +2515,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                     </svg>
                   </button>
 
-                  <button
-                    type="button"
-                    className="cb"
-                    id="ql"
-                    data-m="quality"
-                    aria-label="Quality"
-                    aria-expanded={activeMenu === "quality"}
-                    onClick={(e) => handleMenuClick("quality", e)}
-                    title={`Quality: ${currentLevelIdx === -1 ? `Auto (${effectiveQuality.resolution})` : effectiveQuality.resolution}`}
-                  >
-                    <svg viewBox="0 0 24 24">
-                      <rect x="2.5" y="4.5" width="19" height="15" rx="3" />
-                      <path d="M7 9v6M7 12h3.5M10.5 9v6M14.5 9v6c0 .8.6 1.5 1.5 1.5h1c.8 0 1.5-.7 1.5-1.5V9" />
-                    </svg>
-                  </button>
 
-                  <button
-                    type="button"
-                    className="cb"
-                    data-m="speed"
-                    aria-label="Speed"
-                    aria-expanded={activeMenu === "speed"}
-                    onClick={(e) => handleMenuClick("speed", e)}
-                  >
-                    <svg viewBox="0 0 24 24">
-                      <circle cx="12" cy="13" r="8" />
-                      <path d="M12 13l3-3M10 3h4" />
-                    </svg>
-                  </button>
 
                   <button
                     type="button"
@@ -2581,22 +2561,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                     </svg>
                   </button>
 
-                  <button
-                    type="button"
-                    className="cb"
-                    id="shortcuts-btn"
-                    aria-label="Keyboard shortcuts"
-                    title="Keyboard shortcuts (?)"
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      setShowShortcutsHelp(true);
-                    }}
-                  >
-                    <svg viewBox="0 0 24 24">
-                      <circle cx="12" cy="12" r="9" />
-                      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01" />
-                    </svg>
-                  </button>
+
 
                   <button
                     type="button"
@@ -2765,75 +2730,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                         </button>
                       </>
                     )}
-                    {activeMenu === "quality" && (
-                      <>
-                        <h4>Quality</h4>
-                        <small>Only you see this choice.</small>
-                        <div style={{ padding: "6px 12px 10px 12px", borderBottom: "1px solid rgba(255,255,255,0.08)", marginBottom: "6px" }}>
-                          <div style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--t2)", fontWeight: 600 }}>Active Stream</div>
-                          <div style={{ fontSize: "12px", color: "var(--t1)", display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
-                            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#34d399", display: "inline-block" }} />
-                            <span>{effectiveQuality.resolution} · {effectiveQuality.bitrate}</span>
-                            <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "4px", background: "rgba(255,255,255,0.08)", color: "var(--t2)" }}>
-                              {effectiveQuality.mode}
-                            </span>
-                          </div>
-                        </div>
-                        <button
-                          role="menuitemradio"
-                          aria-checked={currentLevelIdx === -1}
-                          onClick={() => handleSelectQuality(-1)}
-                        >
-                          <span>Auto ({effectiveQuality.resolution})</span>
-                          {currentLevelIdx === -1 && (
-                            <svg className="ck" viewBox="0 0 24 24">
-                              <path d="M5 12.5l4.5 4.5L19 7.5" />
-                            </svg>
-                          )}
-                        </button>
-                        {availableLevels.map((lvl) => (
-                          <button
-                            key={lvl.id}
-                            role="menuitemradio"
-                            aria-checked={currentLevelIdx === lvl.id}
-                            onClick={() => handleSelectQuality(lvl.id)}
-                          >
-                            <span>{lvl.label}</span>
-                            {currentLevelIdx === lvl.id && (
-                              <svg className="ck" viewBox="0 0 24 24">
-                                <path d="M5 12.5l4.5 4.5L19 7.5" />
-                              </svg>
-                            )}
-                          </button>
-                        ))}
-                      </>
-                    )}
 
-                    {activeMenu === "speed" && (
-                      <>
-                        <h4>Speed</h4>
-                        {SPEEDS.map((v) => (
-                          <button
-                            key={v}
-                            role="menuitemradio"
-                            aria-checked={speed === v}
-                            onClick={() => {
-                              setSpeed(v);
-                              if (videoRef.current) videoRef.current.playbackRate = v;
-                              showToast(`Speed ${v === 1 ? "normal" : `${v}×`}`);
-                              setActiveMenu(null);
-                            }}
-                          >
-                            {v === 1 ? "Normal" : `${v}×`}
-                            {speed === v && (
-                              <svg className="ck" viewBox="0 0 24 24">
-                                <path d="M5 12.5l4.5 4.5L19 7.5" />
-                              </svg>
-                            )}
-                          </button>
-                        ))}
-                      </>
-                    )}
 
                     {activeMenu === "zoom" && (
                       <>
@@ -3442,69 +3339,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             </button>
           </div>
 
-          <hr style={{ border: 0, borderTop: "1px solid rgba(255, 255, 255, 0.1)", margin: "2px 0" }} />
 
-          {/* Quality */}
-          <div>
-            <div style={{ fontSize: "11px", color: "var(--t2)", marginBottom: "6px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Stream Quality
-            </div>
-            <button
-              type="button"
-              className="mobile-sheet-btn"
-              style={{ fontWeight: currentLevelIdx === -1 ? 700 : 400 }}
-              onClick={() => handleSelectQuality(-1)}
-            >
-              <span>Auto ({effectiveQuality.resolution})</span>
-              {currentLevelIdx === -1 && <span>✓</span>}
-            </button>
-            {availableLevels.map((lvl) => (
-              <button
-                key={`m-lvl-${lvl.id}`}
-                type="button"
-                className="mobile-sheet-btn"
-                style={{ fontWeight: currentLevelIdx === lvl.id ? 700 : 400, marginTop: "4px" }}
-                onClick={() => handleSelectQuality(lvl.id)}
-              >
-                <span>{lvl.label}</span>
-                {currentLevelIdx === lvl.id && <span>✓</span>}
-              </button>
-            ))}
-          </div>
-
-          <hr style={{ border: 0, borderTop: "1px solid rgba(255, 255, 255, 0.1)", margin: "2px 0" }} />
-
-          {/* Speed */}
-          <div>
-            <div style={{ fontSize: "11px", color: "var(--t2)", marginBottom: "6px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Playback Speed
-            </div>
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-              {[0.5, 0.75, 1, 1.25, 1.5, 2].map((s) => (
-                <button
-                  key={`m-spd-${s}`}
-                  type="button"
-                  style={{
-                    flex: "1 1 44px",
-                    height: "44px",
-                    borderRadius: "10px",
-                    background: speed === s ? "rgba(99, 102, 241, 0.4)" : "rgba(255,255,255,0.08)",
-                    border: speed === s ? "1px solid #6366f1" : "none",
-                    color: "#fff",
-                    fontWeight: speed === s ? 700 : 500,
-                    cursor: "pointer",
-                  }}
-                  onClick={() => {
-                    setSpeed(s);
-                    if (videoRef.current) videoRef.current.playbackRate = s;
-                    showToast(`Speed ${s === 1 ? "normal" : `${s}×`}`);
-                  }}
-                >
-                  {s}x
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* Zoom */}
           <div>

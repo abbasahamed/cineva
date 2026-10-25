@@ -102,46 +102,57 @@ async function run() {
   await ctl.waitFor({ state: 'visible', timeout: 15000 });
   console.log('Stage and Control Bar visible.');
 
+  // Verify quality, speed, shortcuts buttons are REMOVED from the bar
+  const qlCount = await page.locator('#ql').count();
+  const speedCount = await page.locator('[data-m="speed"]').count();
+  const shortcutsCount = await page.locator('#shortcuts-btn').count();
+  console.log(`Removed buttons count -> Quality: ${qlCount}, Speed: ${speedCount}, Shortcuts: ${shortcutsCount}`);
+  if (qlCount !== 0 || speedCount !== 0 || shortcutsCount !== 0) {
+    throw new Error('FAIL: Quality, Speed, or Shortcuts button still present in control bar!');
+  }
+
   // Test clicking Subtitles button
   const subBtn = page.locator('#sub-btn');
   await subBtn.waitFor({ state: 'visible', timeout: 5000 });
   console.log('Clicking Subtitles button (#sub-btn)...');
   await subBtn.click();
 
-  // Verify controls REMAIN visible at t = 300ms, t = 500ms, t = 1000ms
-  await page.waitForTimeout(300);
+  // Verify controls REMAIN visible for 5s after clicking (at t = 1000ms, t = 3500ms)
+  await page.waitForTimeout(1000);
   let stageClass = await stage.getAttribute('class');
-  console.log(`At t = 300ms, stage class: "${stageClass}"`);
-  if (stageClass?.includes('idle')) throw new Error('FAIL: Controls hid at t=300ms!');
-
-  await page.waitForTimeout(200);
-  stageClass = await stage.getAttribute('class');
-  console.log(`At t = 500ms, stage class: "${stageClass}"`);
-  if (stageClass?.includes('idle')) throw new Error('FAIL: Controls hid at t=500ms!');
-
-  await page.waitForTimeout(500);
-  stageClass = await stage.getAttribute('class');
-  console.log(`At t = 1000ms, stage class: "${stageClass}"`);
+  console.log(`At t = 1000ms after click, stage class: "${stageClass}"`);
   if (stageClass?.includes('idle')) throw new Error('FAIL: Controls hid at t=1000ms!');
+
+  await page.waitForTimeout(2500);
+  stageClass = await stage.getAttribute('class');
+  console.log(`At t = 3500ms after click, stage class: "${stageClass}"`);
+  if (stageClass?.includes('idle')) throw new Error('FAIL: Controls hid at t=3500ms!');
 
   // Popover menu #mn should be open
   const mn = page.locator('#mn');
   await mn.waitFor({ state: 'visible', timeout: 3000 });
   console.log('Subtitle popover menu #mn is visible.');
 
-  // Save screenshot of open subtitle menu with visible control bar
+  // Save screenshot of open subtitle menu with updated control bar
   const screenshotPath =
-    '/Users/abbas/.gemini/antigravity-ide/brain/3613dbc4-d8a8-455f-a556-4a2a50e15e9e/controls_subtitles_menu_open.png';
+    '/Users/abbas/.gemini/antigravity-ide/brain/3613dbc4-d8a8-455f-a556-4a2a50e15e9e/controls_updated_bar.png';
   await page.screenshot({ path: screenshotPath });
   console.log(`Saved screenshot: ${screenshotPath}`);
 
-  // Hover over #ctl
-  console.log('Hovering over #ctl for 4000ms...');
-  await ctl.hover();
-  await page.waitForTimeout(4000);
-  let stageClassHover = await stage.getAttribute('class');
-  console.log(`After 4000ms hovering #ctl, stage class: "${stageClassHover}"`);
-  if (stageClassHover?.includes('idle')) throw new Error('FAIL: Controls hid during hover!');
+  // Wait until 5300ms without cursor movement -> whole bar and menu should disappear
+  console.log('Waiting for 5-second timer to expire (cursor stopped)...');
+  await page.waitForTimeout(2000);
+  stageClass = await stage.getAttribute('class');
+  console.log(`After 5.5s with cursor stopped, stage class: "${stageClass}"`);
+  if (!stageClass?.includes('idle')) throw new Error('FAIL: Controls did not disappear after 5s idle!');
+
+  // Move cursor -> controls should wake freshly
+  console.log('Moving cursor to wake controls freshly...');
+  await page.mouse.move(500, 400);
+  await page.waitForTimeout(100);
+  stageClass = await stage.getAttribute('class');
+  console.log(`After cursor move, stage class: "${stageClass}"`);
+  if (stageClass?.includes('idle')) throw new Error('FAIL: Controls did not wake freshly on cursor move!');
 
   console.log('--- ALL PLAYWRIGHT E2E CHECKS PASSED! ---');
   await browser.close();

@@ -151,7 +151,7 @@ describe('Controls Visibility & Idle Engine Verification across 12 Scenarios', (
     vi.useRealTimers();
   });
 
-  it('1. Idle fade: start playback, wait 3000 ms without pointer interaction -> controls hidden', () => {
+  it('1. Idle fade: start playback, wait 5000 ms without pointer interaction -> controls hidden', () => {
     const { container } = render(<TestPlayerHarness initialPlaying={true} />);
     const stage = container.querySelector('#stage')!;
     const ctl = container.querySelector('#ctl') as HTMLElement;
@@ -161,24 +161,24 @@ describe('Controls Visibility & Idle Engine Verification across 12 Scenarios', (
     expect(ctl.style.pointerEvents).toBe('auto');
 
     act(() => {
-      vi.advanceTimersByTime(2900);
+      vi.advanceTimersByTime(4900);
     });
     expect(stage.classList.contains('idle')).toBe(false);
 
     act(() => {
-      vi.advanceTimersByTime(150);
+      vi.advanceTimersByTime(200);
     });
     expect(stage.classList.contains('idle')).toBe(true);
     expect(ctl.style.opacity).toBe('0');
     expect(ctl.style.pointerEvents).toBe('none');
   });
 
-  it('2. Wake on pointer movement: move pointer -> controls visible immediately (< 100 ms)', () => {
+  it('2. Wake on pointer movement: move pointer -> controls visible immediately (< 100 ms) with fresh 5s timer', () => {
     const { container } = render(<TestPlayerHarness initialPlaying={true} />);
     const stage = container.querySelector('#stage')!;
 
     act(() => {
-      vi.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(5000);
     });
     expect(stage.classList.contains('idle')).toBe(true);
 
@@ -186,9 +186,20 @@ describe('Controls Visibility & Idle Engine Verification across 12 Scenarios', (
       stage.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
     });
     expect(stage.classList.contains('idle')).toBe(false);
+
+    // Stays visible for 5s
+    act(() => {
+      vi.advanceTimersByTime(4800);
+    });
+    expect(stage.classList.contains('idle')).toBe(false);
+
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(stage.classList.contains('idle')).toBe(true);
   });
 
-  it('3. Click button keeps visible: click Subtitles button -> controls REMAIN visible at t = 300ms, 500ms, 1000ms', () => {
+  it('3. Click button in bar: visible for 5 seconds then whole bar disappears, moving cursor wakes freshly', () => {
     const { container } = render(<TestPlayerHarness initialPlaying={true} />);
     const stage = container.querySelector('#stage')!;
     const subBtn = container.querySelector('#sub-btn')!;
@@ -200,99 +211,66 @@ describe('Controls Visibility & Idle Engine Verification across 12 Scenarios', (
       fireEvent.click(subBtn);
     });
 
+    // Stays visible throughout the 5 seconds after clicking
     act(() => {
       vi.advanceTimersByTime(300);
     });
     expect(stage.classList.contains('idle')).toBe(false);
 
     act(() => {
-      vi.advanceTimersByTime(200);
+      vi.advanceTimersByTime(700);
     });
     expect(stage.classList.contains('idle')).toBe(false);
 
     act(() => {
-      vi.advanceTimersByTime(500);
-    });
-    expect(stage.classList.contains('idle')).toBe(false);
-  });
-
-  it('4. Open menu keeps visible indefinitely: open any menu -> controls stay visible past 3000ms, 5000ms, 10000ms', () => {
-    const { container } = render(<TestPlayerHarness initialPlaying={true} initialActiveMenu={true} />);
-    const stage = container.querySelector('#stage')!;
-
-    expect(stage.classList.contains('idle')).toBe(false);
-
-    act(() => {
-      vi.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(3500);
     });
     expect(stage.classList.contains('idle')).toBe(false);
 
+    // After 5s total from click, bar disappears
     act(() => {
-      vi.advanceTimersByTime(2000);
-    });
-    expect(stage.classList.contains('idle')).toBe(false);
-
-    act(() => {
-      vi.advanceTimersByTime(5000);
-    });
-    expect(stage.classList.contains('idle')).toBe(false);
-  });
-
-  it('5. Menu close starts timer: close menu -> controls stay visible for 3000ms, then hide', () => {
-    const { container } = render(<TestPlayerHarness initialPlaying={true} initialActiveMenu={true} />);
-    const stage = container.querySelector('#stage')!;
-    const closeBtn = container.querySelector('#btn-close-menu')!;
-
-    act(() => {
-      vi.advanceTimersByTime(5000);
-    });
-    expect(stage.classList.contains('idle')).toBe(false);
-
-    act(() => {
-      fireEvent.click(closeBtn);
-    });
-
-    act(() => {
-      vi.advanceTimersByTime(2500);
-    });
-    expect(stage.classList.contains('idle')).toBe(false);
-
-    act(() => {
-      vi.advanceTimersByTime(550);
+      vi.advanceTimersByTime(600);
     });
     expect(stage.classList.contains('idle')).toBe(true);
+
+    // Move cursor -> visible freshly
+    act(() => {
+      stage.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+    });
+    expect(stage.classList.contains('idle')).toBe(false);
   });
 
-  it('6. Hover over control bar prevents idle: pointer enters #ctl -> stay for 6000ms -> visible; leaves -> hides after 3000ms', () => {
+  it('4. Stopped cursor on player bar hides after 5 seconds', () => {
     const { container } = render(<TestPlayerHarness initialPlaying={true} />);
     const stage = container.querySelector('#stage')!;
     const ctl = container.querySelector('#ctl')!;
 
+    // Move pointer over ctl
     act(() => {
-      ctl.dispatchEvent(new PointerEvent('pointerenter', { bubbles: false, pointerType: 'mouse' }));
-    });
-
-    act(() => {
-      vi.advanceTimersByTime(6000);
+      ctl.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' }));
     });
     expect(stage.classList.contains('idle')).toBe(false);
 
+    // Stop cursor for 4800ms -> still visible
     act(() => {
-      ctl.dispatchEvent(new PointerEvent('pointerleave', { bubbles: false, pointerType: 'mouse' }));
-    });
-
-    act(() => {
-      vi.advanceTimersByTime(2800);
+      vi.advanceTimersByTime(4800);
     });
     expect(stage.classList.contains('idle')).toBe(false);
 
+    // Reaches 5000ms -> hides even if cursor is over ctl
     act(() => {
       vi.advanceTimersByTime(300);
     });
     expect(stage.classList.contains('idle')).toBe(true);
+
+    // Move cursor again -> freshly visible
+    act(() => {
+      ctl.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' }));
+    });
+    expect(stage.classList.contains('idle')).toBe(false);
   });
 
-  it('7. Drag seek bar: pointerdown on seek thumb -> remains visible; on release, 3000ms timer applies', () => {
+  it('5. Drag seek bar: pointerdown on seek thumb -> remains visible during drag; on release, 5000ms timer applies', () => {
     const { container } = render(<TestPlayerHarness initialPlaying={true} />);
     const stage = container.querySelector('#stage')!;
     const startDragBtn = container.querySelector('#btn-start-drag')!;
@@ -302,84 +280,29 @@ describe('Controls Visibility & Idle Engine Verification across 12 Scenarios', (
       fireEvent.click(startDragBtn);
     });
 
+    // Remains visible past 5s while dragging
     act(() => {
-      vi.advanceTimersByTime(5000);
+      vi.advanceTimersByTime(7000);
     });
     expect(stage.classList.contains('idle')).toBe(false);
 
+    // Release drag
     act(() => {
       fireEvent.click(stopDragBtn);
     });
 
     act(() => {
-      vi.advanceTimersByTime(2500);
+      vi.advanceTimersByTime(4800);
     });
     expect(stage.classList.contains('idle')).toBe(false);
 
     act(() => {
-      vi.advanceTimersByTime(600);
+      vi.advanceTimersByTime(300);
     });
     expect(stage.classList.contains('idle')).toBe(true);
   });
 
-  it('8. Keyboard focus: focus inside control bar buttons -> remains visible indefinitely; focus out -> hides after 3000ms', () => {
-    const { container } = render(<TestPlayerHarness initialPlaying={true} />);
-    const stage = container.querySelector('#stage')!;
-    const subBtn = container.querySelector('#sub-btn') as HTMLElement;
-
-    act(() => {
-      subBtn.focus();
-      stage.dispatchEvent(new FocusEvent('focusin', { bubbles: true, target: subBtn } as any));
-    });
-
-    act(() => {
-      vi.advanceTimersByTime(5000);
-    });
-    expect(stage.classList.contains('idle')).toBe(false);
-
-    act(() => {
-      subBtn.blur();
-      stage.dispatchEvent(new FocusEvent('focusout', { bubbles: true, target: subBtn } as any));
-      vi.advanceTimersByTime(20);
-    });
-
-    act(() => {
-      vi.advanceTimersByTime(2500);
-    });
-    expect(stage.classList.contains('idle')).toBe(false);
-
-    act(() => {
-      vi.advanceTimersByTime(600);
-    });
-    expect(stage.classList.contains('idle')).toBe(true);
-  });
-
-  it('9. Paused/Ended/Loading/Error states: pause video -> stays visible indefinitely; unpause -> hides after 3000ms', () => {
-    const { container } = render(<TestPlayerHarness initialPlaying={false} />);
-    const stage = container.querySelector('#stage')!;
-    const playBtn = container.querySelector('#btn-set-playing')!;
-
-    act(() => {
-      vi.advanceTimersByTime(10000);
-    });
-    expect(stage.classList.contains('idle')).toBe(false);
-
-    act(() => {
-      fireEvent.click(playBtn);
-    });
-
-    act(() => {
-      vi.advanceTimersByTime(2500);
-    });
-    expect(stage.classList.contains('idle')).toBe(false);
-
-    act(() => {
-      vi.advanceTimersByTime(600);
-    });
-    expect(stage.classList.contains('idle')).toBe(true);
-  });
-
-  it('10. Touch vs Desktop distinction', () => {
+  it('6. Touch vs Desktop distinction', () => {
     const { container } = render(<TestPlayerHarness initialPlaying={true} />);
     const stage = container.querySelector('#stage')!;
     const videoSurface = container.querySelector('#video-surface')!;
@@ -387,7 +310,7 @@ describe('Controls Visibility & Idle Engine Verification across 12 Scenarios', (
     const clicksCount = container.querySelector('#desktop-clicks-count')!;
     const subClicksCount = container.querySelector('#sub-clicks-count')!;
 
-    // 10a. Simulated touch tap on video surface -> toggles control visibility
+    // 6a. Simulated touch tap on video surface -> toggles control visibility
     act(() => {
       videoSurface.dispatchEvent(
         new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', clientX: 400, clientY: 200 })
@@ -409,7 +332,7 @@ describe('Controls Visibility & Idle Engine Verification across 12 Scenarios', (
     });
     expect(stage.classList.contains('idle')).toBe(false);
 
-    // 10b. Simulated mouse click on video surface -> does NOT toggle control visibility, calls onVideoClickDesktop
+    // 6b. Simulated mouse click on video surface -> does NOT toggle control visibility, calls onVideoClickDesktop
     act(() => {
       videoSurface.dispatchEvent(
         new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', clientX: 400, clientY: 200 })
@@ -419,7 +342,7 @@ describe('Controls Visibility & Idle Engine Verification across 12 Scenarios', (
     expect(stage.classList.contains('idle')).toBe(false);
     expect(clicksCount.textContent).toBe('1');
 
-    // 10c. Simulated touch tap on a button -> executes button action, NEVER toggles control visibility
+    // 6c. Simulated touch tap on a button -> executes button action, NEVER toggles control visibility
     act(() => {
       subBtn.dispatchEvent(
         new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', clientX: 100, clientY: 400 })
@@ -433,17 +356,16 @@ describe('Controls Visibility & Idle Engine Verification across 12 Scenarios', (
     expect(subClicksCount.textContent).toBe('1');
   });
 
-  it('11. Fullscreen parity: repeat scenarios 1, 3, 4, 6 in fullscreen mode -> identical behavior', () => {
+  it('7. Fullscreen parity: 5000ms idle fade, wakes on move, click button stays 5s then hides', () => {
     const { container } = render(<TestPlayerHarness initialPlaying={true} isFullscreen={true} />);
     const stage = container.querySelector('#stage')!;
-    const ctl = container.querySelector('#ctl')!;
     const subBtn = container.querySelector('#sub-btn')!;
 
     expect(stage.classList.contains('fullscreen')).toBe(true);
 
-    // Scenario 1 in fullscreen: 3000ms idle fade
+    // 5000ms idle fade
     act(() => {
-      vi.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(5000);
     });
     expect(stage.classList.contains('idle')).toBe(true);
 
@@ -453,27 +375,23 @@ describe('Controls Visibility & Idle Engine Verification across 12 Scenarios', (
     });
     expect(stage.classList.contains('idle')).toBe(false);
 
-    // Scenario 3 in fullscreen: clicking button stays visible
+    // Clicking button stays visible for 5s then hides
     act(() => {
       subBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
       fireEvent.click(subBtn);
     });
     act(() => {
-      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(4800);
     });
     expect(stage.classList.contains('idle')).toBe(false);
 
-    // Scenario 6 in fullscreen: hover over control bar prevents idle
     act(() => {
-      ctl.dispatchEvent(new PointerEvent('pointerenter', { bubbles: false, pointerType: 'mouse' }));
+      vi.advanceTimersByTime(300);
     });
-    act(() => {
-      vi.advanceTimersByTime(6000);
-    });
-    expect(stage.classList.contains('idle')).toBe(false);
+    expect(stage.classList.contains('idle')).toBe(true);
   });
 
-  it('12. Subtitles repositioning: when controls visible, bottom margin is 92px; when idle, transitions down to 28px', () => {
+  it('8. Subtitles repositioning: when controls visible, bottom margin is 92px; when idle after 5s, transitions down to 28px', () => {
     const { container } = render(<TestPlayerHarness initialPlaying={true} />);
     const stage = container.querySelector('#stage')!;
     const subs = container.querySelector('#subtitles') as HTMLElement;
@@ -482,7 +400,7 @@ describe('Controls Visibility & Idle Engine Verification across 12 Scenarios', (
     expect(subs.style.bottom).toBe('92px');
 
     act(() => {
-      vi.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(5000);
     });
     expect(stage.classList.contains('idle')).toBe(true);
     expect(subs.style.bottom).toBe('28px');
