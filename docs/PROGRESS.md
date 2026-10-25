@@ -2001,11 +2001,58 @@ Measured using automated end-to-end Playwright Chrome benchmark (`scripts/verify
 5. **Watch Room UI Polish & 60% Glassmorphism**:
    - Upgraded top navigation bar, stage wrapper, empty screening state, sidebar panel, call grid tiles, media controls dock, segmented tabs, and composer.
    - Implemented 60% liquid glass tokens (`--g-bg: rgba(18, 20, 28, 0.60)`), `-webkit-backdrop-filter: blur(28px) saturate(190%) brightness(1.08)`, 1px specular highlight borders (`rgba(255, 255, 255, 0.14)` with top inner bevel `inset 0 1.2px 1px 0 rgba(255, 255, 255, 0.28)`), and deep ambient aurora backlighting.
-   - Verified 112/112 web unit tests and 0 typecheck errors.
 6. **Modal Windows 60% Liquid Glassmorphism**:
    - Upgraded `MediaUploadModal`, `ShareModal`, and `SettingsModal` from heavy opaque containers to 60% translucent liquid glass cards (`bg-[#0e111d]/60`, `backdrop-blur-2xl`, top specular highlight line, dual ambient aurora glow underlay, and specular top bevel `inset 0 1.2px 1px 0 rgba(255, 255, 255, 0.32)`).
    - Refined frosted upload dropzone with indigo halo, circular action buttons, and luminous buttons.
    - Verified 112/112 web unit tests and 0 typecheck errors.
+7. **Root Cause Diagnosis: Controls Hiding on Button Click in Windowed Room**:
+   - **Observed**: In windowed mode, clicking any button in the control bar (`#ctl`) caused the control bar to immediately hide after ~300ms.
+   - **Empirical Evidence (Playwright MutationObserver trace)**:
+     - `t=2533ms`: `EVENT_POINTERDOWN` dispatched on SVG target inside `#sub-btn` in `#ctl`.
+     - `t=2534ms`: `EVENT_CLICK` dispatched on `#sub-btn`.
+     - `t=2838ms` (2533ms + 305ms): `STAGE_CLASS_MUTATION` applied `stage idle`, setting `.ctl` to `opacity: 0; pointer-events: none;`.
+   - **Suspect Analysis**:
+     - *Suspect (a) [CONFIRMED]*: Stage-level gesture handler `handleStagePointerDown` was attached to `<section id="stage" onPointerDown={handleStagePointerDown}>`. Clicks on any control bar button dispatch `pointerdown` which bubbled up to `#stage` because `#ctl` only stopped `onClick` propagation. `handleStagePointerDown` was not restricted to touch/coarse pointers (`e.pointerType === 'touch'`) and did not check `e.target.closest('#ctl')`. Its single-tap branch queued `singleTapTimerRef = setTimeout(() => setIsIdle((prev) => !prev), 300)`, which flipped `isIdle` from `false` to `true` exactly 300ms after clicking, immediately hiding the controls.
+     - *Suspect (b) [CONFIRMED as contributor]*: Idle timer was not reset by `pointerdown`/`click`/`keydown`, and `wakeControls` was scattered across multiple callbacks with stale dependencies instead of a single unified hook.
+     - *Suspects (c, d, e) [RULED OUT]*: Button `.blur()` does not trigger idle; menus do not unmount `#ctl`; CSS `:hover` does not hide `#ctl`.
+   - **Resolution Architecture**: Implement a single unified hook `useIdleControls` with unified state, pointer capture awareness, touch-only video tap-to-toggle, and guaranteed visibility when hovering interactive areas or when menus/dialogs are active.
+
+8. **Unified `useIdleControls` Architecture & 12-Scenario Verification**:
+   - **Architectural Implementation**:
+     - Built `apps/web/src/hooks/useIdleControls.ts` as the single source of truth for controls visibility and idle transitions.
+     - Centralized all 7 idle invariants:
+       1. Controls stay unconditionally visible when paused, buffering, seeking, or in error states.
+       2. Controls stay unconditionally visible while hovering `#ctl`, interactive overlays, or open popovers/modals.
+       3. Controls stay unconditionally visible while active element `:focus-visible` resides within `#ctl` or menus.
+       4. Controls stay unconditionally visible while dragging seekbar/volume sliders.
+       5. Clicking any button within `#ctl` resets and holds the wake timer; gesture tap handling is strictly isolated to the video canvas/surface and coarse touch pointers (`e.pointerType === 'touch'`).
+       6. Pointer movement over the player resets the 3000ms idle timer.
+       7. Fullscreen and windowed modes share 100% identical visibility rules.
+     - Refactored `WatchRoomPage.tsx` and `useRoomShortcuts.ts` to consume `useIdleControls`, eliminating duplicate listeners and race conditions.
+   - **Automated Verification Suite (`src/__tests__/controlsVisibility.test.tsx`)**:
+     - Implemented 12 comprehensive automated test scenarios:
+       1. *Idle fade*: 3000ms idle timer fades controls to `stage.idle` (opacity 0, pointer-events none).
+       2. *Wake on pointer movement*: pointer movement awakens controls immediately (<100ms).
+       3. *Click button keeps visible*: clicking Subtitles button keeps controls visible at t=300ms, 500ms, 1000ms.
+       4. *Open menu keeps visible indefinitely*: controls stay visible past 3000ms, 5000ms, 10000ms.
+       5. *Menu close starts timer*: closing menu starts 3000ms countdown then hides.
+       6. *Hover over control bar prevents idle*: pointer inside `#ctl` pauses idle timer (stays visible for 6000ms); leaving starts 3000ms countdown.
+       7. *Drag seek bar*: dragging slider keeps controls visible throughout drag; releasing starts 3000ms countdown.
+       8. *Keyboard focus*: focus inside `#ctl` buttons keeps controls visible; focus out starts 3000ms countdown.
+       9. *Paused/Ended/Loading/Error*: pausing video keeps controls visible indefinitely; resuming starts 3000ms countdown.
+       10. *Touch vs Desktop distinction*: touch tap on video background toggles controls; mouse click triggers desktop handler without toggling idle; touch tap on buttons executes button action without hiding controls.
+       11. *Fullscreen parity*: fullscreen mode matches windowed behavior across all rules.
+       12. *Subtitles repositioning*: subtitle bottom margin sits at `controlBarHeight + 16px` (92px) when controls are visible and transitions to 28px when idle.
+     - **Results**: 12 / 12 test scenarios PASS.
+   - **Playwright E2E Real Browser Verification (`scripts/verify_controls_e2e.mjs`)**:
+     - Created live room with multi-track media fixture, launched Chrome instance with host session storage, clicked `#sub-btn` to open subtitle popover.
+     - Asserted stage class remained active without `idle` at t=300ms, t=500ms, and t=1000ms.
+     - Asserted hover over `#ctl` kept controls visible past 4000ms.
+     - Captured visual verification screenshot at `controls_subtitles_menu_open.png`.
+   - **Monorepo Health**:
+     - `npm run typecheck`: 0 errors across all workspaces.
+     - `npm test`: 258 / 258 tests passing (134 server, 124 web across 12 test suites).
+     - `npm run build`: built production bundle cleanly.
 
 
 

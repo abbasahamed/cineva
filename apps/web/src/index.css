@@ -2495,6 +2495,15 @@ footer .wrap {
   pointer-events: none;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .room-shell .ctl,
+  #ctl.ctl,
+  .stage.idle .ctl {
+    transform: none !important;
+    transition: opacity 0.3s ease !important;
+  }
+}
+
 .ovl {
   position: absolute;
   top: 16px;

@@ -44,6 +44,7 @@ import { useRoomShortcuts } from "../hooks/useRoomShortcuts.js";
 import { ShortcutsModal } from "../components/ShortcutsModal.js";
 import { BottomSheet } from "../components/BottomSheet.js";
 import { SettingsModal } from "../components/SettingsModal.js";
+import { useIdleControls } from "../hooks/useIdleControls.js";
 
 function formatMediaInfo(media: { title: string; size?: number | string } | null | undefined) {
   if (!media) return { displayTitle: "Friday movie night", size: null, rawTitle: "" };
@@ -733,7 +734,6 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   const [menuLeft, setMenuLeft] = useState<number>(0);
   const [speed, setSpeed] = useState<number>(1);
   const [zoom, setZoom] = useState<number>(0);
-  const [isIdle, setIsIdle] = useState(false);
 
   // Quality & buffering state
   const [availableLevels, setAvailableLevels] = useState<Array<{ id: number; height: number; width: number; bitrate: number; label: string }>>([]);
@@ -759,13 +759,12 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   const [isCtlOverflowOpen, setIsCtlOverflowOpen] = useState(false);
   const [isSubSettingsOpen, setIsSubSettingsOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [selectedParticipantForMenu, setSelectedParticipantForMenu] = useState<any | null>(null);
   const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false);
   const [isLandscapeDrawerOpen, setIsLandscapeDrawerOpen] = useState(false);
   const [keyboardPadding, setKeyboardPadding] = useState(0);
   const [doubleTapRipple, setDoubleTapRipple] = useState<{ side: "left" | "right"; text: string; id: number } | null>(null);
-  const lastTapTimeRef = useRef<number>(0);
-  const singleTapTimerRef = useRef<any>(null);
   const mobileMsgStreamRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1155,7 +1154,6 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   const seekRef = useRef<HTMLDivElement>(null);
   const ctlRef = useRef<HTMLDivElement>(null);
   const msgStreamRef = useRef<HTMLDivElement>(null);
-  const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const mediaInfo = formatMediaInfo(room?.media);
@@ -1405,22 +1403,52 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     [supportedSubtitleOptions, userCustomSubs, roomCode, showToast, videoRef]
   );
 
-  const wakeControls = useCallback(() => {
-    setIsIdle(false);
-    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    if (playback.isPlaying && !activeMenu) {
-      idleTimerRef.current = setTimeout(() => {
-        setIsIdle(true);
-      }, 3000);
-    }
-  }, [playback.isPlaying, activeMenu]);
+  const isActuallyPlaying = !realVideoPaused && (!videoRef.current || !videoRef.current.paused) && playback.isPlaying;
+  const curTime = isActuallyPlaying || videoCurrentTime > 0 ? (videoCurrentTime || playback.currentTime) : playback.currentTime;
+  const rawDuration = videoDuration || playback.duration || 0;
+  const totalDuration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : 0;
+  const scrubPercent = totalDuration > 0 && Number.isFinite(curTime) ? Math.min(100, Math.max(0, (curTime / totalDuration) * 100)) : 0;
 
-  useEffect(() => {
-    wakeControls();
-    return () => {
-      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    };
-  }, [playback.isPlaying, activeMenu, wakeControls]);
+  const { isIdle, controlsVisible, wakeControls, registerInteractiveRegion } = useIdleControls({
+    stageRef,
+    ctlRef,
+    isPlaying: isActuallyPlaying,
+    isMediaReady: !!room?.media && room.media.status === "ready",
+    isPausedOrEndedOrLoading: !isActuallyPlaying || isBuffering,
+    hasActiveMenuOrModal:
+      !!activeMenu ||
+      isSubSettingsOpen ||
+      isSettingsModalOpen ||
+      showShortcutsHelp ||
+      isUploadOpen ||
+      isGalleryOpen ||
+      isCtlOverflowOpen ||
+      isTopOverflowOpen ||
+      isLandscapeDrawerOpen,
+    isDraggingSlider: isScrubbing,
+    onVideoClickDesktop: () => {
+      if (!canControl) {
+        showToast("The host controls playback");
+        return;
+      }
+      isActuallyPlaying ? handlePause() : handlePlay();
+    },
+    onDoubleTapSeek: (side) => {
+      if (!canControl) {
+        showToast("The host controls playback");
+        return;
+      }
+      if (side === "left") {
+        handleSeek(Math.max(0, curTime - 10));
+        setDoubleTapRipple({ side: "left", text: "-10 s", id: Date.now() });
+        setTimeout(() => setDoubleTapRipple(null), 500);
+      } else {
+        handleSeek(Math.min(totalDuration, curTime + 10));
+        setDoubleTapRipple({ side: "right", text: "+10 s", id: Date.now() });
+        setTimeout(() => setDoubleTapRipple(null), 500);
+      }
+    },
+  });
 
   // Ambient canvas color extractor from video
   useEffect(() => {
@@ -1563,12 +1591,6 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     }
   }, [chatMessages]);
 
-  const isActuallyPlaying = !realVideoPaused && (!videoRef.current || !videoRef.current.paused) && playback.isPlaying;
-  const curTime = isActuallyPlaying || videoCurrentTime > 0 ? (videoCurrentTime || playback.currentTime) : playback.currentTime;
-  const rawDuration = videoDuration || playback.duration || 0;
-  const totalDuration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : 0;
-  const scrubPercent = totalDuration > 0 && Number.isFinite(curTime) ? Math.min(100, Math.max(0, (curTime / totalDuration) * 100)) : 0;
-
   const getScrubRatio = (clientX: number) => {
     if (!seekRef.current) return 0;
     const r = seekRef.current.getBoundingClientRect();
@@ -1681,60 +1703,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     setIsPseudoFullscreen(true);
   };
 
-  const handleStagePointerDown = (e: React.PointerEvent<HTMLElement>) => {
-    wakeControls();
-    const now = Date.now();
-    const delta = now - lastTapTimeRef.current;
-    const rect = stageRef.current?.getBoundingClientRect();
-
-    if (delta < 300 && rect) {
-      // Double tap!
-      if (singleTapTimerRef.current) {
-        clearTimeout(singleTapTimerRef.current);
-        singleTapTimerRef.current = null;
-      }
-      lastTapTimeRef.current = 0;
-      const relX = e.clientX - rect.left;
-      const width = rect.width;
-
-      if (relX < width / 3) {
-        // Left third: Seek -10s
-        if (!canControl) {
-          showToast("The host controls playback");
-          return;
-        }
-        handleSeek(Math.max(0, curTime - 10));
-        setDoubleTapRipple({ side: "left", text: "-10 s", id: Date.now() });
-        setTimeout(() => setDoubleTapRipple(null), 500);
-      } else if (relX > (width * 2) / 3) {
-        // Right third: Seek +10s
-        if (!canControl) {
-          showToast("The host controls playback");
-          return;
-        }
-        handleSeek(Math.min(totalDuration, curTime + 10));
-        setDoubleTapRipple({ side: "right", text: "+10 s", id: Date.now() });
-        setTimeout(() => setDoubleTapRipple(null), 500);
-      } else {
-        // Center third: play/pause
-        if (!canControl) {
-          showToast("The host controls playback");
-          return;
-        }
-        isActuallyPlaying ? handlePause() : handlePlay();
-      }
-    } else {
-      lastTapTimeRef.current = now;
-      if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
-      singleTapTimerRef.current = setTimeout(() => {
-        setIsIdle((prev) => !prev);
-        singleTapTimerRef.current = null;
-      }, 300);
-    }
-  };
-
   // Global Keyboard Shortcuts (Attached to window with capture, macOS & key-repeat support)
-  const { indicator, showShortcutsHelp, setShowShortcutsHelp } = useRoomShortcuts({
+  const { indicator } = useRoomShortcuts({
     videoRef: videoRef as React.RefObject<HTMLVideoElement>,
     canControl,
     curTime,
@@ -1766,6 +1736,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     wakeControls,
     activeMenu,
     setActiveMenu,
+    showShortcutsHelp,
+    setShowShortcutsHelp,
   });
 
   const handleLocalSubChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1949,8 +1921,6 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
           className={`stage ${isIdle ? "idle" : ""} ${isPseudoFullscreen ? "pseudo-fullscreen" : ""}`}
           id="stage"
           aria-label="Video"
-          onPointerMove={wakeControls}
-          onPointerDown={handleStagePointerDown}
           onDragOver={(e) => {
             e.preventDefault();
             stageRef.current?.classList.add("drag");
@@ -2382,7 +2352,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
               )}
 
               {/* Top Video Overlay Bar */}
-              <div className="ovl" id="ovl">
+              <div className="ovl" id="ovl" data-controls="true">
                 <span className="pill gl">
                   <span className={`dot ${rtt > 80 ? "warn" : ""}`} id="dt"></span>
                   <span id="pt">{mediaInfo.displayTitle}</span>
@@ -2398,7 +2368,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
               </div>
 
               {/* Floating Glass Control Bar */}
-              <div ref={ctlRef} className="ctl gl" id="ctl" onClick={(e) => e.stopPropagation()}>
+              <div ref={ctlRef} className="ctl gl" id="ctl" data-controls="true" onClick={(e) => e.stopPropagation()}>
                 {/* Seek Scrubber */}
                 <div
                   ref={seekRef}
@@ -2690,6 +2660,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                     className="mn gl"
                     id="mn"
                     role="menu"
+                    data-controls="true"
                     style={{ left: `${menuLeft}px` }}
                     onClick={(e) => e.stopPropagation()}
                   >

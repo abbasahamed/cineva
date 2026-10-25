@@ -23,6 +23,8 @@ interface UseRoomShortcutsProps {
   wakeControls: () => void;
   activeMenu: string | null;
   setActiveMenu: (menu: any) => void;
+  showShortcutsHelp?: boolean;
+  setShowShortcutsHelp?: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 export interface ShortcutIndicator {
@@ -52,9 +54,13 @@ export function useRoomShortcuts({
   wakeControls,
   activeMenu,
   setActiveMenu,
+  showShortcutsHelp: externalShowHelp,
+  setShowShortcutsHelp: externalSetShowHelp,
 }: UseRoomShortcutsProps) {
   const [indicator, setIndicator] = useState<ShortcutIndicator | null>(null);
-  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  const [internalHelp, setInternalHelp] = useState(false);
+  const showShortcutsHelp = externalShowHelp !== undefined ? externalShowHelp : internalHelp;
+  const setShowShortcutsHelp = externalSetShowHelp || setInternalHelp;
   const indicatorTimeoutRef = useRef<any>(null);
 
   // Latest refs to avoid stale closures in event listener
