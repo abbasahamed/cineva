@@ -1953,5 +1953,32 @@ Measured using automated end-to-end Playwright Chrome benchmark (`scripts/verify
      - Banned-list violations mapped to file:line.
      - Security and performance baselines recorded (bundle size 1.1MB uncompressed needs dynamic imports for Room).
      - Full status of §1.2 and §1.3 features verified.
-4. **Current Status**: **STOP POINT REACHED — Awaiting User Approval to proceed to Phase 1 (Design System)**.
+4. **Current Status**: Phase 0 Audit approved.
+
+### PHASE 1: DESIGN SYSTEM & LIVING STYLE GUIDE COMPLETE (October 25, 2026)
+1. **Design System Specification (`docs/design-system.md`)**:
+   - Defined colour tokens (dark, neutral graphite: `--bg #09090b`, `--surface-1 rgba(255,255,255,0.04)`, `--surface-2 rgba(255,255,255,0.08)`, `--line rgba(255,255,255,0.09)`, `--text #f5f5f7`, `--text-2 rgba(245,245,247,0.66)`, `--text-3 rgba(245,245,247,0.42)`, status success `#5fd68a`, warning `#f5b84b`, danger `#ff6b6b`).
+   - Single canonical liquid-glass recipe (`<GlassSurface level="thin|regular|thick" />`).
+   - Typography scales (Geist, Geist Mono, fallbacks Noto Sans Devanagari/Telugu, 12-64px, weights 400/500/600).
+   - Spacing (4px base) and strict radii tokens (10px inputs, 16px buttons, 24px stage/panels, 32px large cards, 999px pills).
+   - Icons standard: Lucide with stroke 1.6, sizes 16/18/20/24.
+   - Standard z-index and elevation tokens.
+2. **Component Implementations**:
+   - `GlassSurface.tsx`: added `level` property (`thin`, `regular`, `thick`) mapping to precise background and blur tokens.
+   - `ui/Button.tsx`: updated to support `primary` (near-white pill), `secondary` (glass), `ghost`, `danger`, `icon`, `white`, and `glass` with loading spinner.
+   - Created missing atomic primitives: `SegmentedControl.tsx` (sliding indicator), `Slider.tsx` (4px track with keyboard navigation), `Badge.tsx`, `Avatar.tsx`, `Tooltip.tsx`, `Skeleton.tsx`, `EmptyState.tsx`.
+   - Updated `ui/index.ts` re-exporting all primitives.
+3. **Living Style Guide (`/design-system` route)**:
+   - Added dev-only route `/design-system` rendering every component in every state over ambient dark background, simulated bright video frame, and dark video frame.
+   - Captured full-page visual-regression baseline screenshots into `docs/screenshots/baseline/`:
+     - `design_system_ambient_dark.png`
+     - `design_system_bright_video.png`
+     - `design_system_dark_video.png`
+     - `design_system_mobile_412.png`
+4. **Verification**:
+   - `npm run typecheck`: 0 errors across `@cineva/shared`, `@cineva/server`, `@cineva/web`.
+   - `npm test`: 246 passed (134 server, 112 web).
+   - `npm run build`: Production bundle built cleanly.
+5. **Next Steps**: Phase 2 — Apply system page-by-page starting with Room desktop and mobile.
+
 

@@ -1,4 +1,5 @@
 import React from 'react';
+import { DesignSystemPage } from './pages/DesignSystemPage';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastProvider } from './components/Toast.js';
 import { ThemeProvider } from './context/ThemeContext.js';
@@ -32,6 +33,10 @@ export function App() {
                     <Route path="/diagnostics/webrtc-camera" element={<WebRTCCameraPage />} />
                     <Route path="/diagnostics/movie-camera" element={<MovieCameraPage />} />
                   </>
+                )}
+                {/* Design system showcase (dev only) */}
+                {import.meta.env.DEV && (
+                  <Route path="/design-system" element={<DesignSystemPage />} />
                 )}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
