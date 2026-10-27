@@ -83,3 +83,4 @@ playwright-report/
 /docs/E2E_TEST_REPORT.md
 /docs/audit/REPORT.md
 /docs/audit/audit-raw-metrics.json
+.vercel/

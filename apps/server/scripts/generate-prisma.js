@@ -10,4 +10,4 @@ const schemaFile = isSqlite ? "schema.sqlite.prisma" : "schema.prisma";
 const schemaPath = path.join(__dirname, "..", "prisma", schemaFile);
 
 console.log(`[Prisma Setup] Using ${schemaFile} (${isSqlite ? "SQLite" : "PostgreSQL"})`);
-execSync(`npx prisma generate --schema=${schemaPath}`, { stdio: "inherit", env: process.env });
+execSync(`npx prisma generate --schema="${schemaPath}"`, { stdio: "inherit", env: process.env });

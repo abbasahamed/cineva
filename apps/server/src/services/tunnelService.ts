@@ -68,7 +68,11 @@ class TunnelService {
       this.cloudflaredChild = null;
     } else {
       try {
-        execSync('pkill -9 -f cloudflared || true', { encoding: 'utf8', timeout: 2000 });
+        if (process.platform === 'win32') {
+          execSync('taskkill /F /IM cloudflared.exe /T 2>nul || exit 0', { encoding: 'utf8', timeout: 2000 });
+        } else {
+          execSync('pkill -9 -f cloudflared || true', { encoding: 'utf8', timeout: 2000 });
+        }
       } catch {}
     }
     if (this.fallbackTunnelChild) {
@@ -200,13 +204,17 @@ class TunnelService {
       return;
     }
     try {
-      const pids = execSync('pgrep -f cloudflared', { encoding: 'utf8', timeout: 1000 }).trim();
-      if (pids) return; // Already running
+      if (process.platform !== 'win32') {
+        const pids = execSync('pgrep -f cloudflared', { encoding: 'utf8', timeout: 1000 }).trim();
+        if (pids) return; // Already running
+      }
     } catch {}
 
     let whichBin = '';
     try {
-      whichBin = execSync('which cloudflared', { encoding: 'utf8', timeout: 1000 }).trim();
+      const whichCmd = process.platform === 'win32' ? 'where cloudflared' : 'which cloudflared';
+      const out = execSync(whichCmd, { encoding: 'utf8', timeout: 1000 }).trim();
+      whichBin = out.split(/\r?\n/)[0].trim();
     } catch {
       logger.warn(`[TunnelService] cloudflared not found in PATH. Activating SSH-HTTPS tunnel on port 443...`);
       this.ensureSshTunnelRunning(localPort);

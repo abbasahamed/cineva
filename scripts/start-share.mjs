@@ -20,7 +20,8 @@ const BREW_FORMULA = {
 
 function checkBinary(bin) {
   try {
-    execFileSync('which', [bin], { stdio: 'ignore' });
+    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
+    execFileSync(whichCmd, [bin], { stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -28,16 +29,24 @@ function checkBinary(bin) {
 }
 
 async function main() {
-  // 1. Check required binaries and print the exact install command if missing.
   // 1. Check required media binaries (ffmpeg, ffprobe).
   const missing = ['ffmpeg', 'ffprobe'].filter((bin) => !checkBinary(bin));
   if (missing.length > 0) {
     console.log('\n\u274c Missing required tools:\n');
-    const formulas = [...new Set(missing.map((b) => BREW_FORMULA[b]))];
-    for (const formula of formulas) {
-      console.log(`   brew install ${formula}`);
+    if (process.platform === 'darwin') {
+      const formulas = [...new Set(missing.map((b) => BREW_FORMULA[b]))];
+      for (const formula of formulas) {
+        console.log(`   brew install ${formula}`);
+      }
+      console.log('\nInstall the above with Homebrew, then re-run `npm run start:share`.\n');
+    } else if (process.platform === 'win32') {
+      console.log('   winget install Gyan.FFmpeg');
+      console.log('   (or download from https://ffmpeg.org/download.html and add to PATH)');
+      console.log('\nInstall FFmpeg, ensure it is added to your PATH, and restart your terminal.\n');
+    } else {
+      console.log('   sudo apt update && sudo apt install -y ffmpeg');
+      console.log('\nInstall FFmpeg with your package manager, then re-run `npm run start:share`.\n');
     }
-    console.log('\nInstall the above with Homebrew, then re-run `npm run start:share`.\n');
     process.exit(1);
   }
 
@@ -47,7 +56,8 @@ async function main() {
 
   // 2. Build the server and web app (idempotent, picks up latest changes).
   console.log('\u{1F528} Building Cineva (server + web)...\n');
-  execFileSync('npm', ['run', 'build'], { cwd: ROOT, stdio: 'inherit' });
+  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  execFileSync(npmCmd, ['run', 'build'], { cwd: ROOT, stdio: 'inherit' });
 
   // 3. Start the server with the tunnel enabled. The server spawns cloudflared (or SSH tunnel)
   //    and `caffeinate -dims` (tied to its own lifetime).
@@ -114,8 +124,14 @@ async function main() {
     if (dnsFailed) {
       console.log('  \u26a0\ufe0f  DNS lookup failed for api.trycloudflare.com.');
       console.log('     Your local Wi-Fi or router DNS cannot resolve Cloudflare quick tunnels.');
-      console.log('     To fix, you can manually switch macOS DNS to 1.1.1.1 / 8.8.8.8:');
-      console.log('     networksetup -setdnsservers Wi-Fi 1.1.1.1 8.8.8.8');
+      if (process.platform === 'darwin') {
+        console.log('     To fix on macOS, switch DNS to 1.1.1.1 / 8.8.8.8:');
+        console.log('     networksetup -setdnsservers Wi-Fi 1.1.1.1 8.8.8.8');
+      } else if (process.platform === 'win32') {
+        console.log('     To fix on Windows, switch your network adapter DNS to 1.1.1.1 / 8.8.8.8 in Windows Settings.');
+      } else {
+        console.log('     To fix on Linux, configure 1.1.1.1 / 8.8.8.8 in /etc/resolv.conf.');
+      }
     } else {
       console.log('  (The public tunnel URL did not appear yet.');
       console.log('   Check server logs or re-run `npm run start:share`.)');

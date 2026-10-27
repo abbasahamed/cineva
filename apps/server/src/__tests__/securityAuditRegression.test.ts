@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import os from 'os';
+import path from 'path';
 import { sanitizeHtml } from '../utils/sanitize.js';
 import { LocalMediaStorage } from '../services/mediaStorage.js';
 import { syncEngine } from '../services/syncEngine.js';
@@ -73,12 +75,13 @@ describe('Cineva Pre-Deployment Security Regression Tests', () => {
     });
 
     it('should prevent path traversal outside storage directory in LocalMediaStorage', () => {
-      const storage = new LocalMediaStorage('/tmp/cineva_sec_storage');
+      const storageDir = path.resolve(os.tmpdir(), 'cineva_sec_storage');
+      const storage = new LocalMediaStorage(storageDir);
       
       // getSafeFilePath is private, test through saveFile or direct reflection
       const fullSafe = (storage as any).getSafeFilePath('../../../etc/passwd.mp4');
-      // Should strip leading traversal and keep within /tmp/cineva_sec_storage
-      expect(fullSafe.startsWith('/tmp/cineva_sec_storage')).toBe(true);
+      // Should strip leading traversal and keep within storageDir
+      expect(fullSafe.startsWith(storageDir)).toBe(true);
     });
   });
 

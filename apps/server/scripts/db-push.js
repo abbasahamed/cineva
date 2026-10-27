@@ -10,4 +10,4 @@ const schemaFile = isSqlite ? "schema.sqlite.prisma" : "schema.prisma";
 const schemaPath = path.join(__dirname, "..", "prisma", schemaFile);
 
 console.log(`[Prisma Push] Pushing schema with ${schemaFile}`);
-execSync(`npx prisma db push --schema=${schemaPath}`, { stdio: "inherit", env: process.env });
+execSync(`npx prisma db push --schema="${schemaPath}"`, { stdio: "inherit", env: process.env });

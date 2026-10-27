@@ -132,9 +132,9 @@ Before running CINEVA, ensure your system has the following tools installed:
 3. **FFmpeg & FFprobe**: Required for media analysis, codec transcoding, and streaming.
    - **macOS**: `brew install ffmpeg`
    - **Ubuntu / Debian**: `sudo apt update && sudo apt install -y ffmpeg`
-   - **Windows**: `winget install Gyan.FFmpeg` or download from [ffmpeg.org](https://ffmpeg.org/download.html).
+   - **Windows**: `winget install Gyan.FFmpeg` or `choco install ffmpeg` (or download from [ffmpeg.org](https://ffmpeg.org/download.html) and add `bin` to PATH).
 4. **Database**: SQLite is enabled by default with zero configuration. For production VPS deployments, PostgreSQL is optionally supported.
-5. **Operating System**: macOS, Linux, or Windows (WSL recommended for Windows environments). macOS includes automatic `caffeinate` support to prevent sleep during active screenings.
+5. **Operating System**: macOS, Linux, or Windows 10/11 (PowerShell, Command Prompt, or WSL). macOS automatically activates `caffeinate` to prevent sleep during active screenings.
 
 ---
 
@@ -156,9 +156,16 @@ npm ci
 
 Copy the example environment configuration into the server workspace:
 
+**macOS / Linux / Windows PowerShell:**
 ```bash
 cp .env.example .env
 cp .env.example apps/server/.env
+```
+
+**Windows Command Prompt (cmd.exe):**
+```cmd
+copy .env.example .env
+copy .env.example apps\server\.env
 ```
 
 Default configuration in `.env`:
