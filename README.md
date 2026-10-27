@@ -1,343 +1,383 @@
-# CINEVA — Self-Hosted Watch-Party & Synchronized Video Playback
+# CINEVA
 
-[![CI](https://github.com/abbasahamed/cineva/actions/workflows/ci.yml/badge.svg)](https://github.com/abbasahamed/cineva/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue?logo=typescript)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-green?logo=node.js)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20.0.0-339933?logo=node.js)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript)](https://www.typescriptlang.org/)
+[![Prisma](https://img.shields.io/badge/Prisma-6.12-2D3748?logo=prisma)](https://www.prisma.io/)
 
-**CINEVA** is a self-hosted watch-party application for synchronized movie playback with remote guests. Built with TypeScript, React, Vite, Node.js, Express, Socket.IO, and Prisma, it synchronizes playback across play, pause, seek, and late-joining events.
+**CINEVA** is a self-hosted watch-party application designed for synchronized movie playback with remote friends. Built as a TypeScript monorepo with React, Vite, Node.js, Express, Socket.IO, and Prisma, CINEVA enables a host to stream movies directly from their personal computer to guests anywhere in the world.
 
-Media is stored, processed, and served from the host's computer. Remote guests connect through a public tunnel; the tunnel provides network access, not media storage.
+The core architecture is strictly self-hosted: media files are stored, processed, and streamed directly from the host's local filesystem. Remote guests connect to the host through a local network address or a secure public tunnel (Cloudflare Quick Tunnel or Pinggy SSH). The tunnel provides end-to-end network connectivity; it never stores, buffers, or hosts your media files.
 
 ---
 
-## 📸 Interface Preview
+## Interface Preview
 
-| Cinema Watch Room | Landing & Room Creation |
+| Landing Experience | Cinema Watch Room |
 | :---: | :---: |
-| ![Cinema Watch Room](docs/screenshots/room-1440.png) | ![Landing Page](docs/screenshots/landing_after_1440.png) |
+| ![Landing Page](docs/screenshots/landing.png) | ![Cinema Watch Room](docs/screenshots/watch-room.png) |
+| *Modern landing page with room creation and direct code entry* | *Dark cinema player with synchronized timeline, chat, and participants* |
+
+| Room Creation & Media Staging | Join Watch Party |
+| :---: | :---: |
+| ![Create Room](docs/screenshots/create-room.png) | ![Join Room](docs/screenshots/join-room.png) |
+| *Host studio with local drag-and-drop video upload up to 5 GB* | *Invite code joining interface with instant session restoration* |
 
 ---
 
-## 🌟 Key Features
+## Overview
 
-- **Server-Authoritative Synchronization**: Authoritative server timeline eliminates client clock drift and desynchronization.
-- **NTP-Style Clock Synchronization**: Continuous round-trip time (RTT) estimation and server clock offset calculations.
-- **Gentle Drift Correction**:
-  - **$\Delta < 0.25\text{s}$**: Normal playback without disruption.
-  - **$0.25\text{s} \le \Delta < 1.0\text{s}$**: Sub-second playback rate tuning ($0.95\times$ / $1.05\times$) for smooth alignment without jarring jumps.
-  - **$\Delta \ge 1.0\text{s}$**: Controlled seek to exact authoritative position.
-- **Join-in-Progress Synchronization**: Late-joining guests calculate their position from the room timeline and current server time.
-- **HTTP 206 Partial Content Range Streaming**: Native chunked byte-range video streaming for smooth seeking.
-- **Local Disk Storage**: Movies are stored directly on the host machine's local disk (`uploads/`) with zero external cloud storage dependencies. Full HTTP 206 byte-range seeking and adaptive HLS streaming.
-- **One-Command Remote Sharing**: Automated Cloudflare Quick Tunnel or Pinggy SSH tunnel with keep-awake guard (`npm run start:share`).
-- **Instant Demo Room**: 1-click test environment pre-loaded with sample video.
-- **Host Permission Controls**: Authoritative playback control by default with a toggle to allow guest playback control.
-- **Real-Time Room Chat**: WebSocket room-scoped chat with HTML sanitization, rate limiting, and participant badges.
-- **Participant Presence & Reconnection**: Session recovery across disconnects with grace period timeouts.
-- **Responsive Cinema UI**: Sleek, distraction-free dark streaming interface with touch-friendly scrubbers, hover previews, and full keyboard shortcuts.
+Most commercial watch-party extensions require all participants to maintain identical third-party streaming subscriptions or rely on cloud object storage buckets (such as Amazon S3 or Backblaze B2).
+
+CINEVA takes a different approach:
+- **Host-Centric Streaming**: The host provides the video file from their computer (`./uploads`).
+- **Server-Authoritative Clock**: The host's machine runs the backend server, maintaining the single authoritative timeline for the room.
+- **Zero Cloud Storage**: Movies remain on your local disk. Video chunks are served via standard HTTP 206 Partial Content byte-range requests.
+- **Microsecond Synchronization**: Clients calculate clock offsets via continuous NTP-style ping/pong exchanges, adjusting playback speed seamlessly when micro-drift occurs.
+- **Host Availability Requirement**: Because media is served directly from the host machine, the host's computer and server process must remain running, awake, and connected to the Internet throughout the screening session.
 
 ---
 
-## 📁 Project Structure
+## Core Features
+
+- **Server-Authoritative Synchronization**:
+  - The server maintains the master playback state (current position, playback rate, paused state, and update timestamp).
+  - Continuous NTP-style round-trip time (RTT) estimation and server clock offset calculations.
+  - **Gentle Drift Correction**:
+    - $|\Delta| < 0.25\text{s}$: In sync; no adjustment.
+    - $0.25\text{s} \le |\Delta| < 1.0\text{s}$: Micro-rate tuning ($0.95\times$ or $1.05\times$) gently nudges the video into frame alignment without audio pitch distortion or jarring jumps.
+    - $|\Delta| \ge 1.0\text{s}$: Controlled seek to the exact server position.
+- **Late-Join Synchronization**: Guests joining mid-movie immediately calculate the current playhead position from the server room clock and buffer the correct video frame without restarting.
+- **Local Media Storage**:
+  - Direct local file storage on host disk (`apps/server/uploads/`).
+  - Supports video files up to 5 GB (`.mp4`, `.webm`, `.mkv`, `.mov`, `.ogg`).
+  - Disk quota protection (default 20 GB ceiling) prevents storage exhaustion.
+  - HTTP 206 Partial Content range requests for instant seeking.
+- **FFmpeg & FFprobe Integration**:
+  - Automatic codec inspection and container validation.
+  - Remuxes and transcodes unsupported audio formats (e.g. multi-channel AC3/EAC3) to stereo AAC for universal browser playback.
+  - Generates adaptive HLS playlists with subtitle and audio track extraction where supported.
+- **Instant Demo Trailer**: Includes a 1-click test environment pre-loaded with an authorized sample video for immediate testing without personal media files.
+- **Real-Time Room Chat**: Low-latency WebSocket chat scoped to the active room, featuring input sanitization, rate limiting, and host badges.
+- **WebRTC Voice & Video Calling**: Multi-peer mesh signaling allows participants to see and talk to each other alongside movie playback, complete with microphone/camera toggles and a fullscreen participant gallery.
+- **Granular Room Permissions**:
+  - Host controls playback by default.
+  - Host can toggle "Allow Guest Controls" to permit remote play/pause/seek.
+  - Host can kick participants or end the screening room at any time.
+- **One-Command Remote Sharing**: Automated script (`npm run start:share`) builds packages, launches the server, acquires a macOS keep-awake lock (`caffeinate`), and establishes a public HTTPS tunnel with Cloudflare or Pinggy fallback.
+- **System Diagnostics Endpoint**: Safe diagnostics route (`/api/system/diagnostics`) reports FFmpeg availability, disk headroom, and transcoding self-test results without exposing credentials.
+
+---
+
+## Architecture and Technology Stack
+
+CINEVA is organized as an npm workspaces monorepo:
 
 ```
-/
+cineva/
 ├── apps/
-│   ├── web/                    # React + Vite + Tailwind CSS Frontend
+│   ├── web/                    # React 19 + Vite 6 + Tailwind CSS Frontend SPA
 │   │   ├── src/
-│   │   │   ├── components/     # VideoPlayer, Navbar, ChatPanel, ParticipantsList, Modals
-│   │   │   ├── hooks/          # useSyncWatch (Drift correction loop, socket listener)
+│   │   │   ├── components/     # VideoPlayer, Navbar, ChatPanel, FileRow, Dropzone
+│   │   │   ├── features/video/ # WebRTC VideoCallManager, ParticipantGalleryModal
+│   │   │   ├── hooks/          # useSyncWatch (NTP drift correction loop, socket events)
 │   │   │   ├── pages/          # LandingPage, CreateRoomPage, JoinRoomPage, WatchRoomPage
-│   │   │   ├── services/       # REST API client & Socket.IO client
-│   │   │   └── __tests__/      # Frontend sync & drift calculation tests
+│   │   │   └── services/       # REST API client and Socket.IO connection manager
 │   │   └── vite.config.ts
 │   │
 │   └── server/                 # Node.js + Express + Socket.IO Backend
-│       ├── prisma/             # Prisma schema & SQLite / Postgres migrations
+│       ├── prisma/             # Prisma schema & SQLite / PostgreSQL migrations
 │       ├── src/
-│       │   ├── routes/         # REST API (/api/rooms, /api/media)
-│       │   ├── services/       # syncEngine, roomManager, mediaStorage
-│       │   ├── sockets/        # Real-time event handlers & clock sync
-│       │   └── __tests__/      # Backend sync & room management unit tests
+│       │   ├── routes/         # REST API (/api/rooms, /api/media, /api/system)
+│       │   ├── services/       # roomManager, mediaStorage, hlsPackager, binaryResolver
+│       │   ├── sockets/        # Real-time WebSocket event handlers & NTP sync
+│       │   └── utils/          # Client IP detection, disk quota checks, logger
 │       └── .env.example
 │
-└── packages/
-    └── shared/                 # Shared TypeScript models, Zod schemas, socket events
-        └── src/index.ts
+├── packages/
+│   └── shared/                 # Shared TypeScript models, Zod validation schemas, socket contracts
+│       └── src/index.ts
+│
+├── scripts/                    # Development runners, tunnel launcher, acceptance tests
+│   ├── start-share.mjs         # One-command tunnel and keep-awake host runner
+│   ├── runAcceptanceTests.js   # Automated integration test suite
+│   └── verify-all-steps.mjs    # Multi-step verification suite
+│
+└── docs/                       # Architecture, deployment, security, and rollback documentation
+    ├── DEPLOY.md               # Production deployment guide
+    ├── PRODUCTION_ARCHITECTURE.md # Architecture specification and data plane
+    ├── SECURITY_AUDIT.md       # Security boundary audit and mitigations
+    ├── ROLLBACK.md             # Incident recovery and rollback procedures
+    └── screenshots/            # Verified interface screenshots
 ```
+
+### Key Technologies
+
+- **Frontend**: React 19, TypeScript, Vite 6, Tailwind CSS 3, Lucide React, Socket.IO Client.
+- **Backend**: Node.js 20+, Express 4, Socket.IO 4, Prisma ORM 6, Multer, Fluent-FFmpeg, Express Rate Limit.
+- **Database**: SQLite (default local development database at `apps/server/prisma/dev.db`) or PostgreSQL.
+- **Media Engine**: Local FFmpeg & FFprobe binaries with HTTP 206 Partial Content byte-range streaming.
+- **Networking**: Cloudflare Quick Tunnels (`trycloudflare.com`) or Pinggy SSH (`free.pinggy.io`) for remote HTTPS access.
 
 ---
 
-## 🚀 Getting Started
+## Requirements
 
-### Prerequisites
+Before running CINEVA, ensure your system has the following tools installed:
 
-- **Node.js**: v20 or higher
-- **npm**: v9.0.0 or higher
+1. **Node.js**: `v20.0.0` or higher (`node -v`).
+2. **npm**: `v9.0.0` or higher (`npm -v`).
+3. **FFmpeg & FFprobe**: Required for media analysis, codec transcoding, and streaming.
+   - **macOS**: `brew install ffmpeg`
+   - **Ubuntu / Debian**: `sudo apt update && sudo apt install -y ffmpeg`
+   - **Windows**: `winget install Gyan.FFmpeg` or download from [ffmpeg.org](https://ffmpeg.org/download.html).
+4. **Database**: SQLite is enabled by default with zero configuration. For production VPS deployments, PostgreSQL is optionally supported.
+5. **Operating System**: macOS, Linux, or Windows (WSL recommended for Windows environments). macOS includes automatic `caffeinate` support to prevent sleep during active screenings.
 
-### 1. Installation
+---
 
-Clone the repository and install all workspace dependencies:
+## Installation and Local Development
+
+Follow these steps to set up CINEVA locally from scratch:
+
+### 1. Clone the Repository
 
 ```bash
-git clone <repository_url> cineva
+git clone https://github.com/abbasahamed/cineva.git
 cd cineva
-npm install
+git switch feature/ui-polish
+npm ci
 ```
 
-### 2. Environment Configuration
+### 2. Configure Environment Variables
 
-Copy the sample environment configuration:
+Copy the example environment configuration into the server workspace:
 
 ```bash
+cp .env.example .env
 cp .env.example apps/server/.env
 ```
 
-Default `.env` settings:
+Default configuration in `.env`:
 ```env
 PORT=4000
 NODE_ENV=development
 CLIENT_URL=http://localhost:5173
+ALLOWED_ORIGINS=http://localhost:5173,https://cineva.app
 DATABASE_URL="file:./dev.db"
 MEDIA_STORAGE_PATH=./uploads
-MAX_FILE_SIZE_MB=5120 # 5 GB per file
+MAX_FILE_SIZE_MB=5120
+MAX_TOTAL_STORAGE_GB=20
+ENABLE_TUNNEL=true
+KEEP_AWAKE=true
 ```
 
-### 3. Database Migration
+### 3. Initialize the Database and Build Packages
 
-Generate the Prisma Client and initialize the database schema:
-
-```bash
-npm run db:push --workspace=@cineva/server
-```
-
-SQLite is configured by default for local development. To use PostgreSQL, set `DATABASE_URL` and select the PostgreSQL Prisma schema using the server's database setup script.
-
-### 4. Build Shared Package
+Generate the Prisma client and push the SQLite database schema:
 
 ```bash
 npm run build --workspace=@cineva/shared
+npm run generate --workspace=@cineva/server
+npm run db:push --workspace=@cineva/server
+```
+
+### 4. Start the Application
+
+You can start both the backend and frontend concurrently with a single command:
+
+```bash
+npm run dev
+```
+
+- **Frontend**: Accessible at `http://localhost:5173`
+- **Backend API**: Accessible at `http://localhost:4000`
+- **Health Check**: `http://localhost:4000/api/health`
+
+Alternatively, you can run the backend and frontend in separate terminals:
+
+```bash
+# Terminal 1 — Backend Server
+npm run dev:server
+
+# Terminal 2 — Frontend Client
+npm run dev:web
 ```
 
 ---
 
-## 💻 Development Commands
+## How to Use CINEVA
 
-| Command | Description |
-| :--- | :--- |
-| `npm run dev` | Starts both backend (`localhost:4000`) and frontend (`localhost:5173`) concurrently |
-| `npm run start:share` | Builds the app, starts the server, and establishes a secure public HTTPS tunnel with keep-awake guard |
-| `npm run dev:server` | Starts Express & Socket.IO server with hot reloading via `tsx watch` |
-| `npm run dev:web` | Starts Vite React frontend dev server |
-| `npm run build` | Compiles all packages and bundles frontend assets |
-| `npm run test` | Runs the full Vitest automated test suite across all workspaces |
-| `npm run typecheck` | Typechecks all TypeScript files across the monorepo |
-| `npm run lint` | Runs the workspace TypeScript checks |
+### Hosting a Watch Party
+
+1. **Start the Service**: Run `npm run dev` for local network watch parties, or `npm run start:share` to host for remote friends across the Internet.
+2. **Open the Application**: Navigate to `http://localhost:5173` (or your public tunnel URL) in your browser.
+3. **Create a Watch Room**: Click **Create room**, enter your display name (e.g., "Abbas"), and optionally enter a room title.
+4. **Select Media**:
+   - Drag and drop your video file (MP4, WebM, MKV, MOV up to 5 GB).
+   - Alternatively, click **Or use sample HD demo video** to test immediately with the included sample trailer.
+5. **Prepare Media**: Click **Create Room**. The backend validates the video format and stages it for streaming.
+6. **Invite Friends**: Copy the generated invite link or click the WhatsApp share button.
+7. **Enter Theater**: Click **Enter Theater** to enter the cinema room. Use the playbar to play, pause, or seek. All connected guests will follow your actions automatically.
+
+### Joining as a Guest
+
+1. **Open the Link**: Open the shared invitation link in your browser, or visit `http://localhost:5173/join` (or the host's tunnel URL).
+2. **Enter Room Code**: If not pre-filled, type the 6-character room code (e.g., `WPDNZ4`).
+3. **Set Display Name**: Enter your name and click **Join Room**.
+4. **Permissions**: Allow camera and microphone permissions if you wish to participate in video or voice chat.
+5. **Watch Together**: Playback will automatically synchronize to the host's playhead position. Use the right sidebar to chat with other participants.
 
 ---
 
-## 🌐 Remote Sharing (Host a Watch Party)
+## Media, Networking, and Privacy
 
-CINEVA streams video from the host computer. A Cloudflare Quick Tunnel or Pinggy tunnel can provide remote access without router port forwarding; neither service stores movie files.
+### Local Media Storage
+All uploaded videos reside on the host's machine in `apps/server/uploads/`. CINEVA does not upload your movies to AWS, Backblaze, Cloudflare, or any external storage provider. When a room expires or is ended by the host, staged media files are automatically cleaned up.
 
-### One-Command Public Share
+### Upload Limits and Disk Safeguards
+- **Per-file limit**: 5 GB (`MAX_FILE_SIZE_MB=5120`).
+- **Total quota**: 20 GB (`MAX_TOTAL_STORAGE_GB=20`). The server checks available disk space before accepting uploads to prevent filling the host's storage.
 
-To host a screening for remote friends:
+### Host Bandwidth and Network Requirements
+Because video bytes stream directly from the host machine to every guest, the host's **home internet upload speed** dictates playback quality and the number of simultaneous viewers. For streaming 1080p video to 3–5 remote guests, an upload bandwidth of at least 25–50 Mbps is recommended.
+
+### Public Tunnels and Connectivity
+When running `npm run start:share`, CINEVA establishes a public tunnel:
+- **Primary**: Cloudflare Quick Tunnels (`https://*.trycloudflare.com`).
+- **Fallback**: Pinggy SSH Tunnels (`https://*.free.pinggy.net`).
+
+Tunnels forward encrypted HTTPS/WSS traffic directly to your local port 4000. No video files or user data are stored on the tunnel intermediary. Note that free tunnel sessions are ephemeral (free Pinggy tunnels expire after 60 minutes).
+
+### System Sleep & Keep-Awake
+If the host's laptop goes to sleep or loses Wi-Fi connection, the server will stop responding and remote guests will disconnect. On macOS, CINEVA automatically activates a `caffeinate -dims` process during active screening sessions to prevent system sleep.
+
+---
+
+## Configuration Reference
+
+### Backend Server (`apps/server/.env`)
+
+| Variable | Purpose | Required | Default / Safe Example |
+| :--- | :--- | :---: | :--- |
+| `PORT` | Local port for Express and Socket.IO | No | `4000` |
+| `NODE_ENV` | Runtime environment mode | No | `development` (use `production` on servers) |
+| `CLIENT_URL` | Primary frontend URL allowed for CORS | No | `http://localhost:5173` |
+| `ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins | No | `http://localhost:5173,https://cineva.app` |
+| `DATABASE_URL` | Prisma database connection string | Yes | `"file:./dev.db"` (or PostgreSQL URL) |
+| `MEDIA_STORAGE_PATH` | Local disk directory for video staging | No | `./uploads` |
+| `MAX_FILE_SIZE_MB` | Maximum video file upload size in MB | No | `5120` (5 GB) |
+| `MAX_TOTAL_STORAGE_GB`| Maximum total disk space allocated for uploads | No | `20` (20 GB) |
+| `ENABLE_TUNNEL` | Automatically spawn public tunnel on startup | No | `true` |
+| `KEEP_AWAKE` | Prevent macOS system sleep during playback | No | `true` |
+
+### Frontend Client (`apps/web/.env`)
+
+| Variable | Purpose | Required | Safe Example |
+| :--- | :--- | :---: | :--- |
+| `VITE_API_URL` | Base URL of the backend REST API | No | `http://localhost:4000` (omit to use current origin) |
+| `VITE_SOCKET_URL` | Base URL for Socket.IO connection | No | `http://localhost:4000` (omit to use current origin) |
+
+> **Security Note**: All `VITE_*` variables are bundled into client-side JavaScript and visible to anyone inspecting network requests. Never place private keys, database passwords, or server credentials in `VITE_*` variables.
+
+---
+
+## Testing and Quality Verification
+
+Verify code quality and test coverage across the monorepo with the following commands:
 
 ```bash
-npm run start:share
-```
+# Type check all TypeScript workspaces
+npm run typecheck
 
-This automated script performs the following:
-1. **Checks Prerequisites**: Verifies `ffmpeg` and `ffprobe` are installed.
-2. **Builds Monorepo**: Compiles `@cineva/shared`, `@cineva/server`, and `@cineva/web`.
-3. **Spawns Server with Keep-Awake**: Starts the backend and automatically activates a system keep-awake lock (`caffeinate -dims` on macOS) so playback isn't interrupted by system sleep.
-4. **Establishes Public HTTPS Tunnel**:
-   - Primary: Uses **Cloudflare Quick Tunnels** (ephemeral `https://*.trycloudflare.com` URL with zero account setup needed).
-   - Fallback: Automatically falls back to **Pinggy SSH Tunnels** if `cloudflared` binary is not found.
-5. **Prints Ready Banner**: Outputs the shareable public screening URL directly in your terminal:
-   ```
-   ================================================================
-     CINEVA — your private screening room is live
-   ================================================================
-     Public link:   https://your-room-id.trycloudflare.com
-     Create a room: https://your-room-id.trycloudflare.com/create
-   ```
-
-Send this public link to your friends. When they visit it in any modern browser, they enter your room with real-time synchronized playback and chat.
-
----
-
-## ⏱️ Synchronization Algorithm Details
-
-### 1. Server Authoritative State
-
-The server tracks a single authoritative state for each room:
-
-$$\text{Position}_{\text{current}} = \text{StoredPosition} + \left(\frac{\text{ServerNow} - \text{LastUpdatedAt}}{1000}\right) \times \text{PlaybackRate}$$
-
-When any host action occurs (`PLAY`, `PAUSE`, `SEEK`, `RATE`), the server increments the `version` counter and broadcasts the new state with the current server timestamp.
-
-### 2. NTP Client-Server Clock Offset Estimation
-
-To account for latency and clock drift between client devices and the server:
-1. Client sends a timestamped `PING` ($t_0$).
-2. Server responds with `PONG` containing the server's clock timestamp ($t_1$).
-3. Client receives response ($t_2$) and estimates:
-   $$\text{RTT} = t_2 - t_0$$
-   $$\text{ServerOffset} = t_1 - \left(t_0 + \frac{\text{RTT}}{2}\right)$$
-   $$\text{EstimatedServerNow} = \text{ClientNow} + \text{ServerOffset}$$
-
-### 3. Client Drift Correction Loop
-
-Every 500ms, each active client calculates:
-$$\text{ExpectedPosition} = \text{PlaybackState.position} + \left(\frac{\text{EstimatedServerNow} - \text{PlaybackState.lastUpdatedAt}}{1000}\right) \times \text{PlaybackState.playbackRate}$$
-$$\text{Drift} = \text{ExpectedPosition} - \text{video.currentTime}$$
-
-- **$|\text{Drift}| < 0.25\text{s}$**: Video is in sync.
-- **$0.25\text{s} \le |\text{Drift}| < 1.0\text{s}$**: Temporary gentle acceleration ($1.05\times$) or deceleration ($0.95\times$) smoothly brings the video into alignment without audio distortion or buffering.
-- **$|\text{Drift}| \ge 1.0\text{s}$**: Direct controlled seek to `ExpectedPosition`.
-
----
-
-## 📡 WebSocket Event Architecture & Audit
-
-| Event Name | Direction | Sender | Receiver | Authoritative? | Description |
-| :--- | :--- | :--- | :--- | :---: | :--- |
-| `sync:ping` | Client $\to$ Server | Client | Server | N/A | NTP ping containing client timestamp |
-| `sync:pong` | Server $\to$ Client | Server | Client | Yes | NTP pong with server timestamp for offset estimation |
-| `room:join` | Client $\to$ Server | Client | Server | N/A | Authenticates session and enters room channel |
-| `room:state` | Server $\to$ Client | Server | Client | Yes | Initial snapshot with calculated position & timestamp |
-| `playback:play` | Client $\to$ Server | Host / Guest* | Server | Yes | Requests authoritative playback start |
-| `playback:pause` | Client $\to$ Server | Host / Guest* | Server | Yes | Requests authoritative playback pause |
-| `playback:seek` | Client $\to$ Server | Host / Guest* | Server | Yes | Requests authoritative timeline seek |
-| `playback:rate` | Client $\to$ Server | Host / Guest* | Server | Yes | Requests authoritative playback speed adjustment |
-| `playback:state` | Server $\to$ Room | Server | All Clients | Yes | Broadcasts authoritative state & incremented version |
-| `room:updateSettings` | Client $\to$ Server | Host | Server | Yes | Toggles guest control or participant capacity |
-| `room:updateTitle` | Client $\to$ Server | Host | Server | Yes | Updates display title for room media |
-| `room:kickParticipant`| Client $\to$ Server | Host | Server | Yes | Removes a guest participant from room |
-| `room:end` | Client $\to$ Server | Host | Server | Yes | Host ends room for all participants |
-| `room:ended` | Server $\to$ Room | Server | All Clients | Yes | Signals all clients that room has terminated |
-| `participant:joined` | Server $\to$ Room | Server | All Clients | Yes | Notifies presence of newly joined participant |
-| `participant:left` | Server $\to$ Room | Server | All Clients | Yes | Notifies participant disconnect after grace timeout |
-| `participant:kicked` | Server $\to$ Room | Server | All Clients | Yes | Notifies clients that a user was removed |
-| `chat:send` | Client $\to$ Server | Client | Server | No | User submits a text chat message |
-| `chat:message` | Server $\to$ Room | Server | All Clients | No | Broadcasts sanitized chat message to room |
-| `chat:history` | Server $\to$ Client | Server | Client | No | Delivers recent chat log on join |
-
-*\* Guest control is only permitted when the Host enables "Allow Guest Controls" in room settings.*
-
----
-
-## 🔒 Security & Validation
-
-- **No Binary Media in WebSockets**: Media files are transmitted via HTTP Range requests; WebSockets only carry state updates and chat.
-- **Server Authority Verification**: `isHost` status is verified directly against the database session token on every action. Client-supplied flags are never trusted.
-- **Upload Limits & MIME Inspection**: Maximum video upload size: 5 GB per file (5,368,709,120 bytes) with strict MIME and extension validation.
-- **Path Traversal Protection**: Media file paths are strictly validated against the upload directory boundary.
-- **Input Sanitization**: Chat messages and user display names are escaped to prevent XSS injection.
-- **Input Validation**: Room, playback, and chat events use shared schemas; upload routes check file and room constraints.
-- **Rate Limiting**: Express API rate limiter and WebSocket chat throttling prevent spam.
-- **Collision-Resistant Room Codes**: Short 6-character uppercase codes (`A7K9PX`) using unambiguous character sets.
-
----
-
-## 🧪 Testing
-
-Execute automated unit and integration tests:
-
-```bash
+# Run automated Vitest test suite across workspaces (12 test suites, 122 tests)
 npm run test
-```
 
-### Tested Scenarios:
-- Room creation and unique code validation
-- Host vs guest permission boundaries
-- Play/Pause state transitions and version increments
-- Late-joining guest synchronization accuracy
-- NTP clock offset calculation under simulated network latency
-- Drift correction boundary conditions
-- Reconnection session recovery
-- HTTP range header responses
-
----
-
-## 🚢 Deployment
-
-CINEVA runs as a long-lived server on the host computer. The server serves the built web app, handles rooms and synchronization, and stores uploaded media locally. The host must stay online while guests are watching.
-
-Build and start the server:
-
-```bash
+# Compile all workspaces and bundle frontend production distribution
 npm run build
-npm start --workspace=@cineva/server
 ```
 
-For remote guests without router port forwarding, use the tunnel launcher:
+---
 
-```bash
-npm run start:share
+## Deployment Architecture
+
+CINEVA separates the user interface from the stateful media backend:
+
+```
+┌─────────────────────────────────┐           ┌──────────────────────────────────┐
+│         Static Frontend         │           │        Self-Hosted Host          │
+│   (Vercel or Local Vite SPA)    │           │      (Personal Mac / VPS)        │
+│                                 │           │                                  │
+│  • React 19 UI                  │  HTTPS    │  • Node.js + Express API         │
+│  • WebRTC Media Controls        │──────────>│  • Socket.IO NTP Sync Engine     │
+│  • Local Drift Correction Loop  │  WSS      │  • Local Disk Storage (./uploads)│
+│                                 │           │  • FFmpeg Transcoding Pipeline   │
+└─────────────────────────────────┘           └──────────────────────────────────┘
 ```
 
-It starts a Cloudflare Quick Tunnel when available and falls back to Pinggy. Both provide network access to the host; neither stores media. A custom reverse proxy can be used instead, with HTTPS and WebSocket forwarding enabled.
-
-Keep the database and `MEDIA_STORAGE_PATH` on persistent storage and back them up together. The host's disk space and upload bandwidth limit the party. Configure `CLIENT_URL` and `ALLOWED_ORIGINS` for a custom public origin. When a tunnel is active, CINEVA accepts that tunnel's origin for browser requests.
-
-See the [deployment guide](docs/DEPLOY.md), [architecture](docs/PRODUCTION_ARCHITECTURE.md), and [security notes](docs/SECURITY_AUDIT.md).
-
----
-
-## 🛠️ Troubleshooting
-
-| Issue | Cause | Solution |
-| :--- | :--- | :--- |
-| **`ffmpeg` or `ffprobe` not found** | FFmpeg is not installed or not in system `PATH`. | **macOS**: `brew install ffmpeg`<br>**Ubuntu/Debian**: `sudo apt install ffmpeg`<br>**Windows**: `winget install Gyan.FFmpeg` |
-| **Port 4000 or 5173 collision** | Another process is occupying the default ports. | Change `PORT=4001` in `apps/server/.env` and update `CLIENT_URL` accordingly. |
-| **Tunnel fails to establish** | Outbound tunnel ports are blocked or `cloudflared` is missing. | The runner falls back to Pinggy SSH tunnel. Verify outbound SSH (port 22 or 443) or install Cloudflare CLI: `brew install cloudflared`. |
-| **Upload stops or fails for large files** | File exceeds maximum limit or disk is full. | By default, files up to 5 GB are supported. Increase `MAX_FILE_SIZE_MB` in `.env` if necessary and ensure sufficient disk space in `./uploads`. |
-| **Video plays without audio in browser** | Container contains unsupported multi-channel audio codecs (e.g., raw AC3/EAC3 in non-Safari browsers). | CINEVA's FFmpeg pipeline automatically remuxes and transcodes audio to stereo AAC for universal browser playback. |
+1. **Frontend Hosting (Vercel)**:
+   - The React single-page app can be deployed to Vercel (e.g. `cineva-web-one.vercel.app`).
+   - The deployed frontend requires `VITE_API_URL` and `VITE_SOCKET_URL` pointing to an active, reachable backend.
+   - The static frontend cannot store movie files or run FFmpeg transcoding.
+2. **Backend Hosting (Self-Hosted / VPS)**:
+   - Run directly on the host machine using `npm run start:share`.
+   - Or deploy to a persistent Node.js VPS (such as Hetzner, DigitalOcean, or Render with persistent disk storage) equipped with FFmpeg.
+   - For detailed setup instructions, consult the [Production Deployment Guide](docs/DEPLOY.md).
 
 ---
 
-## ⚠️ System Limitations
+## Documentation Index
 
-- **Host Machine Dependency**: CINEVA runs on the host computer. If the host machine goes to sleep, loses power, or closes the terminal session, connected guests will be disconnected.
-- **Host Upstream Bandwidth**: Because all video chunks are streamed directly from the host's local disk, the host's home internet upload speed determines streaming quality and capacity. For multiple remote 1080p streams, an upstream connection of at least 25–50 Mbps is recommended.
-- **Hardware Acceleration**: FFmpeg transcoding leverages CPU encoding by default. Ensure adequate CPU headroom when hosting parties with high-bitrate media.
-
----
-
-### ⚠️ Media & Copyright Compliance
-
-> **CINEVA is designed for watching user-authorized media with friends. Users are responsible for having the necessary rights to upload and share media.**
-
-- CINEVA provides real-time synchronization infrastructure. It does not package, distribute, or host copyrighted movies or television programming.
-- The included sample trailer (`sample_video.mp4`) is provided strictly for demonstration and testing.
-- Users and administrators must upload or stream only media they own or are legally authorized to view and share.
+- [Production Deployment Guide (`docs/DEPLOY.md`)](docs/DEPLOY.md): Guide for self-hosting on local machines or Linux VPS.
+- [Production Architecture (`docs/PRODUCTION_ARCHITECTURE.md`)](docs/PRODUCTION_ARCHITECTURE.md): Technical deep-dive into the control plane, data plane, and NTP sync model.
+- [Security Audit & Hardening (`docs/SECURITY_AUDIT.md`)](docs/SECURITY_AUDIT.md): Threat modeling, input sanitization, and upload safety controls.
+- [Deployment Checklist (`docs/DEPLOYMENT_CHECKLIST.md`)](docs/DEPLOYMENT_CHECKLIST.md): Step-by-step checklist for release verification.
+- [Rollback & Incident Recovery (`docs/ROLLBACK.md`)](docs/ROLLBACK.md): Disaster recovery and rollback runbooks.
 
 ---
 
-## 📚 Documentation Directory
+## Contributing
 
-- 🚀 [**Beginner Deployment Guide** (`docs/DEPLOY.md`)](docs/DEPLOY.md): Step-by-step launch guide for local and VPS hosting.
-- 📋 [**Live Verification Checklist** (`docs/LIVE_TEST_CHECKLIST.md`)](docs/LIVE_TEST_CHECKLIST.md): Production smoke test and live measurement table.
-- 🔄 [**Rollback & Incident Recovery** (`docs/ROLLBACK.md`)](docs/ROLLBACK.md): Procedures for rolling back frontend, backend, or database changes.
-- 🛡️ [**Security & Hardening Audit** (`docs/SECURITY_AUDIT.md`)](docs/SECURITY_AUDIT.md): Comprehensive security model and threat mitigations.
-- 🏗️ [**Production Architecture Specification** (`docs/PRODUCTION_ARCHITECTURE.md`)](docs/PRODUCTION_ARCHITECTURE.md): Control vs. data plane, NTP clock sync, and streaming topology.
+We welcome contributions to CINEVA! To contribute:
+
+1. **Fork** the repository on GitHub.
+2. **Create a Branch** for your work: `git checkout -b feature/my-feature`.
+3. **Install Dependencies**: `npm ci`.
+4. **Implement Changes**: Follow existing coding patterns, error handling, and TypeScript types.
+5. **Validate**: Ensure `npm run typecheck`, `npm run test`, and `npm run build` pass with zero errors.
+6. **Submit a Pull Request**: Describe your changes, motivation, and test coverage.
+
+Please review our community documents before opening a pull request:
+- [Contributing Guidelines](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md)
 
 ---
 
-## 🤝 Community & Contributing
+## Security
 
-We welcome contributions to CINEVA! Please review our community guides before submitting pull requests:
-- 📖 [**Contributing Guidelines**](CONTRIBUTING.md)
-- 🔒 [**Security Policy**](SECURITY.md)
-- 📜 [**Code of Conduct**](CODE_OF_CONDUCT.md)
+If you discover a security vulnerability within CINEVA, please review our [Security Policy](SECURITY.md) for reporting procedures. Do not disclose vulnerabilities in public issue trackers.
 
 ---
 
-## 📄 License
+## License
 
-Distributed under the [MIT License](LICENSE). Copyright © 2026 Abbas Ahamed.
+Distributed under the MIT License. See [LICENSE](LICENSE) for full details.
 
+```
+Copyright (c) 2026 Abbas Ahamed
+```
+
+---
+
+## Acknowledgements
+
+CINEVA is built upon open-source software:
+- [React](https://react.dev/) & [Vite](https://vitejs.dev/)
+- [Socket.IO](https://socket.io/)
+- [Express](https://expressjs.com/)
+- [Prisma ORM](https://www.prisma.io/)
+- [FFmpeg](https://ffmpeg.org/) via [fluent-ffmpeg](https://github.com/fluent-ffmpeg/node-fluent-ffmpeg)
+- [Tailwind CSS](https://tailwindcss.com/)
+- [Lucide Icons](https://lucide.dev/)
+- [Vitest](https://vitest.dev/)
