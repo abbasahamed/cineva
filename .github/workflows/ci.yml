@@ -2,14 +2,26 @@ name: CI
 
 on:
   push:
-    branches: [ main, feature/** ]
+    branches: [ main, 'feature/**' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, 'feature/**' ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test-and-build:
     name: Build & Test
     runs-on: ubuntu-latest
+
+    env:
+      NODE_ENV: test
+      CI: true
+      DATABASE_URL: "file:./dev.db"
 
     steps:
       - name: Checkout repository

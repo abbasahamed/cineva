@@ -7,7 +7,7 @@
 
 **CINEVA** is a self-hosted watch-party application designed for synchronized movie playback with remote friends. Built as a TypeScript monorepo with React, Vite, Node.js, Express, Socket.IO, and Prisma, CINEVA enables a host to stream movies directly from their personal computer to guests anywhere in the world.
 
-The core architecture is strictly self-hosted: media files are stored, processed, and streamed directly from the host's local filesystem. Remote guests connect to the host through a local network address or a secure public tunnel (Cloudflare Quick Tunnel or Pinggy SSH). The tunnel provides end-to-end network connectivity; it never stores, buffers, or hosts your media files.
+The core architecture is strictly self-hosted: media files are stored, processed, and streamed directly from the host's local filesystem. Remote guests connect to the host through a local network address or an ephemeral public tunnel (Cloudflare Quick Tunnel or Pinggy SSH). The tunnel provides transport connectivity between host and guests; neither provider stores or hosts persistent media files, though transit packet buffering occurs during streaming.
 
 ---
 
@@ -32,8 +32,8 @@ Most commercial watch-party extensions require all participants to maintain iden
 CINEVA takes a different approach:
 - **Host-Centric Streaming**: The host provides the video file from their computer (`./uploads`).
 - **Server-Authoritative Clock**: The host's machine runs the backend server, maintaining the single authoritative timeline for the room.
-- **Zero Cloud Storage**: Movies remain on your local disk. Video chunks are served via standard HTTP 206 Partial Content byte-range requests.
-- **Microsecond Synchronization**: Clients calculate clock offsets via continuous NTP-style ping/pong exchanges, adjusting playback speed seamlessly when micro-drift occurs.
+- **Local Media Storage**: Movies remain on your local disk. Video chunks are served via standard HTTP 206 Partial Content byte-range requests.
+- **Millisecond Clock Estimation & Synchronization**: Clients calculate server clock offsets via continuous NTP-style ping/pong exchanges, adjusting playback speed seamlessly when drift occurs.
 - **Host Availability Requirement**: Because media is served directly from the host machine, the host's computer and server process must remain running, awake, and connected to the Internet throughout the screening session.
 
 ---
@@ -43,23 +43,25 @@ CINEVA takes a different approach:
 - **Server-Authoritative Synchronization**:
   - The server maintains the master playback state (current position, playback rate, paused state, and update timestamp).
   - Continuous NTP-style round-trip time (RTT) estimation and server clock offset calculations.
-  - **Gentle Drift Correction**:
-    - $|\Delta| < 0.25\text{s}$: In sync; no adjustment.
-    - $0.25\text{s} \le |\Delta| < 1.0\text{s}$: Micro-rate tuning ($0.95\times$ or $1.05\times$) gently nudges the video into frame alignment without audio pitch distortion or jarring jumps.
-    - $|\Delta| \ge 1.0\text{s}$: Controlled seek to the exact server position.
+  - **Multi-Tier Drift Correction Controller**:
+    - Evaluated on a 250ms periodic loop using estimated server time and measured RTT.
+    - $|\Delta| < 120\text{ms}$: Synchronized; standard playback rate maintained.
+    - $120\text{ms} \le |\Delta| < 400\text{ms}$: Gentle $\pm 8\%$ rate tuning ($0.92\times$ or $1.08\times$) gently restores alignment while leveraging browser pitch preservation.
+    - $400\text{ms} \le |\Delta| < 1.2\text{s}$: Responsive $\pm 25\%$ catch-up tuning ($0.75\times$ or $1.25\times$).
+    - $|\Delta| \ge 1.2\text{s}$: Direct seek to the target playhead position (with a 600ms cooldown to prevent seek thrashing).
 - **Late-Join Synchronization**: Guests joining mid-movie immediately calculate the current playhead position from the server room clock and buffer the correct video frame without restarting.
 - **Local Media Storage**:
   - Direct local file storage on host disk (`apps/server/uploads/`).
   - Supports video files up to 5 GB (`.mp4`, `.webm`, `.mkv`, `.mov`, `.ogg`).
   - Disk quota protection (default 20 GB ceiling) prevents storage exhaustion.
-  - HTTP 206 Partial Content range requests for instant seeking.
+  - HTTP 206 Partial Content range requests for seeking.
 - **FFmpeg & FFprobe Integration**:
   - Automatic codec inspection and container validation.
-  - Remuxes and transcodes unsupported audio formats (e.g. multi-channel AC3/EAC3) to stereo AAC for universal browser playback.
+  - Remuxes and transcodes unsupported audio formats (e.g. multi-channel AC3/EAC3) to stereo AAC for broad browser playback compatibility.
   - Generates adaptive HLS playlists with subtitle and audio track extraction where supported.
-- **Instant Demo Trailer**: Includes a 1-click test environment pre-loaded with an authorized sample video for immediate testing without personal media files.
+- **Instant Demo Trailer**: Includes a 1-click test environment pre-loaded with an sample video for immediate testing without personal media files.
 - **Real-Time Room Chat**: Low-latency WebSocket chat scoped to the active room, featuring input sanitization, rate limiting, and host badges.
-- **WebRTC Voice & Video Calling**: Multi-peer mesh signaling allows participants to see and talk to each other alongside movie playback, complete with microphone/camera toggles and a fullscreen participant gallery.
+- **WebRTC Voice & Video Calling**: Peer-to-peer mesh signaling (via public Google STUN servers) allows participants to see and talk to each other alongside movie playback, complete with microphone/camera toggles and a fullscreen participant gallery. (Mesh architecture is suited for small groups of 2–5 peers; restrictive symmetric NATs without a TURN server may limit connectivity).
 - **Granular Room Permissions**:
   - Host controls playback by default.
   - Host can toggle "Allow Guest Controls" to permit remote play/pause/seek.
@@ -145,9 +147,10 @@ Follow these steps to set up CINEVA locally from scratch:
 ```bash
 git clone https://github.com/abbasahamed/cineva.git
 cd cineva
-git switch feature/ui-polish
 npm ci
 ```
+
+> **Note**: The GitHub repository's default branch is `feature/ui-polish` (the active release branch). If you are switching branches or updating an existing clone, ensure you are on `git switch feature/ui-polish`.
 
 ### 2. Configure Environment Variables
 
@@ -174,13 +177,14 @@ KEEP_AWAKE=true
 
 ### 3. Initialize the Database and Build Packages
 
-Generate the Prisma client and push the SQLite database schema:
+Build the shared package and initialize the SQLite database schema:
 
 ```bash
 npm run build --workspace=@cineva/shared
-npm run generate --workspace=@cineva/server
 npm run db:push --workspace=@cineva/server
 ```
+
+*(Note: `npm run db:push` automatically generates the Prisma Client and applies schema migrations to `dev.db`.)*
 
 ### 4. Start the Application
 
@@ -233,21 +237,21 @@ npm run dev:web
 ## Media, Networking, and Privacy
 
 ### Local Media Storage
-All uploaded videos reside on the host's machine in `apps/server/uploads/`. CINEVA does not upload your movies to AWS, Backblaze, Cloudflare, or any external storage provider. When a room expires or is ended by the host, staged media files are automatically cleaned up.
+All uploaded videos reside on the host's machine in `apps/server/uploads/`. CINEVA does not upload your movies to AWS, Backblaze, Cloudflare, or any external object storage service. When a room expires or is ended by the host, staged media files are automatically cleaned up.
 
 ### Upload Limits and Disk Safeguards
 - **Per-file limit**: 5 GB (`MAX_FILE_SIZE_MB=5120`).
 - **Total quota**: 20 GB (`MAX_TOTAL_STORAGE_GB=20`). The server checks available disk space before accepting uploads to prevent filling the host's storage.
 
 ### Host Bandwidth and Network Requirements
-Because video bytes stream directly from the host machine to every guest, the host's **home internet upload speed** dictates playback quality and the number of simultaneous viewers. For streaming 1080p video to 3–5 remote guests, an upload bandwidth of at least 25–50 Mbps is recommended.
+Because video bytes stream directly from the host machine to every guest, the host's home internet upload speed dictates playback quality and the number of simultaneous viewers. Self-hosting shifts availability, bandwidth, storage, and security responsibilities to the host. For streaming 1080p video to 3–5 remote guests, an upload bandwidth of at least 25–50 Mbps is recommended.
 
 ### Public Tunnels and Connectivity
 When running `npm run start:share`, CINEVA establishes a public tunnel:
 - **Primary**: Cloudflare Quick Tunnels (`https://*.trycloudflare.com`).
 - **Fallback**: Pinggy SSH Tunnels (`https://*.free.pinggy.net`).
 
-Tunnels forward encrypted HTTPS/WSS traffic directly to your local port 4000. No video files or user data are stored on the tunnel intermediary. Note that free tunnel sessions are ephemeral (free Pinggy tunnels expire after 60 minutes).
+Tunnels forward encrypted HTTPS/WSS traffic directly to your local port 4000. Tunnel intermediaries provide transport connectivity and transit packet buffering; no persistent video files or user databases are stored on intermediary servers. Note that free tunnel sessions are ephemeral (free Pinggy tunnels expire after 60 minutes).
 
 ### System Sleep & Keep-Awake
 If the host's laptop goes to sleep or loses Wi-Fi connection, the server will stop responding and remote guests will disconnect. On macOS, CINEVA automatically activates a `caffeinate -dims` process during active screening sessions to prevent system sleep.
