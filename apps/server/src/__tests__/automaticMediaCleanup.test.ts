@@ -454,4 +454,87 @@ describe('Automatic Media Cleanup on Room Closure Test Suite', () => {
     const roomInfo = await roomManager.getRoomInfo(roomId);
     expect(roomInfo?.media).toBeNull();
   });
+
+  it('TEST 11 — Converted HLS directory, master playlist, segments and fallback MP4 are deleted when room ends', async () => {
+    const created = await roomManager.createRoom({
+      displayName: 'HostAlice',
+      roomName: 'HLS Cleanup Room',
+      allowGuestControl: false,
+    });
+    const roomId = created.room.id;
+    const safeRoomId = roomId.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    // Simulate converted HLS stream structure + fallback MP4 + raw upload
+    const roomDir = path.join(CONFIG.MEDIA_STORAGE_PATH, safeRoomId);
+    const hlsDir = path.join(roomDir, 'hls');
+    fs.mkdirSync(hlsDir, { recursive: true });
+
+    const rawPath = path.join(roomDir, 'original_movie.mkv');
+    const masterPath = path.join(hlsDir, 'master.m3u8');
+    const streamPlaylist = path.join(hlsDir, 'stream_1080p.m3u8');
+    const segmentPath = path.join(hlsDir, 'stream_1080p_001.m4s');
+    const fallbackPath = path.join(roomDir, 'fallback_movie.mp4');
+
+    fs.writeFileSync(rawPath, 'raw video bits');
+    fs.writeFileSync(masterPath, '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=5000000\nstream_1080p.m3u8');
+    fs.writeFileSync(streamPlaylist, '#EXTM3U\nstream_1080p_001.m4s');
+    fs.writeFileSync(segmentPath, 'binary segment data');
+    fs.writeFileSync(fallbackPath, 'fallback mp4 data');
+
+    const rawKey = path.join(safeRoomId, 'original_movie.mkv');
+    const hlsMasterKey = path.join(safeRoomId, 'hls', 'master.m3u8');
+    const fallbackKey = path.join(safeRoomId, 'fallback_movie.mp4');
+
+    await prisma.media.create({
+      data: {
+        roomId,
+        title: 'HLS Converted Movie',
+        filename: 'original_movie.mkv',
+        mimeType: 'video/mp4',
+        size: BigInt(500),
+        storageKey: fallbackKey,
+        originalStorageKey: rawKey,
+        playbackStorageKey: hlsMasterKey,
+        status: 'ready',
+      },
+    });
+
+    // Verify all files and directories exist before room ends
+    expect(fs.existsSync(rawPath)).toBe(true);
+    expect(fs.existsSync(masterPath)).toBe(true);
+    expect(fs.existsSync(streamPlaylist)).toBe(true);
+    expect(fs.existsSync(segmentPath)).toBe(true);
+    expect(fs.existsSync(fallbackPath)).toBe(true);
+    expect(fs.existsSync(hlsDir)).toBe(true);
+    expect(fs.existsSync(roomDir)).toBe(true);
+
+    // End room (as happens when host leaves or room is cancelled)
+    await roomManager.endRoom(roomId);
+
+    // Verify every single converted and raw artifact was deleted from disk
+    expect(fs.existsSync(rawPath)).toBe(false);
+    expect(fs.existsSync(masterPath)).toBe(false);
+    expect(fs.existsSync(streamPlaylist)).toBe(false);
+    expect(fs.existsSync(segmentPath)).toBe(false);
+    expect(fs.existsSync(fallbackPath)).toBe(false);
+    expect(fs.existsSync(hlsDir)).toBe(false);
+    expect(fs.existsSync(roomDir)).toBe(false);
+
+    // Verify database record deleted
+    const mediaCount = await prisma.media.count({ where: { roomId } });
+    expect(mediaCount).toBe(0);
+  });
+
+  it('TEST 12 — mediaStorage.deleteFile safely handles directory keys without EISDIR error', async () => {
+    const testDirKey = `test_dir_${Date.now()}`;
+    const testDirPath = path.join(CONFIG.MEDIA_STORAGE_PATH, testDirKey);
+    fs.mkdirSync(path.join(testDirPath, 'nested'), { recursive: true });
+    fs.writeFileSync(path.join(testDirPath, 'nested', 'file.txt'), 'data');
+
+    expect(fs.existsSync(testDirPath)).toBe(true);
+
+    // Deleting directory via mediaStorage.deleteFile should remove it recursively without error
+    await expect(mediaStorage.deleteFile(testDirKey)).resolves.not.toThrow();
+    expect(fs.existsSync(testDirPath)).toBe(false);
+  });
 });

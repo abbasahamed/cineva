@@ -11,7 +11,7 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const parsed = CreateRoomSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0].message });
+      res.status(400).json({ error: parsed.error.issues[0].message });
       return;
     }
 
@@ -109,7 +109,7 @@ router.post('/:roomCode/join', async (req: Request, res: Response) => {
     });
 
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0].message });
+      res.status(400).json({ error: parsed.error.issues[0].message });
       return;
     }
 
@@ -178,8 +178,8 @@ router.post("/:roomId/abort", async (req: Request, res: Response) => {
       return;
     }
 
-    // 1. Clean up media and abort any active B2 multipart uploads
-    await roomManager.cleanupRoomMedia(room.id);
+    // 1. End room state and clean up local media
+    await roomManager.endRoom(room.id);
 
     // 2. End room state and delete from DB
     await prisma.room.delete({

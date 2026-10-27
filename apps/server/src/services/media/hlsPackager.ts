@@ -146,7 +146,6 @@ export class HlsPackager {
     if (canCopyVideo) {
       videoArgs.push('-c:v', 'copy');
     } else {
-      // Quality-based encoding per A2 specifications
       const sourceBitrate = vStream?.bitrate || (analysis.sizeBytes && analysis.duration ? Math.round((analysis.sizeBytes * 8) / analysis.duration) : 8000000);
       const targetBitrate = Math.max(6000000, Math.min(14000000, Math.round(sourceBitrate * 0.9)));
       const maxRate = Math.round(targetBitrate * 1.5);

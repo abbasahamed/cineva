@@ -96,7 +96,9 @@ async function testPlayback(fileType, filePath) {
   await page.waitForTimeout(4000);
 
   // Take screenshot
-  const screenshotPath = `/Users/abbas/.gemini/antigravity-ide/brain/3613dbc4-d8a8-455f-a556-4a2a50e15e9e/step1_${fileType}_room.png`;
+  const artifactsDir = process.env.ARTIFACTS_DIR || path.resolve('scratch');
+  if (!fs.existsSync(artifactsDir)) fs.mkdirSync(artifactsDir, { recursive: true });
+  const screenshotPath = path.join(artifactsDir, `step1_${fileType}_room.png`);
   await page.screenshot({ path: screenshotPath });
   console.log(`Screenshot saved to: ${screenshotPath}`);
 
@@ -190,11 +192,11 @@ async function run() {
   const mp4Report = await testPlayback('mp4', FIXTURES.mp4);
   const mkvReport = await testPlayback('mkv', FIXTURES.mkv);
 
-  fs.writeFileSync(
-    '/Users/abbas/.gemini/antigravity-ide/brain/3613dbc4-d8a8-455f-a556-4a2a50e15e9e/step1_diagnostics.json',
-    JSON.stringify({ mp4Report, mkvReport }, null, 2)
-  );
-  console.log(`\nDiagnostics report saved to /Users/abbas/.gemini/antigravity-ide/brain/3613dbc4-d8a8-455f-a556-4a2a50e15e9e/step1_diagnostics.json`);
+  const outDir = process.env.ARTIFACTS_DIR || path.resolve('scratch');
+  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, 'step1_diagnostics.json');
+  fs.writeFileSync(outPath, JSON.stringify({ mp4Report, mkvReport }, null, 2));
+  console.log(`\nDiagnostics report saved to ${outPath}`);
 }
 
 run().catch((err) => {

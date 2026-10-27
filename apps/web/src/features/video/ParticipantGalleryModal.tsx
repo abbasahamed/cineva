@@ -198,7 +198,7 @@ export const ParticipantGalleryModal: React.FC<ParticipantGalleryModalProps> = (
                   stream={peerStream}
                   isLocal={false}
                   isHost={p.isHost}
-                  isMuted={peer?.isMuted ?? false}
+                  isMuted={peer?.isMuted ?? true}
                   isCameraOff={isPeerCameraOff}
                   connectionState={peer?.connectionState}
                   volume={volume}
@@ -216,15 +216,15 @@ export const ParticipantGalleryModal: React.FC<ParticipantGalleryModalProps> = (
       </main>
 
       {/* Floating Bottom Action Toolbar */}
-      <footer className="p-4 flex items-center justify-center gap-3 border-t border-white/[0.08] bg-black/40 backdrop-blur-md shrink-0 z-10">
+      <footer className="p-4 flex items-center justify-center gap-3 border-t border-white/[0.10] bg-black/50 backdrop-blur-xl shrink-0 z-10">
         {/* Mic Toggle Button */}
         <button
           type="button"
           onClick={onToggleMute}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all shadow-md ${
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-semibold transition-all shadow-md active:scale-95 ${
             isMuted
               ? 'bg-rose-500/20 text-rose-300 border border-rose-500/35 hover:bg-rose-500/30'
-              : 'bg-white/10 text-white border border-white/15 hover:bg-white/20'
+              : 'bg-white/10 text-white border border-white/20 hover:bg-white/18 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
           }`}
           aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
         >
@@ -236,14 +236,14 @@ export const ParticipantGalleryModal: React.FC<ParticipantGalleryModalProps> = (
         <button
           type="button"
           onClick={onToggleCamera}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all shadow-md ${
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-semibold transition-all shadow-md active:scale-95 ${
             !isCameraOn
-              ? 'bg-white/10 text-slate-300 border border-white/15 hover:bg-white/20'
-              : 'bg-brand-600/30 text-brand-200 border border-brand-500/40 hover:bg-brand-600/40'
+              ? 'bg-white/10 text-white/80 border border-white/20 hover:bg-white/18 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
+              : 'bg-[#1E45FB]/35 text-white border border-[#1E45FB]/60 hover:bg-[#1E45FB]/45 shadow-[0_4px_18px_rgba(30,69,251,0.4)]'
           }`}
           aria-label={isCameraOn ? 'Turn camera off' : 'Turn camera on'}
         >
-          {!isCameraOn ? <VideoOff className="w-4 h-4 text-slate-400" /> : <Video className="w-4 h-4 text-brand-300" />}
+          {!isCameraOn ? <VideoOff className="w-4 h-4 text-white/60" /> : <Video className="w-4 h-4 text-[#CDF22B]" />}
           <span>{isCameraOn ? 'Camera on' : 'Camera off'}</span>
         </button>
 
@@ -251,7 +251,7 @@ export const ParticipantGalleryModal: React.FC<ParticipantGalleryModalProps> = (
         <button
           type="button"
           onClick={onClose}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-white text-black hover:bg-slate-200 transition-colors shadow-md ml-2"
+          className="flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold bg-[#CDF22B] text-[#070913] hover:brightness-105 transition-all shadow-[0_4px_18px_rgba(205,242,43,0.4)] ml-2 active:scale-95"
         >
           <span>Back to Screening</span>
         </button>

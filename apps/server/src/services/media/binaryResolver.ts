@@ -5,7 +5,6 @@ let cachedFfmpegPath: string | null = null;
 let cachedFfprobePath: string | null = null;
 
 function resolveSystemBinary(name: 'ffmpeg' | 'ffprobe'): string | null {
-  // 1. Try system PATH
   try {
     const whichCmd = process.platform === 'win32' ? 'where' : 'which';
     const out = execSync(`${whichCmd} ${name}`, { encoding: 'utf-8', timeout: 2000 }).trim();
@@ -14,10 +13,8 @@ function resolveSystemBinary(name: 'ffmpeg' | 'ffprobe'): string | null {
       return firstLine;
     }
   } catch {
-    // Not found via which
   }
 
-  // 2. Check standard container / Nix / Linux paths
   const candidatePaths = [
     `/usr/bin/${name}`,
     `/usr/local/bin/${name}`,
@@ -42,19 +39,6 @@ export function getFfmpegPath(): string {
     return systemPath;
   }
 
-  // Fallback to @ffmpeg-installer/ffmpeg
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
-    if (ffmpegInstaller?.path && fs.existsSync(ffmpegInstaller.path)) {
-      const p = String(ffmpegInstaller.path);
-      cachedFfmpegPath = p;
-      return p;
-    }
-  } catch {
-    // Ignore installer errors
-  }
-
   cachedFfmpegPath = 'ffmpeg';
   return 'ffmpeg';
 }
@@ -66,19 +50,6 @@ export function getFfprobePath(): string {
   if (systemPath) {
     cachedFfprobePath = systemPath;
     return systemPath;
-  }
-
-  // Fallback to @ffprobe-installer/ffprobe
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const ffprobeInstaller = require('@ffprobe-installer/ffprobe');
-    if (ffprobeInstaller?.path && fs.existsSync(ffprobeInstaller.path)) {
-      const p = String(ffprobeInstaller.path);
-      cachedFfprobePath = p;
-      return p;
-    }
-  } catch {
-    // Ignore installer errors
   }
 
   cachedFfprobePath = 'ffprobe';

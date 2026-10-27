@@ -22,15 +22,29 @@ export interface UploadProgressInfo {
   totalBytes: number;
 }
 
-export async function createRoom(data: CreateRoomInput): Promise<CreateRoomResponse> {
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE}/rooms`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-  } catch {
+export async function createRoom(data: CreateRoomInput, retries = 1): Promise<CreateRoomResponse> {
+  let res: Response | null = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      res = await fetch(`${API_BASE}/rooms`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      // If server responded with a normal HTTP status, stop retrying
+      if (res.ok || (res.status !== 502 && res.status !== 503 && res.status !== 504)) {
+        break;
+      }
+    } catch {
+      // Network fetch failure
+    }
+    if (attempt < retries) {
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  }
+
+  if (!res) {
     throw new Error(
       "Cannot connect to server. Ensure the backend is running on port 4000 (run 'npm run dev')."
     );
@@ -46,7 +60,11 @@ export async function createRoom(data: CreateRoomInput): Promise<CreateRoomRespo
       errMsg = err.error || err.message || errMsg;
     } catch {
       const text = await res.text().catch(() => "");
-      if (text) errMsg = text;
+      if (text.includes("ECONNREFUSED")) {
+        errMsg = "Backend server is offline. Please make sure 'npm run dev' is running.";
+      } else if (text) {
+        errMsg = text;
+      }
     }
     throw new Error(errMsg);
   }
@@ -217,8 +235,8 @@ export async function joinRoom(roomCode: string, displayName: string, sessionId?
 }
 
 /**
- * Uploads media using direct multipart chunking to Backblaze B2 (or local storage).
- * Uploads chunks with controlled concurrency without buffering the entire file in RAM.
+ * Uploads media file directly to the local CINEVA server.
+ * Streams the file with real-time progress events without buffering the entire file in RAM.
  */
 export async function uploadMedia(
   roomId: string,
@@ -227,149 +245,6 @@ export async function uploadMedia(
   title?: string,
   onProgress?: (percent: number, progressInfo?: UploadProgressInfo) => void
 ): Promise<{ id: string; title: string; filename: string; url: string; status?: string }> {
-  // 1. Initialize multipart upload with backend
-  const initRes = await fetch(`${API_BASE}/media/uploads/multipart/init`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      roomId,
-      sessionId,
-      filename: file.name,
-      fileSize: file.size,
-      mimeType: file.type || "video/mp4",
-      title,
-    }),
-  });
-
-  if (initRes.ok) {
-    const { uploadId, partSize, totalParts, parts } = await initRes.json();
-
-    if (uploadId && Array.isArray(parts) && parts.length > 0) {
-      const completedParts: Array<{ partNumber: number; etag: string }> = [];
-      const partProgress = new Map<number, number>();
-
-      const reportProgress = () => {
-        let totalUploaded = 0;
-        for (const bytes of partProgress.values()) {
-          totalUploaded += bytes;
-        }
-        totalUploaded = Math.min(totalUploaded, file.size);
-        const percent = Math.min(99, Math.round((totalUploaded / file.size) * 100));
-        if (onProgress) {
-          onProgress(percent, {
-            percent,
-            uploadedBytes: totalUploaded,
-            totalBytes: file.size,
-          });
-        }
-      };
-
-      // Upload a single part with automatic retry
-      const uploadPartWithRetry = async (
-        partItem: { partNumber: number; uploadUrl: string },
-        maxRetries = 3
-      ): Promise<void> => {
-        const start = (partItem.partNumber - 1) * partSize;
-        const end = Math.min(start + partSize, file.size);
-        const chunkBlob = file.slice(start, end);
-
-        let targetUrl = partItem.uploadUrl;
-        if (!targetUrl.startsWith("http")) {
-          targetUrl = RAW_API_URL ? `${RAW_API_URL.replace(/\/$/, "")}${targetUrl}` : targetUrl;
-        }
-
-        let lastError: Error | null = null;
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-          try {
-            const etag = await new Promise<string>((resolve, reject) => {
-              const xhr = new XMLHttpRequest();
-              xhr.upload.addEventListener("progress", (e) => {
-                if (e.lengthComputable) {
-                  partProgress.set(partItem.partNumber, e.loaded);
-                  reportProgress();
-                }
-              });
-
-              xhr.addEventListener("load", () => {
-                if (xhr.status >= 200 && xhr.status < 300) {
-                  let rawEtag = xhr.getResponseHeader("ETag") || xhr.getResponseHeader("etag") || "";
-                  if (!rawEtag) {
-                    try {
-                      const resJson = JSON.parse(xhr.responseText);
-                      rawEtag = resJson.etag || "";
-                    } catch {}
-                  }
-                  resolve(rawEtag);
-                } else {
-                  reject(new Error(`Part ${partItem.partNumber} failed with status ${xhr.status}`));
-                }
-              });
-
-              xhr.addEventListener("error", () => reject(new Error(`Network error uploading part ${partItem.partNumber}`)));
-              xhr.addEventListener("abort", () => reject(new Error(`Upload aborted for part ${partItem.partNumber}`)));
-
-              xhr.open("PUT", targetUrl);
-              xhr.send(chunkBlob);
-            });
-
-            partProgress.set(partItem.partNumber, chunkBlob.size);
-            reportProgress();
-            completedParts.push({ partNumber: partItem.partNumber, etag });
-            return;
-          } catch (err: any) {
-            lastError = err;
-            if (attempt < maxRetries) {
-              await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
-            }
-          }
-        }
-        throw lastError || new Error(`Failed to upload part ${partItem.partNumber}`);
-      };
-
-      // Controlled concurrency: 3 simultaneous chunks
-      const concurrency = 3;
-      let currentIndex = 0;
-      const worker = async () => {
-        while (currentIndex < parts.length) {
-          const idx = currentIndex++;
-          await uploadPartWithRetry(parts[idx]);
-        }
-      };
-
-      const workers = Array.from({ length: Math.min(concurrency, parts.length) }, () => worker());
-      await Promise.all(workers);
-
-      // 3. Complete multipart upload with backend
-      const completeRes = await fetch(`${API_BASE}/media/uploads/multipart/${encodeURIComponent(uploadId)}/complete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          parts: completedParts,
-        }),
-      });
-
-      if (!completeRes.ok) {
-        const errJson = await completeRes.json().catch(() => ({ error: "Failed to finalize upload" }));
-        throw new Error(errJson.error || "Failed to finalize upload");
-      }
-
-      if (onProgress) {
-        onProgress(100, {
-          percent: 100,
-          uploadedBytes: file.size,
-          totalBytes: file.size,
-        });
-      }
-
-      return await completeRes.json();
-    }
-  } else {
-    const initErr = await initRes.json().catch(() => ({ error: "Upload rejected" }));
-    throw new Error(initErr.error || `Upload initialization failed (${initRes.status})`);
-  }
-
-  // Fallback: Standard streaming multipart upload to server for small files or legacy servers
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const formData = new FormData();

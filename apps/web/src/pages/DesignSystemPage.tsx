@@ -192,7 +192,7 @@ export const DesignSystemPage: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-3">
-              <Avatar name="Abbas Ahamed" size="small" />
+              <Avatar name="Alex Rivera" size="small" />
               <Avatar name="Sarah Connor" size="normal" isSpeaking />
               <Avatar name="John Doe" size="large" />
             </div>

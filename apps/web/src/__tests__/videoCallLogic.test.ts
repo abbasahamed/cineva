@@ -377,7 +377,9 @@ describe('WebRTC Video Calling Frontend Logic Unit Tests', () => {
       } as any;
 
       (politeManager as any).peerConnections.set('user_a', mockPc);
-      vi.stubGlobal('RTCSessionDescription', vi.fn().mockImplementation((d) => d));
+      vi.stubGlobal('RTCSessionDescription', vi.fn(function (this: any, d) {
+        Object.assign(this, d);
+      }));
 
       await politeManager.handleIncomingOffer('user_a', { type: 'offer', sdp: 'offer_sdp' });
 

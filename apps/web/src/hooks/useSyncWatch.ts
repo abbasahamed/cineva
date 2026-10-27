@@ -629,6 +629,9 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
       } catch {
         video.currentTime = targetPos;
       }
+      if (!latestPlaybackRef.current.isPlaying && !video.paused) {
+        try { video.pause(); } catch {}
+      }
     }
 
     const newPlaybackState: PlaybackState = {

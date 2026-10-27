@@ -15,6 +15,7 @@ import {
 } from '../utils/inviteUtils.js';
 import { socketService } from '../services/socket.js';
 import { SOCKET_EVENTS } from '@cineva/shared';
+import { LiquidGlassCursor } from '../components/LiquidGlassCursor';
 
 export const CreateRoomPage: React.FC = () => {
   const navigate = useNavigate();
@@ -358,20 +359,21 @@ export const CreateRoomPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-8 relative overflow-x-hidden selection:bg-[#7c6cfb]/30">
-      {/* 4-Orb Screen-Blended Aurora (Liquid Glass 2.0) */}
-      <div className="aurora" aria-hidden="true">
-        <div className="aurora-layer">
-          <i id="orb1"></i>
-          <i id="orb2"></i>
-          <i id="orb3"></i>
-          <i id="orb4"></i>
-        </div>
+    <div className="create-root min-h-screen flex flex-col items-center justify-center p-5 sm:p-8 relative overflow-x-hidden text-white selection:bg-[#0A84FF]/25 selection:text-white">
+      {/* Liquid Glass Interactive Cursor */}
+      <LiquidGlassCursor />
+
+      {/* Controlled Atmospheric Ambient Background (Electric Cobalt #1E45FB & Chartreuse Lime #CDF22B) */}
+      <div className="landing-aurora" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+        <i />
       </div>
 
-      <main className="app-shell">
+      <main className="app-shell relative z-10">
         {/* Back to Home navigation */}
-        <Link to="/" className="top-nav lg" onPointerMove={handlePointerMove}>
+        <Link to="/" className="top-nav lg-nav" onPointerMove={handlePointerMove}>
           <svg
             viewBox="0 0 24 24"
             width={18}
@@ -383,9 +385,9 @@ export const CreateRoomPage: React.FC = () => {
           <span>Back to Home</span>
         </Link>
 
-        {/* Create Watch Room Card */}
-        <section ref={cardRef} className="card lg" onPointerMove={handlePointerMove}>
-          <div className="badge lg">
+        {/* Create Watch Room Card - Prominent Frosted Glass Panel */}
+        <section ref={cardRef} className="card create-card" onPointerMove={handlePointerMove}>
+          <div className="badge">
             <span className="dot"></span>
             <span>Host Studio · 4K Sync</span>
           </div>
@@ -411,6 +413,7 @@ export const CreateRoomPage: React.FC = () => {
                   onChange={(e) => {
                     setDisplayName(e.target.value);
                     if (nameError) setNameError('');
+                    if (fileError) setFileError('');
                   }}
                 />
               </div>
@@ -432,7 +435,10 @@ export const CreateRoomPage: React.FC = () => {
                   placeholder="e.g. Friday Movie Night"
                   maxLength={60}
                   value={roomTitle}
-                  onChange={(e) => setRoomTitle(e.target.value)}
+                  onChange={(e) => {
+                    setRoomTitle(e.target.value);
+                    if (fileError) setFileError('');
+                  }}
                 />
               </div>
             </div>
@@ -569,7 +575,7 @@ export const CreateRoomPage: React.FC = () => {
 
       {/* Preparing Video / Transcoding Modal */}
       <div className={`modal-overlay ${isPreparing && !isReady ? 'open' : ''}`} id="preparingModal">
-        <div className="modal-box lg">
+        <div className="modal-box create-card">
           <div className="spinner" style={{ margin: '0 auto 16px' }}></div>
           <h2>Preparing Screening...</h2>
           <p className="subtitle" style={{ marginTop: 6 }}>
@@ -589,7 +595,7 @@ export const CreateRoomPage: React.FC = () => {
               style={{
                 height: '100%',
                 width: `${progressBarWidth}%`,
-                background: 'linear-gradient(90deg, #7b6bff, #6ee7a0)',
+                background: 'linear-gradient(90deg, #1E45FB, #CDF22B)',
                 transition: 'width 0.3s ease',
               }}
             ></div>
@@ -613,7 +619,7 @@ export const CreateRoomPage: React.FC = () => {
 
       {/* Room Created Success Modal */}
       <div className={`modal-overlay ${isReady ? 'open' : ''}`} id="modal">
-        <div className="modal-box lg">
+        <div className="modal-box create-card">
           <div className="modal-icon">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <polyline points="20 6 9 17 4 12" />

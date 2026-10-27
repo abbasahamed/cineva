@@ -1,6 +1,8 @@
 {
   "name": "@cineva/server",
   "version": "1.0.0",
+  "description": "Backend API, WebSocket synchronization engine, and media pipeline for CINEVA",
+  "license": "MIT",
   "private": true,
   "main": "dist/index.js",
   "scripts": {
@@ -9,37 +11,33 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "test": "vitest run --fileParallelism=false",
+    "test": "vitest run --fileParallelism=false --exclude='**/dist/**'",
     "db:push": "node scripts/generate-prisma.js && node scripts/db-push.js",
     "db:generate": "node scripts/generate-prisma.js"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1140.0",
-    "@aws-sdk/s3-request-presigner": "^3.1140.0",
-    "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@ffprobe-installer/ffprobe": "^2.1.2",
-    "@prisma/client": "^6.4.1",
     "@cineva/shared": "*",
+    "@prisma/client": "^6.4.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
-    "multer": "^1.4.5-lts.1",
+    "multer": "^2.5.0",
     "nanoid": "^5.1.0",
     "socket.io": "^4.8.1",
-    "zod": "^3.24.2"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
-    "@types/multer": "^1.4.12",
+    "@types/multer": "^2.3.0",
     "@types/node": "^22.13.4",
     "@types/supertest": "^6.0.2",
     "prisma": "^6.4.1",
     "supertest": "^7.0.0",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3",
-    "vitest": "^3.0.6"
+    "vitest": "^4.1.12"
   }
 }

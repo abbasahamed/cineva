@@ -125,7 +125,6 @@ export function evaluateMediaCompatibility(
 }
 
 /**
- * Post-processing validation step per Section 17.
  * Validates generated playback MP4 file before marking Media record READY.
  */
 export async function validatePlaybackFile(filePath: string): Promise<MediaAnalysis> {

@@ -48,7 +48,7 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
   children,
 }) => {
   const [isCameraOn, setIsCameraOn] = useState<boolean>(false);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [isMuted, setIsMuted] = useState<boolean>(true);
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
 
@@ -91,7 +91,7 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
               participantId,
               displayName: existing?.displayName || 'Friend',
               isLocal: false,
-              isMuted: existing?.isMuted ?? false,
+              isMuted: existing?.isMuted ?? true,
               isCameraOff: existing?.isCameraOff ?? true,
               connectionState: 'connected',
               stream,
@@ -160,36 +160,16 @@ export const VideoProvider: React.FC<VideoProviderProps> = ({
     });
   }, []);
 
-  // 1. Microphone enabled by default when participant ID is known
+  // 1. Announce video/voice presence with mic off (muted) by default
   useEffect(() => {
     if (!currentParticipantId) return;
 
     const mgr = getOrCreateManager();
     mgr.setLocalParticipantId(currentParticipantId);
 
-    // Announce video/voice presence
+    // Announce video/voice presence with muted state
     socketService.emitVideoJoin();
-
-    if (!hasAttemptedAutoMicRef.current && !hasUserMutedExplicitlyRef.current) {
-      hasAttemptedAutoMicRef.current = true;
-      mgr
-        .enableMic()
-        .then(() => {
-          setIsMuted(false);
-          socketService.emitVideoStateUpdate({ isMuted: false, isCameraOff: true });
-        })
-        .catch((err: any) => {
-          if (err?.name !== 'NotAllowedError' && err?.name !== 'PermissionDeniedError') {
-            console.warn('[VideoContext] Auto-mic acquisition failed:', err);
-          }
-          setIsMuted(true);
-          if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
-            setPermissionError('Microphone permission was denied. Click Mic anytime to enable audio.');
-          } else if (err?.name === 'NotFoundError' || err?.name === 'DevicesNotFoundError') {
-            setPermissionError('No microphone found on this device.');
-          }
-        });
-    }
+    socketService.emitVideoStateUpdate({ isMuted: true, isCameraOff: true });
   }, [currentParticipantId, getOrCreateManager]);
 
   // 2. Camera toggle (Reliable camera on/off with mutex against concurrent invocations)

@@ -2,7 +2,6 @@ import React from 'react';
 import { Film, Share2, Users, Settings, LogOut } from 'lucide-react';
 import { RoomInfo, ParticipantInfo } from '@cineva/shared';
 import { ConnectionStatus } from '../hooks/useSyncWatch.js';
-import { ThemeSelector } from './ThemeSelector.js';
 
 interface NavbarProps {
   room: RoomInfo | null;
@@ -67,11 +66,6 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Right: Action buttons */}
       {room && (
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          {/* Theme Selector — desktop only */}
-          <div className="hidden sm:block">
-            <ThemeSelector />
-          </div>
-
           {/* Invite */}
           <button
             onClick={onOpenShare}

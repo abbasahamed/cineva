@@ -1,6 +1,22 @@
 {
   "name": "cineva",
   "version": "1.0.0",
+  "description": "Self-hosted watch-party application for synchronized movie playback with remote guests",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abbasahamed/cineva.git"
+  },
+  "keywords": [
+    "watch-party",
+    "video-sync",
+    "self-hosted",
+    "webrtc",
+    "hls",
+    "ffmpeg",
+    "socketio",
+    "synchronized-playback"
+  ],
   "private": true,
   "workspaces": [
     "packages/*",

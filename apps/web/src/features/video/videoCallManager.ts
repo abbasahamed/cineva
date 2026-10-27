@@ -27,9 +27,10 @@ export class VideoCallManager {
   private negotiationStates: Map<string, PeerNegotiationState> = new Map();
   private callbacks: VideoCallManagerCallbacks;
   private localParticipantId: string = '';
-  private isMuted: boolean = false;
+  private isMuted: boolean = true;
   private isCameraOff: boolean = false;
   private inFlightCameraPromise: Promise<MediaStream> | null = null;
+  private inFlightMicPromise: Promise<void> | null = null;
 
   constructor(callbacks: VideoCallManagerCallbacks, localParticipantId: string = '') {
     this.callbacks = callbacks;
@@ -372,36 +373,50 @@ export class VideoCallManager {
   }
 
   public async enableMic(): Promise<void> {
-    this.isMuted = false;
-    if (!this.localStream || !this.localStream.getAudioTracks().length) {
-      const audioStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      const audioTrack = audioStream.getAudioTracks()[0];
-      if (audioTrack) {
-        const local: MediaStream = this.localStream || (typeof MediaStream !== 'undefined' ? new MediaStream() : (audioStream as any));
-        this.localStream = local;
-        local.addTrack(audioTrack);
-        for (const pc of this.peerConnections.values()) {
-          const audioTransceiver = pc.getTransceivers().find(
-            (t) => t.sender.track?.kind === 'audio' || t.receiver.track?.kind === 'audio'
-          );
-          if (audioTransceiver && audioTransceiver.sender) {
-            audioTransceiver.sender.replaceTrack(audioTrack).catch(() => {});
-          } else {
-            pc.addTrack(audioTrack, local);
+    if (this.inFlightMicPromise) {
+      return this.inFlightMicPromise;
+    }
+
+    this.inFlightMicPromise = (async () => {
+      this.isMuted = false;
+      if (!this.localStream || !this.localStream.getAudioTracks().length) {
+        const audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        const audioTrack = audioStream.getAudioTracks()[0];
+        if (audioTrack) {
+          const local: MediaStream = this.localStream || (typeof MediaStream !== 'undefined' ? new MediaStream() : (audioStream as any));
+          this.localStream = local;
+          local.addTrack(audioTrack);
+          for (const pc of this.peerConnections.values()) {
+            const audioTransceiver = typeof pc.getTransceivers === 'function'
+              ? pc.getTransceivers().find(
+                  (t) => t.sender.track?.kind === 'audio' || t.receiver.track?.kind === 'audio'
+                )
+              : null;
+            if (audioTransceiver && audioTransceiver.sender) {
+              audioTransceiver.sender.replaceTrack(audioTrack).catch(() => {});
+            } else if (typeof pc.addTrack === 'function') {
+              try {
+                pc.addTrack(audioTrack, local);
+              } catch {}
+            }
           }
         }
+      } else {
+        this.localStream.getAudioTracks().forEach((track) => {
+          track.enabled = true;
+        });
       }
-    } else {
-      this.localStream.getAudioTracks().forEach((track) => {
-        track.enabled = true;
-      });
-    }
+    })().finally(() => {
+      this.inFlightMicPromise = null;
+    });
+
+    return this.inFlightMicPromise;
   }
 
   public disableMic(): void {
@@ -409,14 +424,25 @@ export class VideoCallManager {
     if (this.localStream) {
       this.localStream.getAudioTracks().forEach((track) => {
         track.enabled = false;
+        try {
+          track.stop();
+        } catch {}
+        this.localStream!.removeTrack(track);
       });
     }
     for (const pc of this.peerConnections.values()) {
-      const audioTransceiver = pc.getTransceivers().find(
-        (t) => t.sender.track?.kind === 'audio' || t.receiver.track?.kind === 'audio'
-      );
-      if (audioTransceiver?.sender?.track) {
-        audioTransceiver.sender.track.enabled = false;
+      const audioTransceiver = typeof pc.getTransceivers === 'function'
+        ? pc.getTransceivers().find(
+            (t) => t.sender.track?.kind === 'audio' || t.receiver.track?.kind === 'audio'
+          )
+        : null;
+      if (audioTransceiver?.sender) {
+        audioTransceiver.sender.replaceTrack(null).catch(() => {});
+      } else if (typeof pc.getSenders === 'function') {
+        const audioSender = pc.getSenders().find((s) => s.track?.kind === 'audio');
+        if (audioSender) {
+          audioSender.replaceTrack(null).catch(() => {});
+        }
       }
     }
   }

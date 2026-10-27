@@ -1,5 +1,6 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { roomManager } from '../services/roomManager.js';
+import { prisma } from '../db.js';
 import { syncEngine } from '../services/syncEngine.js';
 import { sanitizeHtml } from '../utils/sanitize.js';
 import {
@@ -67,6 +68,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
     stalledParticipants: Set<string>;
     stalledNames: Map<string, string>;
     resumeTimer: NodeJS.Timeout | null;
+    wasPlaying?: boolean;
   }
   const roomBufferingTrackers = new Map<string, RoomBufferingTracker>();
 
@@ -130,16 +132,23 @@ export function setupSocketHandlers(io: SocketIOServer) {
     if (!msgText) return;
 
     // Save as system chat message in database
-    const sysMsg = await roomManager.saveChatMessage(
-      roomId,
-      'system',
-      'System',
-      msgText,
-      true
-    );
+    let sysMsg: any = null;
+    try {
+      sysMsg = await roomManager.saveChatMessage(
+        roomId,
+        'system',
+        'System',
+        msgText,
+        true
+      );
+    } catch {
+      // Room was deleted or closed concurrently
+    }
 
     // Emit to room as regular chat message (integrates into Cinema Chat stream)
-    io.to(roomId).emit(SOCKET_EVENTS.CHAT_MESSAGE, sysMsg);
+    if (sysMsg) {
+      io.to(roomId).emit(SOCKET_EVENTS.CHAT_MESSAGE, sysMsg);
+    }
 
     // Also emit dedicated playback:activity event
     io.to(roomId).emit(SOCKET_EVENTS.PLAYBACK_ACTIVITY, {
@@ -168,7 +177,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
       try {
         const parsed = JoinRoomSchema.safeParse(payload);
         if (!parsed.success) {
-          socket.emit(SOCKET_EVENTS.ERROR, { message: parsed.error.errors[0].message });
+          socket.emit(SOCKET_EVENTS.ERROR, { message: parsed.error.issues[0].message });
           return;
         }
 
@@ -299,6 +308,11 @@ export function setupSocketHandlers(io: SocketIOServer) {
       const now = Date.now();
       const newState = syncEngine.play(socketData.roomId, payload?.position, payload?.playbackRate, now);
 
+      const tracker = roomBufferingTrackers.get(socketData.roomId);
+      if (tracker) {
+        tracker.wasPlaying = true;
+      }
+
       io.to(socketData.roomId).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
         playback: newState,
         serverTimestamp: now,
@@ -333,6 +347,11 @@ export function setupSocketHandlers(io: SocketIOServer) {
 
       const now = Date.now();
       const newState = syncEngine.pause(socketData.roomId, payload?.position, now);
+
+      const tracker = roomBufferingTrackers.get(socketData.roomId);
+      if (tracker) {
+        tracker.wasPlaying = false;
+      }
 
       io.to(socketData.roomId).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
         playback: newState,
@@ -371,6 +390,11 @@ export function setupSocketHandlers(io: SocketIOServer) {
 
       const now = Date.now();
       const newState = syncEngine.seek(socketData.roomId, parsed.data.position, now);
+
+      const tracker = roomBufferingTrackers.get(socketData.roomId);
+      if (tracker && !newState.isPlaying) {
+        tracker.wasPlaying = false;
+      }
 
       io.to(socketData.roomId).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
         playback: newState,
@@ -431,7 +455,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
       if (!socketData.roomId || !socketData.participantId || !socketData.displayName) return;
       let tracker = roomBufferingTrackers.get(socketData.roomId);
       if (!tracker) {
-        tracker = { stalledParticipants: new Set(), stalledNames: new Map(), resumeTimer: null };
+        tracker = { stalledParticipants: new Set(), stalledNames: new Map(), resumeTimer: null, wasPlaying: false };
         roomBufferingTrackers.set(socketData.roomId, tracker);
       }
       tracker.stalledParticipants.add(socketData.participantId);
@@ -445,6 +469,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
       // Temporarily pause playback if it was running
       const state = syncEngine.getOrCreateState(socketData.roomId);
       if (state.isPlaying) {
+        tracker.wasPlaying = true;
         const curPos = syncEngine.calculateCurrentPosition(socketData.roomId);
         const newState = syncEngine.pause(socketData.roomId, curPos);
         io.to(socketData.roomId).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
@@ -468,7 +493,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
       tracker.stalledParticipants.delete(socketData.participantId);
       tracker.stalledNames.delete(socketData.participantId);
 
-      // If everyone is ready, resume immediately with a short fixed lead (200ms)
+      // If everyone is ready, only resume if playback was running before buffering
       if (tracker.stalledParticipants.size === 0) {
         io.to(socketData.roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
           stalledNames: [],
@@ -479,16 +504,21 @@ export function setupSocketHandlers(io: SocketIOServer) {
           tracker.resumeTimer = null;
         }
 
-        const targetPos = syncEngine.calculateCurrentPosition(socketData.roomId);
-        const now = Date.now();
-        const resumeLeadMs = 200; // fixed lead <= 300ms
-        const resumeAt = now + resumeLeadMs;
-        const newState = syncEngine.play(socketData.roomId!, targetPos, undefined, resumeAt);
+        const shouldResume = tracker.wasPlaying;
+        tracker.wasPlaying = false;
 
-        io.to(socketData.roomId!).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
-          playback: newState,
-          serverTimestamp: now,
-        });
+        if (shouldResume) {
+          const targetPos = syncEngine.calculateCurrentPosition(socketData.roomId);
+          const now = Date.now();
+          const resumeLeadMs = 200; // fixed lead <= 300ms
+          const resumeAt = now + resumeLeadMs;
+          const newState = syncEngine.play(socketData.roomId!, targetPos, undefined, resumeAt);
+
+          io.to(socketData.roomId!).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
+            playback: newState,
+            serverTimestamp: now,
+          });
+        }
       } else {
         io.to(socketData.roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
           stalledNames: Array.from(tracker.stalledNames.values()),
@@ -522,16 +552,21 @@ export function setupSocketHandlers(io: SocketIOServer) {
           stalledNames: [],
         });
 
-        const targetPos = syncEngine.calculateCurrentPosition(socketData.roomId);
-        const now = Date.now();
-        const resumeLeadMs = 200; // fixed lead <= 300ms
-        const resumeAt = now + resumeLeadMs;
-        const newState = syncEngine.play(socketData.roomId!, targetPos, undefined, resumeAt);
+        const shouldResume = tracker.wasPlaying;
+        tracker.wasPlaying = false;
 
-        io.to(socketData.roomId!).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
-          playback: newState,
-          serverTimestamp: now,
-        });
+        if (shouldResume) {
+          const targetPos = syncEngine.calculateCurrentPosition(socketData.roomId);
+          const now = Date.now();
+          const resumeLeadMs = 200; // fixed lead <= 300ms
+          const resumeAt = now + resumeLeadMs;
+          const newState = syncEngine.play(socketData.roomId!, targetPos, undefined, resumeAt);
+
+          io.to(socketData.roomId!).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
+            playback: newState,
+            serverTimestamp: now,
+          });
+        }
       } else {
         io.to(socketData.roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
           stalledNames: Array.from(tracker.stalledNames.values()),
@@ -637,19 +672,26 @@ export function setupSocketHandlers(io: SocketIOServer) {
       } else {
         await roomManager.setParticipantOnline(roomId, sessionId, false);
         const participants = await roomManager.getParticipants(roomId);
-        socket.to(roomId).emit(SOCKET_EVENTS.PARTICIPANT_LEFT, {
-          sessionId,
-          participants,
-        });
-        if (socketData.displayName) {
-          const sysMsg = await roomManager.saveChatMessage(
-            roomId,
-            'system',
-            'System',
-            `${socketData.displayName} left the room.`,
-            true
-          );
-          io.to(roomId).emit(SOCKET_EVENTS.CHAT_MESSAGE, sysMsg);
+        const remainingOnline = participants.filter((p) => p.isOnline);
+        if (remainingOnline.length === 0) {
+          roomVideoParticipants.delete(roomId);
+          await roomManager.endRoom(roomId);
+          logger.roomEnded(roomId);
+        } else {
+          socket.to(roomId).emit(SOCKET_EVENTS.PARTICIPANT_LEFT, {
+            sessionId,
+            participants,
+          });
+          if (socketData.displayName) {
+            const sysMsg = await roomManager.saveChatMessage(
+              roomId,
+              'system',
+              'System',
+              `${socketData.displayName} left the room.`,
+              true
+            );
+            io.to(roomId).emit(SOCKET_EVENTS.CHAT_MESSAGE, sysMsg);
+          }
         }
         socket.leave(roomId);
       }
@@ -671,6 +713,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
 
       roomVideoParticipants.delete(socketData.roomId);
       await roomManager.endRoom(socketData.roomId);
+      await prisma.room.delete({ where: { id: socketData.roomId } }).catch(() => {});
       logger.roomEnded(socketData.roomId);
       io.to(socketData.roomId).emit(SOCKET_EVENTS.ROOM_CANCELLED, {
         message: 'The host has left the room. This screening has ended.',
@@ -736,7 +779,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
 
       const parsed = SendChatMessageSchema.safeParse(payload);
       if (!parsed.success) {
-        socket.emit(SOCKET_EVENTS.ERROR, { message: parsed.error.errors[0].message });
+        socket.emit(SOCKET_EVENTS.ERROR, { message: parsed.error.issues[0].message });
         return;
       }
 
@@ -803,7 +846,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
         socketId: socket.id,
         participantId,
         displayName,
-        isMuted: false,
+        isMuted: true,
         isCameraOff: true,
         joinedAt: Date.now(),
       };
@@ -840,7 +883,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
 
       const parsed = VideoOfferSchema.safeParse(payload);
       if (!parsed.success) {
-        socket.emit(SOCKET_EVENTS.ERROR, { message: parsed.error.errors[0].message });
+        socket.emit(SOCKET_EVENTS.ERROR, { message: parsed.error.issues[0].message });
         return;
       }
 
@@ -869,7 +912,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
 
       const parsed = VideoAnswerSchema.safeParse(payload);
       if (!parsed.success) {
-        socket.emit(SOCKET_EVENTS.ERROR, { message: parsed.error.errors[0].message });
+        socket.emit(SOCKET_EVENTS.ERROR, { message: parsed.error.issues[0].message });
         return;
       }
 
@@ -978,15 +1021,19 @@ export function setupSocketHandlers(io: SocketIOServer) {
             io.to(roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
               stalledNames: [],
             });
-            const targetPos = syncEngine.calculateCurrentPosition(roomId);
-            const now = Date.now();
-            const resumeLeadMs = 200; // fixed lead <= 300ms
-            const resumeAt = now + resumeLeadMs;
-            const newState = syncEngine.play(roomId, targetPos, undefined, resumeAt);
-            io.to(roomId).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
-              playback: newState,
-              serverTimestamp: now,
-            });
+            const shouldResume = tracker.wasPlaying;
+            tracker.wasPlaying = false;
+            if (shouldResume) {
+              const targetPos = syncEngine.calculateCurrentPosition(roomId);
+              const now = Date.now();
+              const resumeLeadMs = 200; // fixed lead <= 300ms
+              const resumeAt = now + resumeLeadMs;
+              const newState = syncEngine.play(roomId, targetPos, undefined, resumeAt);
+              io.to(roomId).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
+                playback: newState,
+                serverTimestamp: now,
+              });
+            }
           } else {
             io.to(roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
               stalledNames: Array.from(tracker.stalledNames.values()),
@@ -1039,7 +1086,7 @@ export function setupSocketHandlers(io: SocketIOServer) {
             } catch {}
           }
 
-          // If the disconnected participant was the host, cancel the room for all guests
+          // If the disconnected participant was the host, cancel and delete the room
           if (isHostSocket) {
             const isStillHost = await roomManager.isHost(roomId, sessionId).catch(() => false);
             if (isStillHost) {
@@ -1049,6 +1096,13 @@ export function setupSocketHandlers(io: SocketIOServer) {
                 message: 'The host has left the room. This screening has ended.',
               });
               logger.info('ROOM_CANCELLED_HOST_DISCONNECT', { roomId, displayName });
+            }
+          } else {
+            const anyRemaining = participants.some((p) => p.isOnline);
+            if (!anyRemaining) {
+              roomVideoParticipants.delete(roomId);
+              await roomManager.endRoom(roomId).catch(() => {});
+              logger.roomEnded(roomId);
             }
           }
 

@@ -77,3 +77,40 @@ describe('Shared UI Components — CodeInput', () => {
     expect(handleComplete).toHaveBeenCalledWith('XYZ123');
   });
 });
+
+import { ThemeProvider, THEME_OPTIONS } from '../context/ThemeContext.js';
+import { ThemeSelector } from '../components/ThemeSelector.js';
+
+describe('Shared UI Components — ThemeSelector & ThemeContext', () => {
+  it('provides exactly 5 theme colors', () => {
+    expect(THEME_OPTIONS).toHaveLength(5);
+    const ids = THEME_OPTIONS.map((t) => t.id);
+    expect(ids).toEqual(['blue', 'purple', 'emerald', 'amber', 'rose']);
+  });
+
+  it('renders theme button and toggles 5 colors dropdown on click', () => {
+    render(
+      <ThemeProvider>
+        <ThemeSelector />
+      </ThemeProvider>
+    );
+
+    const button = screen.getByRole('button', { name: /change theme color/i });
+    expect(button).toBeDefined();
+
+    // Click to open dropdown
+    fireEvent.click(button);
+
+    // Verify all 5 color options are listed
+    expect(screen.getByText('Electric Blue')).toBeDefined();
+    expect(screen.getByText('Cyber Purple')).toBeDefined();
+    expect(screen.getByText('Neon Emerald')).toBeDefined();
+    expect(screen.getByText('Solar Amber')).toBeDefined();
+    expect(screen.getByText('Vibrant Rose')).toBeDefined();
+
+    // Switch to Cyber Purple
+    fireEvent.click(screen.getByText('Cyber Purple'));
+    expect(document.documentElement.classList.contains('theme-purple')).toBe(true);
+    expect(document.documentElement.getAttribute('data-theme')).toBe('purple');
+  });
+});

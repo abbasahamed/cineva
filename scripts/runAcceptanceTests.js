@@ -121,14 +121,14 @@ async function runAllAcceptanceTests() {
 
     console.log(`Created Room Code: ${roomCode}, Room ID: ${roomId}`);
 
-    // 2. Upload Baby MKV file
-    const filePath = '/Users/abbas/Downloads/www.5MovieRulz.pw - Baby (2023) 1080p Telugu TRUE WEB-DL - AVC - (DD+5.1 - 384Kbps & AAC) - 3.1GB - ESub.mkv';
-    console.log('Uploading Baby MKV file (3.1GB)...');
+    // 2. Upload test video file
+    const filePath = process.env.TEST_VIDEO_PATH || (fs.existsSync('fixtures/2_multi_track.mkv') ? path.resolve('fixtures/2_multi_track.mkv') : path.resolve('apps/server/uploads/demo/sample_video.mp4'));
+    console.log(`Uploading test video file: ${filePath}`);
 
     const form = new FormData();
     form.append('roomId', roomId);
     form.append('sessionId', hostSessionId);
-    form.append('title', 'Baby 2023');
+    form.append('title', 'Test Movie');
     form.append('video', fs.createReadStream(filePath));
 
     await new Promise((resolve, reject) => {

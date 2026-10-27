@@ -169,11 +169,10 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
 
   return (
     <div
-      className={`relative w-full h-full rounded-2xl overflow-hidden bg-slate-900/60 backdrop-blur-md border select-none group transition-all duration-300 ${
-        isCameraActive
-          ? 'border-brand-500/40 shadow-[0_0_16px_rgba(99,102,241,0.2)]'
-          : 'border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]'
-      } ${className}`}
+      className={`relative w-full h-full rounded-2xl overflow-hidden bg-[#161618] border select-none group transition-all duration-300 ${isCameraActive
+          ? 'border-[#0A84FF]/40 shadow-[0_0_16px_rgba(10,132,255,0.18)]'
+          : 'border-white/[0.08] shadow-sm'
+        } ${className}`}
       role="region"
       aria-label={`${displayName}'s video feed`}
     >
@@ -192,46 +191,46 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
         }}
       />
 
-      {/* Centered Avatar Region (Cleanly floating in middle, zero overlap with top badges or bottom bar) */}
+      {/* Centered Avatar Region (56px centered circle, 20px font, corner host badge) */}
       {!isCameraActive && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center bg-gradient-to-b from-[#161a29]/65 via-[#0e101a]/75 to-[#090b12]/90 backdrop-blur-md z-10 pointer-events-none">
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center bg-[#161618] pointer-events-none">
           <div className="relative">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-white/20 to-white/5 border border-white/20 flex items-center justify-center text-white font-bold text-base shadow-[0_8px_20px_rgba(0,0,0,0.4),inset_0_1px_1px_rgba(255,255,255,0.3)] tracking-wider">
+            <div className="w-14 h-14 rounded-full bg-white/[0.08] border border-white/[0.12] flex items-center justify-center text-white font-semibold text-xl shadow-sm tracking-tight">
               {initials}
             </div>
-            <div
-              role="img"
-              className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-slate-900/90 border border-white/25 flex items-center justify-center text-slate-300 shadow-sm"
-              title="Camera off"
-              aria-label="Camera off"
-            >
-              <VideoOff className="w-2.5 h-2.5" />
-            </div>
+            {isHost && (
+              <span
+                className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-black/85 border border-amber-400/40 flex items-center justify-center shadow-md"
+                title="Host"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="11"
+                  height="11"
+                  fill="none"
+                  stroke="#ffd60a"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z" />
+                </svg>
+                <span className="sr-only">Host</span>
+              </span>
+            )}
           </div>
           {isConnecting ? (
-            <span className="text-[10px] text-brand-300 font-mono flex items-center gap-1 mt-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse"></span>
+            <span className="text-[11px] text-[#70b5ff] font-medium flex items-center gap-1.5 mt-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#0A84FF] animate-pulse"></span>
               Connecting...
             </span>
           ) : isFailed ? (
-            <span className="text-[10px] text-rose-400 font-mono flex items-center gap-1 mt-1.5">
+            <span className="text-[11px] text-rose-400 font-medium flex items-center gap-1.5 mt-2">
               <WifiOff className="w-3 h-3" />
               Reconnecting
             </span>
-          ) : (
-            <span className="sr-only">
-              Camera off
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Top Left: Host Badge (Isolated region) */}
-      {isHost && (
-        <div className="absolute top-2 left-2 z-20 pointer-events-none">
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-white/95 text-slate-950 shadow-md border border-white/40">
-            Host
-          </span>
+          ) : null}
         </div>
       )}
 
@@ -241,11 +240,10 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
           <div className="relative">
             <button
               type="button"
-              className={`p-1.5 rounded-lg border backdrop-blur-md transition-all ${
-                isLocallyMuted
+              className={`p-1.5 rounded-lg border backdrop-blur-md transition-all ${isLocallyMuted
                   ? 'bg-rose-500/30 border-rose-500/40 text-rose-300'
                   : 'bg-black/60 border-white/10 text-slate-300 hover:text-white hover:bg-black/80'
-              }`}
+                }`}
               title={isLocallyMuted ? `Unmute ${displayName}` : `Adjust ${displayName}'s volume`}
               aria-label={`Adjust ${displayName}'s volume`}
               onClick={(e) => {
@@ -263,12 +261,12 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
             {/* Volume Slider Popover */}
             {isVolumeMenuOpen && (
               <div
-                className="absolute right-0 mt-1.5 w-44 p-2.5 rounded-xl bg-[#090b13]/95 border border-white/15 shadow-2xl backdrop-blur-xl z-40 flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-150"
+                className="absolute right-0 mt-1.5 w-44 p-2.5 rounded-xl bg-[#1c1c1e]/95 border border-white/15 shadow-2xl backdrop-blur-xl z-40 flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-150"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between text-[11px] text-slate-300 font-medium">
                   <span className="truncate max-w-[100px]">{displayName}</span>
-                  <span className="font-mono text-brand-300 font-bold">{isLocallyMuted ? 'Muted' : `${volume}%`}</span>
+                  <span className="font-mono text-[#70b5ff] font-bold">{isLocallyMuted ? 'Muted' : `${volume}%`}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <input
@@ -282,18 +280,17 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
                       const newVol = parseInt(e.target.value, 10);
                       onVolumeChange?.(newVol);
                     }}
-                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-500"
+                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-[#0A84FF]"
                     aria-label={`${displayName} volume slider`}
                   />
                 </div>
                 {onToggleLocalMute && (
                   <button
                     type="button"
-                    className={`w-full py-1 px-2 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-colors ${
-                      isLocallyMuted
+                    className={`w-full py-1 px-2 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-colors ${isLocallyMuted
                         ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30'
                         : 'bg-white/10 text-slate-200 hover:bg-white/15'
-                    }`}
+                      }`}
                     onClick={() => onToggleLocalMute()}
                   >
                     {isLocallyMuted ? (
@@ -315,39 +312,52 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
         </div>
       )}
 
-      {/* Bottom Overlay Bar: Participant Name (Left) + Mic Status (Right) */}
-      <div className="absolute bottom-0 inset-x-0 z-20 px-2.5 py-1.5 bg-gradient-to-t from-black/95 via-black/70 to-transparent pointer-events-none flex items-center justify-between gap-1.5">
-        {/* Name with Safe Truncation */}
-        <div className="flex items-center gap-1.5 min-w-0 max-w-[calc(100%-32px)]">
-          <span className="text-white text-xs font-medium truncate drop-shadow-sm" title={displayName}>
+      {/* Bottom Overlay Bar: Participant Name (Left) + Mic/Cam Status (Right) */}
+      <div className="absolute bottom-0 inset-x-0 z-20 px-2 py-1.5 bg-gradient-to-t from-black/85 via-black/45 to-transparent pointer-events-none flex items-center justify-between gap-1">
+        {/* Name with secondary (You) and no premature truncation */}
+        <div className="flex items-center gap-1 min-w-0 flex-1">
+          <span className="text-white text-[13px] font-semibold truncate drop-shadow-sm" title={displayName}>
             {displayName}
           </span>
           {isLocal && (
-            <span className="text-[9px] font-bold text-brand-300 shrink-0 uppercase tracking-tight">
+            <span className="text-[11px] font-medium text-white/60 shrink-0">
               (You)
             </span>
           )}
         </div>
 
-        {/* Microphone and Connection Status Icons */}
+        {/* Status Icons: 22px glass circles */}
         <div className="flex items-center gap-1 shrink-0">
+          {!isCameraActive && (
+            <span
+              role="img"
+              className="w-[22px] h-[22px] rounded-full bg-black/60 border border-white/10 text-slate-300 flex items-center justify-center backdrop-blur-sm"
+              title="Camera off"
+              aria-label="Camera off"
+            >
+              <VideoOff className="w-3 h-3" />
+              <span className="sr-only">Camera off</span>
+            </span>
+          )}
           {isMuted ? (
             <span
               role="img"
-              className="w-5 h-5 rounded-md bg-rose-500/20 border border-rose-500/35 text-rose-400 flex items-center justify-center"
+              className="w-[22px] h-[22px] rounded-full bg-rose-500/20 border border-rose-500/35 text-rose-400 flex items-center justify-center backdrop-blur-sm"
               title="Microphone muted"
               aria-label="Microphone muted"
             >
               <MicOff className="w-3 h-3" />
+              <span className="sr-only">Microphone muted</span>
             </span>
           ) : (
             <span
               role="img"
-              className="w-5 h-5 rounded-md bg-emerald-500/20 border border-emerald-500/35 text-emerald-400 flex items-center justify-center"
+              className="w-[22px] h-[22px] rounded-full bg-emerald-500/20 border border-emerald-500/35 text-emerald-400 flex items-center justify-center backdrop-blur-sm"
               title="Microphone active"
               aria-label="Microphone active"
             >
               <Mic className="w-3 h-3" />
+              <span className="sr-only">Microphone active</span>
             </span>
           )}
 

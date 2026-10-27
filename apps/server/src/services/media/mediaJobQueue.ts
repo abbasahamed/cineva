@@ -79,6 +79,10 @@ export class MediaJobQueue {
     }
   }
 
+  hasActiveJobsForRoom(roomId: string): boolean {
+    return this.activeJobMap.has(roomId) || this.queue.some((j) => j.roomId === roomId);
+  }
+
   /**
    * Enqueues an uploaded file or stored object for analysis, compatibility evaluation, and background transcoding.
    */
@@ -221,40 +225,11 @@ export class MediaJobQueue {
         fs.mkdirSync(tempDir, { recursive: true });
       }
 
-      // If source is already in storage (e.g. Backblaze B2 direct multipart upload):
+      // If source is specified via storageKey:
       if (sourceStorageKey) {
         const localPath = mediaStorage.getLocalPath(sourceStorageKey);
         if (localPath && fs.existsSync(localPath)) {
           actualSourcePath = localPath;
-        } else {
-          sourceStorageInput = path.join(
-            tempDir,
-            `b2_source_${Date.now()}_${path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, "_")}`
-          );
-          tempFileLifecycle.registerActiveFile(sourceStorageInput);
-          logger.info("[MediaJobQueue] Downloading source object from storage for analysis", {
-            jobId: job.id,
-            sourceStorageKey,
-          });
-          await mediaStorage.downloadToFile(sourceStorageKey, sourceStorageInput, async (downloaded, total) => {
-            const dlPercent = Math.min(25, 5 + Math.round((downloaded / total) * 20));
-            const dlMB = (downloaded / (1024 * 1024)).toFixed(0);
-            const totalMB = (total / (1024 * 1024)).toFixed(0);
-            const stage = `Retrieving video from storage (${dlMB}/${totalMB} MB)...`;
-
-            await prisma.media.updateMany({
-              where: { roomId, status: "processing" },
-              data: { transcodeProgress: dlPercent },
-            }).catch(() => {});
-
-            broadcastToRoom(roomId, SOCKET_EVENTS.MEDIA_PROGRESS, {
-              roomId,
-              status: "processing",
-              progress: dlPercent,
-              stage,
-            });
-          });
-          actualSourcePath = sourceStorageInput;
         }
       }
 
@@ -310,6 +285,7 @@ export class MediaJobQueue {
       // Check if room was cancelled while saving source
       if (!(await this.isRoomActive(roomId))) {
         logger.info("[MediaJobQueue] Aborting job for cancelled room", { jobId: job.id, roomId });
+        await roomManager.cleanupRoomMedia(roomId).catch(() => {});
         return;
       }
 
@@ -544,6 +520,7 @@ export class MediaJobQueue {
       // Check if room was cancelled while packaging/transcoding
       if (!(await this.isRoomActive(roomId))) {
         logger.info("[MediaJobQueue] Room was cancelled during packaging. Suppressing MEDIA_READY.", { jobId: job.id, roomId });
+        await roomManager.cleanupRoomMedia(roomId).catch(() => {});
         return;
       }
 
@@ -573,9 +550,7 @@ export class MediaJobQueue {
         .replace(/\/app\/[^\s]+/g, "[path]")
         .replace(/[A-Za-z0-9_-]{24,}/g, "[REDACTED]");
       let userFacingError: string;
-      if (err.message && err.message.includes("cap exceeded")) {
-        userFacingError = "Video processing failed: Storage provider download limit reached (Backblaze B2 Bandwidth/Class B cap exceeded). Please check Caps & Alerts in your B2 console.";
-      } else if (err.message && err.message.includes("Not enough temporary storage")) {
+      if (err.message && err.message.includes("Not enough temporary storage")) {
         userFacingError = "Not enough temporary storage to prepare this video.";
       } else {
         userFacingError = `Video processing failed (${cleanMsg.substring(0, 120)})`;
@@ -597,6 +572,8 @@ export class MediaJobQueue {
           progress: 0,
           error: userFacingError,
         });
+      } else {
+        await roomManager.cleanupRoomMedia(roomId).catch(() => {});
       }
     } finally {
       this.activeJobMap.delete(roomId);

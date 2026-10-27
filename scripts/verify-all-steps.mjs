@@ -7,7 +7,8 @@ const FIXTURES = {
   mkv: path.resolve('fixtures/2_multi_track.mkv'),
 };
 
-const ARTIFACTS_DIR = '/Users/abbas/.gemini/antigravity-ide/brain/3613dbc4-d8a8-455f-a556-4a2a50e15e9e';
+const ARTIFACTS_DIR = process.env.ARTIFACTS_DIR || path.resolve('scratch');
+if (!fs.existsSync(ARTIFACTS_DIR)) fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
 
 async function launchBrowser() {
   return await chromium.launch({

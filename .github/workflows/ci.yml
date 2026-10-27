@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, feature/** ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-and-build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install media tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared package
+        run: npm run build --workspace=@cineva/shared
+
+      - name: Initialize test database
+        run: npm run db:push --workspace=@cineva/server
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run server tests
+        run: npm test --workspace=@cineva/server
+
+      - name: Run web frontend tests
+        run: npm test --workspace=@cineva/web
+
+      - name: Production build
+        run: npm run build

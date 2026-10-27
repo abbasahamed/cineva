@@ -617,7 +617,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       ) : media && media.status === 'processing' ? (
         <div className="w-full h-full bg-[#020306]" />
       ) : (
-        /* Widescreen Integrated Cinema Empty Stage per Section 6 & 7 */
         <div className="relative w-full h-full flex flex-col items-center justify-center p-6 sm:p-12 text-center overflow-hidden z-10">
           {/* Cinema Spotlight Beam */}
           <div
@@ -722,7 +721,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </div>
       )}
 
-      {/* Widescreen Integrated Cinema Screening Preparation Stage per Section 8 */}
       {media && media.status === 'processing' && (
         <div className="absolute inset-0 bg-[#020306]/95 backdrop-blur-md flex flex-col items-center justify-center z-40 p-6 sm:p-12 text-center animate-fadeIn overflow-hidden">
           {/* Theater Projector Light Beam */}

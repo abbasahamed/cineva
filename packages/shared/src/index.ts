@@ -1,9 +1,5 @@
 import { z } from 'zod';
 
-// ==========================================
-// 1. Core Synchronization Types & Constants
-// ==========================================
-
 export interface PlaybackState {
   isPlaying: boolean;
   position: number; // in seconds
@@ -36,10 +32,6 @@ export const DEFAULT_DRIFT_CONFIG: DriftCorrectionConfig = {
   rateNudgeLow: 0.95,
   rateNudgeHigh: 1.05,
 };
-
-// ==========================================
-// 2. Room & Participant Data Types
-// ==========================================
 
 export interface ParticipantInfo {
   id: string;
@@ -165,10 +157,6 @@ export interface RoomStateSnapshot {
   isHost: boolean;
 }
 
-// ==========================================
-// 3. Realtime Chat Types
-// ==========================================
-
 export interface ChatMessage {
   id: string;
   roomId: string;
@@ -189,10 +177,6 @@ export interface PlaybackActivityPayload {
   message: string;
   timestamp: number;
 }
-
-// ==========================================
-// 4. Socket Events Enum & Signatures
-// ==========================================
 
 export const SOCKET_EVENTS = {
   // Client -> Server
@@ -250,10 +234,6 @@ export const SOCKET_EVENTS = {
   VIDEO_PEER_LEFT: 'video:peerLeft',
   VIDEO_PEER_STATE: 'video:peerState',
 } as const;
-
-// ==========================================
-// 5. WebRTC Video Calling Types
-// ==========================================
 
 export interface VideoParticipant {
   participantId: string;
@@ -316,10 +296,6 @@ export interface RelayedVideoStatePayload {
   isMuted?: boolean;
   isCameraOff?: boolean;
 }
-
-// ==========================================
-// 6. Validation Schemas (Zod)
-// ==========================================
 
 export const CreateRoomSchema = z.object({
   displayName: z.string().trim().min(1, 'Display name is required').max(30, 'Display name too long'),
@@ -392,10 +368,6 @@ export const VideoStateUpdateSchema = z.object({
   isCameraOff: z.boolean().optional(),
 });
 
-// ==========================================
-// 6. Authoritative Synchronization Calculations
-// ==========================================
-
 /**
  * Computes current expected playback position based on server authoritative state and current server timestamp.
  */
@@ -429,10 +401,6 @@ export function formatTime(seconds: number): string {
   }
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
-
-// ==========================================
-// 7. Media & Upload Constants
-// ==========================================
 
 export const MAX_VIDEO_SIZE_BYTES = 5 * 1024 * 1024 * 1024; // 5,368,709,120 bytes (5 GB in binary)
 export const MAX_VIDEO_SIZE_MB = 5 * 1024; // 5120 MB

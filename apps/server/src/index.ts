@@ -10,7 +10,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import { CONFIG, validateStorageConfig } from './config.js';
+import { CONFIG } from './config.js';
 import { connectDB, prisma } from './db.js';
 import roomRoutes from './routes/roomRoutes.js';
 import mediaRoutes from './routes/mediaRoutes.js';
@@ -64,18 +64,24 @@ const server = http.createServer(app);
 
 const isProduction = CONFIG.NODE_ENV === 'production';
 
-// CORS Origin Check
-function isOriginAllowed(origin: string | undefined): boolean {
+export function isOriginAllowed(origin: string | undefined): boolean {
   if (!origin) return true; // allow non-browser requests or same-origin
-  // When a quick tunnel is active, the page is served from the (dynamic)
-  // tunnel hostname, so accept any origin; room codes still gate access.
-  if (CONFIG.ENABLE_TUNNEL) return true;
-  if (!isProduction) {
+  if (CONFIG.ENABLE_TUNNEL) {
+    const tunnelUrl = tunnelService.getActiveTunnelUrl();
+    if (tunnelUrl) {
+      try {
+        if (new URL(origin).origin === new URL(tunnelUrl).origin) return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+  if (CONFIG.NODE_ENV !== 'production') {
     if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
       return true;
     }
   }
-  return CONFIG.ALLOWED_ORIGINS.includes(origin) || CONFIG.ALLOWED_ORIGINS.includes('*');
+  return CONFIG.ALLOWED_ORIGINS.includes(origin) || (CONFIG.NODE_ENV !== 'production' && CONFIG.ALLOWED_ORIGINS.includes('*'));
 }
 
 // Initialize Socket.io with persistent WebSockets and proper CORS
@@ -97,7 +103,6 @@ const io = new SocketIOServer(server, {
   transports: ['websocket', 'polling'],
 });
 
-// Security Headers per Section 11
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -128,7 +133,6 @@ app.use(
   })
 );
 
-// Express CORS Configuration per Section 10
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -147,7 +151,6 @@ app.use(
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Global Rate Limiter for API endpoints per Section 12
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 1000, // 1000 requests per IP
@@ -161,9 +164,12 @@ app.use('/api', apiLimiter);
 // Dedicated Rate Limiter for Room Creation to prevent room spam
 const roomCreationLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
-  max: 30, // 30 rooms per IP per 10 mins
+  max: 60, // 60 rooms per IP per 10 mins
   keyGenerator: (req) => getClientIp(req),
-  skip: (req) => process.env.NODE_ENV !== 'production' && (req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1'),
+  skip: (req) => process.env.NODE_ENV !== 'production' && (
+    req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1' ||
+    getClientIp(req) === '127.0.0.1' || getClientIp(req) === '::1' || getClientIp(req) === 'localhost'
+  ),
   message: { error: 'Too many rooms created recently. Please wait a few minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -172,9 +178,12 @@ const roomCreationLimiter = rateLimit({
 // Dedicated Rate Limiter for Room Joining to protect against brute-force room code guessing
 const roomJoinLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 60, // 60 join attempts per IP per 5 mins
+  max: 120, // 120 join attempts per IP per 5 mins
   keyGenerator: (req) => getClientIp(req),
-  skip: (req) => process.env.NODE_ENV !== 'production' && (req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1'),
+  skip: (req) => process.env.NODE_ENV !== 'production' && (
+    req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1' ||
+    getClientIp(req) === '127.0.0.1' || getClientIp(req) === '::1' || getClientIp(req) === 'localhost'
+  ),
   message: { error: 'Too many join attempts. Please wait a few minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -252,17 +261,11 @@ app.get('/api/system/diagnostics', async (_req: Request, res: Response) => {
     };
   }
 
-  let existingStorageObjects: any[] = [];
-  if (typeof (mediaStorage as any).listExistingObjects === "function") {
-    existingStorageObjects = await (mediaStorage as any).listExistingObjects("media/", 15);
-  }
-
   res.json({
     status: "ok",
     ffmpeg: ffmpegInfo,
     ffprobe: ffprobeInfo,
     pipelineSelfTest,
-    existingStorageObjects,
     disk: diskInfo,
     storageDriver: CONFIG.STORAGE_DRIVER,
     nodeEnv: CONFIG.NODE_ENV,
@@ -329,7 +332,6 @@ import { setMediaSocketIO } from './services/media/mediaJobQueue.js';
 setMediaSocketIO(io);
 setupSocketHandlers(io);
 
-// Production Safe Error Handling Middleware per Section 19
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   logger.error('unhandled_server_error', { message: err?.message || 'Unknown error' });
   if (res.headersSent) return;
@@ -392,7 +394,6 @@ process.on('uncaughtException', (err: any) => {
 // Start server
 async function start() {
   await connectDB();
-  validateStorageConfig();
 
   // Run startup self-check for media processing tools and disk
   try {
@@ -425,8 +426,20 @@ async function start() {
     logger.warn('Startup temporary file cleanup error', { message: err.message });
   }
 
+  // Startup cleanup of stale/orphaned rooms
+  await roomManager.pruneStaleRooms().catch(() => {});
+  setInterval(() => roomManager.pruneStaleRooms().catch(() => {}), 30000).unref();
+
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+  process.on('unhandledRejection', (reason: any) => {
+    logger.error('unhandled_rejection', { message: reason?.message || String(reason) });
+  });
+
+  process.on('uncaughtException', (err: any) => {
+    logger.error('uncaught_exception', { message: err?.message, stack: err?.stack });
+  });
 
   // If the port is already taken, exit cleanly without leaking child processes.
   server.on('error', (err: any) => {

@@ -5,7 +5,6 @@ import { generateRoomCode, generateSessionId } from '../utils/idGenerator.js';
 import { syncEngine } from './syncEngine.js';
 import { mediaStorage } from './mediaStorage.js';
 import { mediaJobQueue } from './media/mediaJobQueue.js';
-import { multipartManager } from './media/multipartManager.js';
 import {
   CreateRoomInput,
   JoinRoomInput,
@@ -18,17 +17,14 @@ import { CONFIG } from '../config.js';
 import { logger } from '../utils/logger.js';
 
 export class RoomManager {
-  /**
-   * Automatically cleans up orphaned or stale rooms (e.g. past expiry, or rooms where
-   * all participants or the host have disconnected/been offline for > 15s).
-   */
+  /** Prunes expired rooms and inactive rooms after the grace period. */
   async pruneStaleRooms(): Promise<number> {
     try {
       const now = new Date();
-      const gracePeriodMs = CONFIG.ROOM_GRACE_PERIOD_MS || 30000;
+      // Use generous grace period (at least 5 minutes) so rooms aren't reaped during uploads or page navigation
+      const gracePeriodMs = Math.max(CONFIG.ROOM_GRACE_PERIOD_MS || 30000, 5 * 60 * 1000);
       const offlineThreshold = new Date(Date.now() - gracePeriodMs);
 
-      // 1. Expired active rooms
       const expiredRooms = await prisma.room.findMany({
         where: {
           status: 'active',
@@ -37,7 +33,6 @@ export class RoomManager {
         select: { id: true },
       });
 
-      // 2. Active rooms with 0 participants or where all participants are offline
       // Never reap newly created rooms that are younger than the grace period
       const activeRooms = await prisma.room.findMany({
         where: {
@@ -55,24 +50,32 @@ export class RoomManager {
       }
 
       for (const r of activeRooms) {
+        // Never reap a room while background media processing is active
+        if (mediaJobQueue.hasActiveJobsForRoom(r.id)) {
+          continue;
+        }
+
         if (!r.participants || r.participants.length === 0) {
           roomsToEnd.add(r.id);
           continue;
         }
 
-        // Check if ANY participant in the room has been seen in the grace period or is online
-        const anyActive = r.participants.some(
-          (p) => p.isOnline || new Date(p.lastSeenAt).getTime() >= Date.now() - gracePeriodMs
-        );
+        // A participant is active if marked online OR seen within grace period
+        const isParticipantActive = (p: { isOnline: boolean; lastSeenAt: Date }) => {
+          if (p.isOnline) return true;
+          const lastSeen = new Date(p.lastSeenAt).getTime();
+          return !isNaN(lastSeen) && lastSeen >= Date.now() - gracePeriodMs;
+        };
 
+        const anyActive = r.participants.some(isParticipantActive);
         if (!anyActive) {
           roomsToEnd.add(r.id);
           continue;
         }
 
-        // Check if host specifically is active (online or within grace period)
+        // Check if host specifically is active
         const host = r.participants.find((p) => p.isHost || p.sessionId === r.hostSessionId);
-        const isHostActive = host && (host.isOnline || new Date(host.lastSeenAt).getTime() >= Date.now() - gracePeriodMs);
+        const isHostActive = host ? isParticipantActive(host) : anyActive;
         if (!isHostActive) {
           roomsToEnd.add(r.id);
         }
@@ -103,31 +106,62 @@ export class RoomManager {
     // Automatically prune any stale/orphaned rooms before checking capacity
     await this.pruneStaleRooms().catch(() => {});
 
-    const activeRoomsCount = await prisma.room.count({
+    let activeRoomsCount = await prisma.room.count({
       where: {
         status: 'active',
         expiresAt: { gt: new Date() },
       },
     });
     if (activeRoomsCount >= CONFIG.MAX_CONCURRENT_ROOMS) {
+      // Emergency prune: reap active rooms with no participants or offline participants
+      const emptyOrInactive = await prisma.room.findMany({
+        where: { status: 'active' },
+        include: { participants: true },
+      });
+      for (const r of emptyOrInactive) {
+        if (!r.participants || r.participants.length === 0 || !r.participants.some(p => p.isOnline)) {
+          await this.endRoom(r.id).catch(() => {});
+        }
+      }
+      activeRoomsCount = await prisma.room.count({
+        where: {
+          status: 'active',
+          expiresAt: { gt: new Date() },
+        },
+      });
+    }
+
+    if (activeRoomsCount >= CONFIG.MAX_CONCURRENT_ROOMS) {
       const err = new Error(`Server capacity reached: maximum concurrent rooms (${CONFIG.MAX_CONCURRENT_ROOMS}) active. Please try again later or join an existing room.`);
       (err as any).statusCode = 429;
       throw err;
     }
 
-    const roomCode = generateRoomCode();
     const sessionId = hostSessionId || generateSessionId();
 
-    const room = await prisma.room.create({
-      data: {
-        roomCode,
-        name: (input.roomName && input.roomName !== 'Watch Room') ? input.roomName : `${input.displayName}'s Room`,
-        hostParticipantId: '', // updated right after participant creation
-        hostSessionId: sessionId,
-        allowGuestControl: input.allowGuestControl ?? true,
-        expiresAt: new Date(Date.now() + CONFIG.ROOM_EXPIRATION_HOURS * 3600 * 1000),
-      },
-    });
+    let room: any = null;
+    let roomCode = '';
+    for (let attempt = 0; attempt < 5; attempt++) {
+      roomCode = generateRoomCode();
+      try {
+        room = await prisma.room.create({
+          data: {
+            roomCode,
+            name: (input.roomName && input.roomName !== 'Watch Room') ? input.roomName : `${input.displayName}'s Room`,
+            hostParticipantId: '', // updated right after participant creation
+            hostSessionId: sessionId,
+            allowGuestControl: input.allowGuestControl ?? true,
+            expiresAt: new Date(Date.now() + CONFIG.ROOM_EXPIRATION_HOURS * 3600 * 1000),
+          },
+        });
+        break;
+      } catch (err: any) {
+        if (err.code === 'P2002' && attempt < 4) {
+          continue;
+        }
+        throw err;
+      }
+    }
 
     const hostParticipant = await prisma.participant.create({
       data: {
@@ -523,17 +557,14 @@ export class RoomManager {
     logger.info(`[MediaCleanup] Starting cleanup for room ${roomId}`);
 
     try {
-      // 1. Cancel any active or queued media jobs for this room
       await mediaJobQueue.cancelJobsForRoom(roomId);
-      await multipartManager.abortUploadsForRoom(roomId);
 
-      // 2. Fetch all media records associated ONLY with this room
       const mediaList = await prisma.media.findMany({
         where: { roomId },
       });
 
-      // 3. Collect and deduplicate all storage keys for this room's media (never delete shared demo media)
       const storageKeys = new Set<string>();
+      // Demo media is shared between rooms and must survive cleanup.
       for (const media of mediaList) {
         if (media.storageKey && !media.storageKey.startsWith('pending_') && !media.storageKey.startsWith('demo')) {
           storageKeys.add(media.storageKey);
@@ -546,7 +577,6 @@ export class RoomManager {
         }
       }
 
-      // 4. Delete physical/object storage files using storage abstraction
       for (const key of storageKeys) {
         if (key.startsWith('demo')) continue;
         try {
@@ -557,9 +587,8 @@ export class RoomManager {
         }
       }
 
-      // 5. If local storage, safely remove the room's dedicated upload directory (including any HLS/segments subdirs)
       const safeRoomId = roomId.replace(/[^a-zA-Z0-9_-]/g, '_');
-      const roomDirPath = mediaStorage.getLocalPath(safeRoomId);
+      const roomDirPath = mediaStorage.getLocalPath(safeRoomId) || path.join(CONFIG.MEDIA_STORAGE_PATH, safeRoomId);
       if (roomDirPath && fs.existsSync(roomDirPath)) {
         try {
           await fs.promises.rm(roomDirPath, { recursive: true, force: true }).catch(() => {});
@@ -569,7 +598,6 @@ export class RoomManager {
         }
       }
 
-      // 6. Delete Media records from Database
       if (mediaList.length > 0) {
         await prisma.media.deleteMany({
           where: { roomId },

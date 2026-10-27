@@ -31,15 +31,16 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
     <div className={`relative inline-block text-left ${className}`} ref={dropdownRef}>
       {/* Color Palette Toggle Icon Button */}
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.1] text-slate-200 hover:text-white transition-all active:scale-95 cursor-pointer shadow-xs group"
+        className="flex items-center gap-1.5 h-7 px-2 sm:px-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.12] hover:border-white/[0.22] text-slate-200 hover:text-white transition-all active:scale-95 cursor-pointer shadow-xs group"
         title="Change Theme Color"
         aria-label="Change Theme Color"
       >
-        <Palette className="w-4 h-4 text-brand-400 group-hover:rotate-12 transition-transform duration-300" />
+        <Palette className="w-3.5 h-3.5 text-brand-300 group-hover:rotate-12 transition-transform duration-300" />
         <span
           className="w-2.5 h-2.5 rounded-full ring-2 ring-white/20 transition-all shrink-0"
-          style={{ backgroundColor: activeOption.hex }}
+          style={{ backgroundColor: activeOption.hex, boxShadow: `0 0 8px ${activeOption.hex}80` }}
         />
       </button>
 
@@ -48,7 +49,7 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
         <div
           className={`absolute ${
             align === 'right' ? 'right-0' : 'left-0'
-          } mt-2 w-52 rounded-2xl glass-panel-subtle border border-white/[0.14] bg-[#090b12]/95 backdrop-blur-2xl shadow-2xl p-2 z-50 animate-scaleUp`}
+          } mt-2 w-52 rounded-2xl glass-panel-subtle border border-white/[0.14] bg-[#090b12]/95 backdrop-blur-2xl shadow-2xl p-2 z-[120] animate-scaleUp`}
         >
           <div className="px-2.5 py-1.5 border-b border-white/[0.08] mb-1 flex items-center justify-between">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">

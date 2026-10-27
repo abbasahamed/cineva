@@ -1,9 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { io as ClientSocket, Socket as ClientSocketType } from 'socket.io-client';
-import { app, server } from '../index.js';
+import { app, isOriginAllowed, server } from '../index.js';
 import { prisma } from '../db.js';
 import { mediaStorage } from '../services/mediaStorage.js';
+import { CONFIG } from '../config.js';
+import { tunnelService } from '../services/tunnelService.js';
 import { SOCKET_EVENTS } from '@cineva/shared';
 
 describe('Phase 7 Production Audit & Security Test Suite', () => {
@@ -14,6 +16,29 @@ describe('Phase 7 Production Audit & Security Test Suite', () => {
   let guestSessionId: string;
 
   let didStartServer = false;
+
+  it('restricts tunnel CORS to the active hostname in production', () => {
+    const previous = {
+      enabled: CONFIG.ENABLE_TUNNEL,
+      environment: CONFIG.NODE_ENV,
+      origins: [...CONFIG.ALLOWED_ORIGINS],
+    };
+    const getActiveTunnelUrl = vi.spyOn(tunnelService, 'getActiveTunnelUrl')
+      .mockReturnValue('https://cineva-test.trycloudflare.com');
+
+    try {
+      CONFIG.ENABLE_TUNNEL = true;
+      CONFIG.NODE_ENV = 'production';
+      CONFIG.ALLOWED_ORIGINS.splice(0, CONFIG.ALLOWED_ORIGINS.length, '*');
+      expect(isOriginAllowed('https://cineva-test.trycloudflare.com')).toBe(true);
+      expect(isOriginAllowed('https://attacker.example')).toBe(false);
+    } finally {
+      CONFIG.ENABLE_TUNNEL = previous.enabled;
+      CONFIG.NODE_ENV = previous.environment;
+      CONFIG.ALLOWED_ORIGINS.splice(0, CONFIG.ALLOWED_ORIGINS.length, ...previous.origins);
+      getActiveTunnelUrl.mockRestore();
+    }
+  });
 
   beforeAll(async () => {
     await prisma.$connect();
@@ -62,7 +87,6 @@ describe('Phase 7 Production Audit & Security Test Suite', () => {
     await prisma.$disconnect();
   });
 
-  // 1. Health Endpoint Test per Section 7
   it('GET /api/health should return status ok without stack traces or secrets', async () => {
     const res = await request(app).get('/api/health');
     expect(res.status).toBe(200);
@@ -71,7 +95,6 @@ describe('Phase 7 Production Audit & Security Test Suite', () => {
     expect(res.body.SESSION_SECRET).toBeUndefined();
   });
 
-  // 2. Security Headers Test per Section 12
   it('Should set Helmet security headers (CSP, X-Content-Type-Options, Frame-Options, Referrer-Policy)', async () => {
     const res = await request(app).get('/api/health');
     expect(res.headers['x-content-type-options']).toBe('nosniff');
@@ -81,7 +104,6 @@ describe('Phase 7 Production Audit & Security Test Suite', () => {
     expect(res.headers['content-security-policy']).toContain("default-src 'self'");
   });
 
-  // 3. CORS Allowed vs Disallowed Origin Test per Section 11
   it('Should accept allowed origins and reject forbidden CORS origins', async () => {
     const allowedRes = await request(app)
       .get('/api/health')
@@ -154,7 +176,6 @@ describe('Phase 7 Production Audit & Security Test Suite', () => {
     }
   });
 
-  // 5. Media Byte-Range Streaming Test per Section 18
   it('Should support HTTP 206 Partial Content range requests for video streaming', async () => {
     const res = await request(app)
       .get('/media/demo/sample_video.mp4')
@@ -166,7 +187,6 @@ describe('Phase 7 Production Audit & Security Test Suite', () => {
     expect(res.headers['content-type']).toBe('video/mp4');
   });
 
-  // 6. WebSocket Host Authorization Security Test per Section 14
   it('Should enforce server-authoritative guest restrictions on WebSocket controls', async () => {
     const guestSocket: ClientSocketType = ClientSocket(serverUrl, { transports: ['websocket'] });
 
@@ -195,7 +215,6 @@ describe('Phase 7 Production Audit & Security Test Suite', () => {
     guestSocket.disconnect();
   });
 
-  // 7. Large Media Size & BigInt Database Verification Test Suite per Section 11
   it('Should store exact 3.3 GB (3,464,998,761 B) and 5 GB (5,368,709,120 B) media size in database without INT overflow', async () => {
     const { roomManager } = await import('../services/roomManager.js');
 

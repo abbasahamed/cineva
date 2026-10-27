@@ -1,7 +1,9 @@
 # Dependencies
 node_modules/
+.pnp/
+.pnp.js
 
-# Environment Variable Files (Never commit secret files)
+# Environment Variable Files (Never commit real secrets or credentials)
 .env
 .env.local
 .env.development.local
@@ -14,21 +16,30 @@ node_modules/
 # Build Artifacts & Output
 dist/
 build/
+out/
 *.tsbuildinfo
 
 # SQLite Database Files
 *.db
 *.db-journal
+dev.db
 apps/server/dev.db
 apps/server/prisma/dev.db
 
-# Media Uploads & Temp Storage
-apps/server/uploads/*
+# Media Uploads & Temp Storage (Host local movies are private and never committed)
+uploads/
+**/uploads/*
 !apps/server/uploads/.gitkeep
 !apps/server/uploads/demo/
-!apps/server/uploads/demo/sample_video.mp4
+!apps/server/uploads/demo/**
+
+# Temporary Media Processing & Test Staging
+temp/
+**/temp/*
+*.tmp
 
 # OS & IDE Generated Files
+**/.DS_Store
 .DS_Store
 .DS_Store?
 ._*
@@ -48,5 +59,27 @@ yarn-error.log*
 logs/
 *.log
 
-# Scratch scripts & temporary test runners
+# Local-only working files
 scratch/
+SKILLS/
+test-results/
+playwright-report/
+/report.md
+/GITHUB_READINESS_REPORT.md
+/HISTORY_CLEANUP_REPORT.md
+/PROJECT_IDENTITY_AUDIT.md
+/SCREENSHOT_CLEANUP_REPORT.md
+/cloud-storage-removal-report.md
+/AGENTS.md
+/.planning/
+/claude/
+/scripts/capture-reference-screenshots.mjs
+/docs/DEEPSEEK_UI_MASTER_PROMPT.md
+/docs/MASTER_PROMPT.md
+/docs/PHASE2_BRIEF.md
+/docs/PROGRESS.md
+/docs/STABLE_BASELINE.md
+/docs/UI_GLASS_MASTER_PROMPT.md
+/docs/E2E_TEST_REPORT.md
+/docs/audit/REPORT.md
+/docs/audit/audit-raw-metrics.json

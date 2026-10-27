@@ -1,6 +1,8 @@
 {
   "name": "@cineva/shared",
   "version": "1.0.0",
+  "description": "Shared TypeScript types, Zod schemas, and sync utilities for CINEVA",
+  "license": "MIT",
   "type": "module",
   "main": "./src/index.ts",
   "module": "./src/index.ts",
@@ -19,7 +21,7 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "zod": "^3.24.2"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "typescript": "^5.7.3"

@@ -5,7 +5,7 @@ import { MediaUploadModal } from "../components/MediaUploadModal.js";
 import { DebugPanel } from "../components/DebugPanel.js";
 import { useToast } from "../components/Toast.js";
 import { useMediaQuery, MOBILE_MEDIA_QUERY, LANDSCAPE_DRAWER_MEDIA_QUERY } from "../hooks/useMediaQuery.js";
-import { RefreshCw, AlertCircle, Maximize2, Volume2, VolumeX } from "lucide-react";
+import { RefreshCw, AlertCircle, Maximize2, Volume2, VolumeX, Home } from "lucide-react";
 import {
   VideoProvider,
   useVideoControls,
@@ -171,10 +171,10 @@ const CallTiles: React.FC<CallTilesProps> = ({
     ? participants.length <= 4
       ? "mobile-call-grid"
       : "mobile-call-strip"
-    : "grid";
+    : "call-strip";
 
   return (
-    <div className={containerClass} id={isMobile ? undefined : "grid"}>
+    <div className={containerClass} id={isMobile ? undefined : "call-strip"}>
       {/* Local user tile */}
       <div className="tile" id={isMobile ? "t-me-m" : "t-me"}>
         <VideoTile
@@ -208,7 +208,7 @@ const CallTiles: React.FC<CallTilesProps> = ({
                 stream={peerStream}
                 isLocal={false}
                 isHost={p.isHost}
-                isMuted={peer?.isMuted ?? false}
+                isMuted={peer?.isMuted ?? true}
                 isCameraOff={isPeerCameraOff}
                 connectionState={peer?.connectionState}
                 volume={vol}
@@ -247,6 +247,7 @@ interface CallDockProps {
   isConnecting: boolean;
   permissionError: string | null;
   isMobile?: boolean;
+  showText?: boolean;
 }
 
 const CallDock: React.FC<CallDockProps> = ({
@@ -257,48 +258,61 @@ const CallDock: React.FC<CallDockProps> = ({
   isConnecting,
   permissionError,
   isMobile = false,
+  showText = true,
 }) => {
   return (
     <div className={isMobile ? "mobile-dock" : "dock"}>
       <button
         type="button"
-        className={`b ${isMuted ? "off" : ""}`}
+        className={`b ${isMuted ? "b-muted" : "b-neutral"}`}
         id={isMobile ? "dMic-mobile" : "dMic"}
         onClick={toggleMute}
         aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
+        title={isMuted ? "Unmute microphone" : "Mute microphone"}
       >
         {isMuted ? (
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="9" y="3" width="6" height="11" rx="3" />
-            <path d="M5 11a7 7 0 0014 0M12 18v3M4 4l16 16" />
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="1" y1="1" x2="23" y2="23" />
+            <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+            <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
           </svg>
         ) : (
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="9" y="3" width="6" height="11" rx="3" />
-            <path d="M5 11a7 7 0 0014 0M12 18v3" />
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
           </svg>
         )}
-        <span>{isMuted ? "Muted" : "Mic"}</span>
+        <span className={showText ? undefined : "sr-only"}>{isMuted ? "Unmute" : "Mute"}</span>
       </button>
 
       <button
         type="button"
-        className={`b ${isCameraOn ? "active" : ""} ${permissionError ? "err" : ""}`}
+        className={`b ${isCameraOn ? "b-camera-on" : "b-neutral"} ${permissionError ? "err" : ""}`}
         id={isMobile ? "dCam-mobile" : "dCam"}
         onClick={toggleCamera}
         disabled={isConnecting}
-        title={permissionError || (isCameraOn ? "Turn camera off" : "Turn camera on")}
-        aria-label={permissionError || (isCameraOn ? "Turn camera off" : "Turn camera on")}
+        title={permissionError || (isCameraOn ? "Stop camera" : "Start camera")}
+        aria-label={permissionError || (isCameraOn ? "Stop camera" : "Start camera")}
       >
         {isConnecting ? (
-          <RefreshCw className="w-4 h-4 animate-spin text-brand-300" />
+          <RefreshCw className="w-4 h-4 animate-spin text-[#70b5ff]" />
+        ) : isCameraOn ? (
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="23 7 16 12 23 17 23 7" />
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+          </svg>
         ) : (
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="6" width="12" height="12" rx="3.5" />
-            <path d="M15 10.5l5.5-3v9l-5.5-3" />
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h1m5 0h6a2 2 0 0 1 2 2v4" />
+            <line x1="1" y1="1" x2="23" y2="23" />
+            <polygon points="23 7 16 12 23 17 23 7" />
           </svg>
         )}
-        <span>{isConnecting ? "Starting..." : isCameraOn ? "Camera on" : "Camera"}</span>
+        <span className={showText ? undefined : "sr-only"}>{isConnecting ? "Starting..." : isCameraOn ? "Stop camera" : "Start camera"}</span>
       </button>
     </div>
   );
@@ -377,12 +391,22 @@ const ChatPane: React.FC<ChatPaneProps> = ({
           value={chatInput}
           onChange={(e) => setChatInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Escape") {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleChatSubmit(e);
+            } else if (e.key === "Escape") {
               e.currentTarget.blur();
             }
           }}
         />
-        <button type="submit" className="b p i" aria-label="Send" id={isMobile ? "send-mobile-btn" : "send-btn"}>
+        <button
+          type="submit"
+          className={`b i ${chatInput.trim().length > 0 ? "has-text" : "is-empty"}`}
+          aria-label="Send message"
+          title="Send message"
+          id={isMobile ? "send-mobile-btn" : "send-btn"}
+          disabled={chatInput.trim().length === 0}
+        >
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
             <path d="M21 3L10 14M21 3l-7 18-4-7-7-4z" />
           </svg>
@@ -482,9 +506,8 @@ const PeoplePane: React.FC<PeoplePaneProps> = ({
               <div className="flex items-center gap-2 px-1 pt-1 text-xs text-slate-300">
                 <button
                   type="button"
-                  className={`p-1 rounded-md transition-colors ${
-                    isLocMuted ? "text-rose-400 bg-rose-500/20" : "text-slate-400 hover:text-white"
-                  }`}
+                  className={`p-1 rounded-md transition-colors ${isLocMuted ? "text-rose-400 bg-rose-500/20" : "text-slate-400 hover:text-white"
+                    }`}
                   aria-label={`Mute or unmute ${p.displayName}`}
                   onClick={() => toggleParticipantLocalMute(p.id)}
                 >
@@ -555,33 +578,50 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
   useEffect(() => {
     if (connectionStatus === "ended") {
       showGlobalToast(
-        errorMessage || "Room cancelled: The host has left the room. This screening has ended. Returning to Home...",
+        errorMessage || "This watch room has ended.",
         "error"
       );
-      const timer = setTimeout(() => {
-        navigate("/", { replace: true });
-      }, 1500);
-      return () => clearTimeout(timer);
     }
-  }, [connectionStatus, errorMessage, navigate, showGlobalToast]);
+  }, [connectionStatus, errorMessage, showGlobalToast]);
 
   if (connectionStatus === "ended" || (connectionStatus === "error" && errorMessage)) {
     return (
-      <div className="min-h-screen bg-[#09090b] flex flex-col items-center justify-center p-6 text-center relative overflow-hidden">
-        <div className="amb" aria-hidden="true"></div>
-        <div className="grain" aria-hidden="true"></div>
-        <div className="relative z-10 flex flex-col items-center max-w-sm">
-          <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/25 flex items-center justify-center mb-5 text-rose-400">
-            <AlertCircle className="w-7 h-7 animate-pulse" />
+      <div className="min-h-screen bg-[#06080d] flex flex-col items-center justify-center p-6 text-center relative overflow-hidden select-none">
+        {/* Cinematic ambient background glow for glassmorphism */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[540px] h-[540px] bg-rose-500/10 rounded-full blur-[140px]" />
+          <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] h-[420px] bg-indigo-500/12 rounded-full blur-[110px]" />
+          <div className="amb" aria-hidden="true" />
+        </div>
+        <div className="grain pointer-events-none" aria-hidden="true" />
+
+        {/* Apple Glassmorphism Card */}
+        <div className="relative z-10 w-full max-w-sm p-8 sm:p-9 rounded-[32px] bg-[#12131a]/70 backdrop-blur-2xl border border-white/[0.14] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.28),inset_0_-1px_0_0_rgba(0,0,0,0.5),0_32px_72px_-16px_rgba(0,0,0,0.85)] flex flex-col items-center animate-scaleUp overflow-hidden">
+          {/* Subtle top specular sheen */}
+          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/35 to-transparent pointer-events-none" />
+
+          {/* Apple-style continuous corner squircle icon */}
+          <div className="w-16 h-16 rounded-[22px] bg-rose-500/12 border border-rose-500/30 flex items-center justify-center mb-5 text-rose-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_12px_28px_rgba(244,63,94,0.18)]">
+            <AlertCircle className="w-8 h-8 stroke-[2.2]" />
           </div>
-          <h2 className="text-xl font-extrabold text-white mb-2">Room Cancelled</h2>
-          <p className="text-slate-400 text-xs mb-4 leading-relaxed">
-            {errorMessage || "The host has left the room. This screening has ended."}
+
+          {/* Typography adhering to Apple web scale */}
+          <h2 className="text-2xl font-bold text-white tracking-[-0.024em] mb-2">
+            Room Cancelled
+          </h2>
+          <p className="text-white/65 text-sm leading-relaxed mb-7 max-w-[280px]">
+            {errorMessage || "This watch room has ended."}
           </p>
-          <div className="text-white text-xs font-semibold flex items-center gap-2">
-            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            <span>Returning to Home...</span>
-          </div>
+
+          {/* Apple Liquid Glass Return to Home button */}
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            className="group relative inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-2xl bg-white/[0.08] hover:bg-white/[0.16] border border-white/[0.16] hover:border-white/[0.3] text-white font-medium text-sm tracking-tight transition-all duration-300 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.32),0_8px_24px_-4px_rgba(0,0,0,0.5)] hover:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5),0_12px_32px_-4px_rgba(0,0,0,0.65)] hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+          >
+            <Home className="w-4 h-4 text-white/80 group-hover:text-white transition-colors" />
+            <span>Return to home page</span>
+          </button>
         </div>
       </div>
     );
@@ -721,6 +761,9 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<"chat" | "participants">("chat");
   const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
+  const [playPauseIndicator, setPlayPauseIndicator] = useState<{ action: "play" | "pause"; id: number } | null>(null);
+  const playPauseTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState("");
@@ -1018,6 +1061,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     };
     const onPause = () => setRealVideoPaused(true);
     const onWaiting = () => {
+      if (el.paused) return;
       setIsBuffering(true);
       const sock = socketService.getSocket();
       if (sock && sock.connected) {
@@ -1040,6 +1084,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     };
     const onCanPlay = () => {
       setIsBuffering(false);
+      if (el.paused) return;
       const sock = socketService.getSocket();
       if (sock && sock.connected) {
         sock.emit(SOCKET_EVENTS.BUFFERING_READY, { position: el.currentTime });
@@ -1459,7 +1504,20 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
         showToast("The host controls playback");
         return;
       }
-      isActuallyPlaying ? handlePause() : handlePlay();
+      const willPlay = !isActuallyPlaying;
+      if (playPauseTimerRef.current) {
+        clearTimeout(playPauseTimerRef.current);
+      }
+      setPlayPauseIndicator({ action: willPlay ? "play" : "pause", id: Date.now() });
+      playPauseTimerRef.current = setTimeout(() => {
+        setPlayPauseIndicator(null);
+      }, 650);
+
+      if (willPlay) {
+        handlePlay();
+      } else {
+        handlePause();
+      }
     },
     onDoubleTapSeek: (side) => {
       if (!canControl) {
@@ -1525,7 +1583,11 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       }
     }, 700);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      document.documentElement.style.removeProperty("--amb1");
+      document.documentElement.style.removeProperty("--amb2");
+    };
   }, [videoRef, mediaUrl]);
 
 
@@ -1535,13 +1597,13 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       if (hlsRef.current) {
         try {
           hlsRef.current.stopLoad();
-        } catch {}
+        } catch { }
       }
       handleSeek(newPosition);
       if (hlsRef.current) {
         try {
           hlsRef.current.startLoad();
-        } catch {}
+        } catch { }
       }
     },
     [handleSeek]
@@ -1643,7 +1705,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     setIsScrubbing(true);
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {}
+    } catch { }
     const r = getScrubRatio(e.clientX);
     handlePlayerSeek(r * totalDuration);
     wakeControls();
@@ -1664,7 +1726,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
         if (e.currentTarget.hasPointerCapture(e.pointerId)) {
           e.currentTarget.releasePointerCapture(e.pointerId);
         }
-      } catch {}
+      } catch { }
       setIsScrubbing(false);
     }
   };
@@ -1722,14 +1784,14 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       return;
     }
     if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen().catch(() => { });
       return;
     }
     if (stageRef.current?.requestFullscreen) {
       try {
         await stageRef.current.requestFullscreen();
         if (screen.orientation && "lock" in screen.orientation) {
-          (screen.orientation as any).lock("landscape").catch(() => {});
+          (screen.orientation as any).lock("landscape").catch(() => { });
         }
         return;
       } catch {
@@ -1825,14 +1887,21 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
           Cineva
         </Link>
         <span className="sep"></span>
-        <span className="title" id="ttl">
+        <span className="title" id="ttl" style={{ fontSize: "17px", fontWeight: 600 }}>
           {room?.media ? mediaInfo.displayTitle : room?.name || "Friday movie night"}
         </span>
         {isHost && <span className="tag">Host</span>}
         <span className="sp"></span>
 
         <div style={{ position: "relative", display: "flex", gap: "8px", alignItems: "center" }}>
-          <button type="button" className="b hs" id="inv" onClick={() => setIsInviteOpen(!isInviteOpen)}>
+          <button
+            type="button"
+            className="b b-tinted hs"
+            id="inv"
+            title="Invite friends"
+            aria-label="Invite friends"
+            onClick={() => setIsInviteOpen(!isInviteOpen)}
+          >
             <svg viewBox="0 0 24 24">
               <path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1" />
             </svg>
@@ -1843,7 +1912,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             type="button"
             className="b"
             id="cnt"
-            aria-label="People"
+            title="View participants"
+            aria-label="View participants"
             onClick={() => {
               setIsSidebarCollapsed(false);
               setActiveTab("participants");
@@ -1862,6 +1932,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             type="button"
             className="top-overflow-btn"
             id="top-overflow-btn"
+            title="More room options"
             aria-label="More room options"
             onClick={() => setIsTopOverflowOpen(true)}
           >
@@ -1876,7 +1947,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             type="button"
             className="b i"
             id="sb"
-            aria-label="Show or hide sidebar"
+            title="Toggle sidebar"
+            aria-label="Toggle sidebar"
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           >
             <svg viewBox="0 0 24 24">
@@ -1885,20 +1957,75 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             </svg>
           </button>
 
-          <button
-            type="button"
-            className="b i"
-            id="leave"
-            aria-label="Leave room"
-            onClick={() => {
-              handleLeaveRoom();
-              navigate("/", { replace: true });
-            }}
-          >
-            <svg viewBox="0 0 24 24">
-              <path d="M10 4H6a2 2 0 00-2 2v12a2 2 0 002 2h4M15 8l4 4-4 4M19 12H9" />
-            </svg>
-          </button>
+          {/* Leave Button with Confirmation Popover */}
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              className="b i b-leave"
+              id="leave"
+              title="Leave room"
+              aria-label="Leave room"
+              onClick={() => setIsLeaveConfirmOpen(!isLeaveConfirmOpen)}
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M10 4H6a2 2 0 00-2 2v12a2 2 0 002 2h4M15 8l4 4-4 4M19 12H9" />
+              </svg>
+            </button>
+
+            {isLeaveConfirmOpen && (
+              <div
+                className="pop gl o"
+                id="leave-confirm-pop"
+                role="dialog"
+                aria-label="Leave room confirmation"
+                style={{
+                  width: "270px",
+                  position: "absolute",
+                  top: "calc(100% + 10px)",
+                  right: 0,
+                  zIndex: 1000,
+                  padding: "16px",
+                }}
+              >
+                <h4 style={{ fontSize: "15px", fontWeight: 600, color: "#fff", margin: 0 }}>Leave room?</h4>
+                <p style={{ fontSize: "13px", color: "rgba(235, 235, 245, 0.72)", margin: "6px 0 16px" }}>
+                  Are you sure you want to exit this watch party?
+                </p>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    type="button"
+                    className="b"
+                    style={{ flex: 1, height: "36px", fontSize: "13px", borderRadius: "10px" }}
+                    onClick={() => setIsLeaveConfirmOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="b"
+                    id="confirm-leave-btn"
+                    style={{
+                      flex: 1,
+                      height: "36px",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      borderRadius: "10px",
+                      background: "#ff453a",
+                      color: "#ffffff",
+                      border: "none",
+                    }}
+                    onClick={() => {
+                      setIsLeaveConfirmOpen(false);
+                      handleLeaveRoom();
+                      navigate("/", { replace: true });
+                    }}
+                  >
+                    Leave
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Invite Popover */}
           <div className={`pop gl ${isInviteOpen ? "o" : ""}`} id="pop" style={{ width: "310px", zIndex: 1000 }}>
@@ -1951,25 +2078,33 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
 
       {/* ================= MAIN CONTENT ================= */}
       <div className={`main ${isSidebarCollapsed ? "hide" : ""}`} id="main">
-        {/* Cinema Stage */}
-        <section
-          ref={stageRef}
-          className={`stage ${isIdle ? "idle" : ""} ${isPseudoFullscreen ? "pseudo-fullscreen" : ""}`}
-          id="stage"
-          aria-label="Video"
-          onDragOver={(e) => {
-            e.preventDefault();
-            stageRef.current?.classList.add("drag");
-          }}
-          onDragLeave={() => stageRef.current?.classList.remove("drag")}
-          onDrop={(e) => {
-            e.preventDefault();
-            stageRef.current?.classList.remove("drag");
-            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-              setIsUploadOpen(true);
-            }
-          }}
-        >
+        {/* Cinema Stage Area (Stage + Video Call Bar below) */}
+        <div className="stage-area" id="stage-area">
+          <section
+            ref={stageRef}
+            className={`stage ${isIdle ? "idle" : ""} ${isPseudoFullscreen ? "pseudo-fullscreen" : ""}`}
+            id="stage"
+            aria-label="Video"
+          >
+          {/* Animated Center Play/Pause indicator on click */}
+          {playPauseIndicator && (
+            <div
+              key={playPauseIndicator.id}
+              className="stage-play-pause-indicator"
+              aria-hidden="true"
+            >
+              {playPauseIndicator.action === "play" ? (
+                <svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor" style={{ marginLeft: "3px" }}>
+                  <path d="M7 5.5c0-.9.98-1.46 1.76-.98l11.5 6.5c.78.44.78 1.52 0 1.96l-11.5 6.5c-.78.48-1.76-.08-1.76-.98v-13z" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor">
+                  <rect x="6" y="5" width="4" height="14" rx="2" />
+                  <rect x="14" y="5" width="4" height="14" rx="2" />
+                </svg>
+              )}
+            </div>
+          )}
           {/* Double-tap Seek Ripple Indicator */}
           {doubleTapRipple && (
             <div
@@ -2024,7 +2159,6 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
               objectFit: zoom === 2 ? "fill" : "contain",
               transform: zoom === 1 ? "scale(1.34)" : undefined,
             }}
-            onClick={() => (isActuallyPlaying ? handlePause() : handlePlay())}
           >
             {/* Extracted WebVTT subtitle tracks */}
             {supportedSubtitleOptions.map((s, idx) => {
@@ -2032,8 +2166,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                 s.url?.startsWith("http://") || s.url?.startsWith("https://") || s.url?.startsWith("/")
                   ? s.url
                   : mediaUrl
-                  ? `${mediaUrl.substring(0, mediaUrl.lastIndexOf("/") + 1)}${s.url}`
-                  : s.url;
+                    ? `${mediaUrl.substring(0, mediaUrl.lastIndexOf("/") + 1)}${s.url}`
+                    : s.url;
               return (
                 <track
                   key={`sub-${s.streamIndex}-${idx}`}
@@ -2245,7 +2379,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                 </svg>
               </div>
               <h1>Add a movie to start</h1>
-              <p>Friends who join will wait here until it’s ready. You can also drop a file anywhere on this screen.</p>
+              <p>Friends who join will wait here until it’s ready.</p>
               <div className="row">
                 <button type="button" className="b p" id="add" onClick={() => setIsUploadOpen(true)}>
                   Choose a file
@@ -2797,6 +2931,59 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
           ))}
         </section>
 
+          {/* Desktop Video Call Section below movie */}
+          {!isMobile && (
+            <section className="call-bar gl" aria-label="Video call">
+              <span id="inc" className="sr-only">{participants.length} in the call</span>
+              <div className="call-bar-body">
+                <CallTiles
+                  participants={participants}
+                  sessionId={sessionId}
+                  currentParticipantId={currentParticipantId}
+                  currentDisplayName={currentDisplayName}
+                  displayName={displayName}
+                  isHost={isHost}
+                  isMuted={isMuted}
+                  isCameraOn={isCameraOn}
+                  getStream={getStream}
+                  allPeers={allPeers}
+                  participantVolumes={participantVolumes}
+                  participantMutedLocally={participantMutedLocally}
+                  setParticipantVolume={setParticipantVolume}
+                  toggleParticipantLocalMute={toggleParticipantLocalMute}
+                  onInvite={() => setIsInviteOpen(true)}
+                  isMobile={false}
+                />
+              </div>
+
+              <div className="call-bar-header">
+                <div className="call-bar-controls">
+                  <CallDock
+                    isMuted={isMuted}
+                    toggleMute={toggleMute}
+                    isCameraOn={isCameraOn}
+                    toggleCamera={toggleCamera}
+                    isConnecting={isConnecting}
+                    permissionError={permissionError}
+                    isMobile={false}
+                    showText={false}
+                  />
+                  <button
+                    type="button"
+                    className="b b-gallery-btn"
+                    title="Fullscreen participant gallery"
+                    aria-label="Fullscreen participant gallery"
+                    onClick={() => setIsGalleryOpen(true)}
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                    <span className="sr-only">Gallery</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
+        </div>
+
         {isMobile ? (
           /* Mobile Tabbed Area (< 900px) */
           <div className={`mobile-tabs-area ${isLandscapeDrawerOpen ? "open" : ""}`} id="mobile-tabs-area">
@@ -2901,58 +3088,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
           </div>
         ) : (
           /* Desktop Sidebar (>= 900px) */
-          <aside className="side gl" aria-label="Call, chat and people">
-            {/* Video Call Card */}
-            <div className="call">
-              <div className="rh flex items-center justify-between">
-                <h3>Video call</h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
-                    title="Fullscreen participant gallery"
-                    aria-label="Fullscreen participant gallery"
-                    onClick={() => setIsGalleryOpen(true)}
-                  >
-                    <Maximize2 className="w-4 h-4" />
-                  </button>
-                  <span className="live">
-                    <i></i>
-                    <span id="inc">{participants.length} in the call</span>
-                  </span>
-                </div>
-              </div>
-
-              <CallTiles
-                participants={participants}
-                sessionId={sessionId}
-                currentParticipantId={currentParticipantId}
-                currentDisplayName={currentDisplayName}
-                displayName={displayName}
-                isHost={isHost}
-                isMuted={isMuted}
-                isCameraOn={isCameraOn}
-                getStream={getStream}
-                allPeers={allPeers}
-                participantVolumes={participantVolumes}
-                participantMutedLocally={participantMutedLocally}
-                setParticipantVolume={setParticipantVolume}
-                toggleParticipantLocalMute={toggleParticipantLocalMute}
-                onInvite={() => setIsInviteOpen(true)}
-                isMobile={false}
-              />
-
-              <CallDock
-                isMuted={isMuted}
-                toggleMute={toggleMute}
-                isCameraOn={isCameraOn}
-                toggleCamera={toggleCamera}
-                isConnecting={isConnecting}
-                permissionError={permissionError}
-                isMobile={false}
-              />
-            </div>
-
+          <aside className="side gl" aria-label="Chat and people">
             {/* Segmented Tab (Chat / People) */}
             <div
               className="seg"

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-export type ThemeColor = 'blue' | 'red' | 'purple' | 'emerald' | 'amber' | 'rose';
+export type ThemeColor = 'blue' | 'purple' | 'emerald' | 'amber' | 'rose';
 
 export interface ThemeOption {
   id: ThemeColor;
@@ -17,13 +17,6 @@ export const THEME_OPTIONS: ThemeOption[] = [
     badgeBg: 'bg-indigo-500',
     previewGradient: 'from-indigo-500 to-blue-600',
     hex: '#6366f1',
-  },
-  {
-    id: 'red',
-    name: 'Crimson Red',
-    badgeBg: 'bg-red-500',
-    previewGradient: 'from-red-500 to-rose-600',
-    hex: '#ef4444',
   },
   {
     id: 'purple',
@@ -66,16 +59,28 @@ const LOCAL_STORAGE_KEY = 'cineva_theme_color';
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setThemeState] = useState<ThemeColor>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY) as ThemeColor;
-    if (saved && THEME_OPTIONS.some((t) => t.id === saved)) {
-      return saved;
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const saved = window.localStorage.getItem(LOCAL_STORAGE_KEY) as ThemeColor;
+        if (saved && THEME_OPTIONS.some((t) => t.id === saved)) {
+          return saved;
+        }
+      }
+    } catch {
+      // fallback to default
     }
     return 'blue';
   });
 
   const setTheme = (newTheme: ThemeColor) => {
     setThemeState(newTheme);
-    localStorage.setItem(LOCAL_STORAGE_KEY, newTheme);
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(LOCAL_STORAGE_KEY, newTheme);
+      }
+    } catch {
+      // ignore
+    }
   };
 
   useEffect(() => {

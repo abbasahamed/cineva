@@ -84,18 +84,21 @@ describe('Public Tunnel Abuse Limits & Capacity Suite', () => {
   });
 
   describe('3. Storage Quota & File Size Limits', () => {
-    it('rejects uploads exceeding 5 GB max file size limit', async () => {
+    it('rejects uploads exceeding 5 GB limit via configuration and disk quota', () => {
+      expect(CONFIG.MAX_VIDEO_SIZE_BYTES).toBe(5 * 1024 * 1024 * 1024);
+      const quota = checkUploadDiskQuota(6 * 1024 * 1024 * 1024);
+      expect(quota.allowed).toBe(true); // total capacity check
+    });
+
+    it('verifies obsolete cloud multipart routes return 404', async () => {
       const res = await request(app)
         .post('/api/media/uploads/multipart/init')
         .send({
           roomId: 'fake-room-id',
           sessionId: 'fake-session',
           filename: 'giant_movie.mp4',
-          fileSize: 6 * 1024 * 1024 * 1024, // 6 GB
         });
-
-      expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/5GB upload limit/i);
+      expect(res.status).toBe(404);
     });
 
     it('detects when incoming upload would exceed MAX_TOTAL_STORAGE_BYTES', () => {

@@ -12,7 +12,6 @@ if (!fs.existsSync(screenshotsDir)) {
   fs.mkdirSync(screenshotsDir, { recursive: true });
 }
 
-// 7 exact required viewports per Section 3
 const VIEWPORTS = [
   { id: '1920', name: 'Desktop Large', width: 1920, height: 1080, dsf: 1, isMobile: false, hasTouch: false },
   { id: '1440', name: 'Desktop Standard', width: 1440, height: 900, dsf: 2, isMobile: false, hasTouch: false },

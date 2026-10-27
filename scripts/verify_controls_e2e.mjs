@@ -134,8 +134,9 @@ async function run() {
   console.log('Subtitle popover menu #mn is visible.');
 
   // Save screenshot of open subtitle menu with updated control bar
-  const screenshotPath =
-    '/Users/abbas/.gemini/antigravity-ide/brain/3613dbc4-d8a8-455f-a556-4a2a50e15e9e/controls_updated_bar.png';
+  const artifactsDir = process.env.ARTIFACTS_DIR || path.join(ROOT, 'scratch');
+  if (!fs.existsSync(artifactsDir)) fs.mkdirSync(artifactsDir, { recursive: true });
+  const screenshotPath = path.join(artifactsDir, 'controls_updated_bar.png');
   await page.screenshot({ path: screenshotPath });
   console.log(`Saved screenshot: ${screenshotPath}`);
 
