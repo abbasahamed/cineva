@@ -143,10 +143,11 @@ export class HlsPackager {
     const canCopyVideo = isH264 && isYuv420p && isWithin1080p && is8Bit && isSupportedProfile && isSupportedLevel;
 
     const videoArgs: string[] = [];
+    const sourceBitrate = vStream?.bitrate || (analysis.sizeBytes && analysis.duration ? Math.round((analysis.sizeBytes * 8) / analysis.duration) : 8000000);
+
     if (canCopyVideo) {
-      videoArgs.push('-c:v', 'copy');
+      videoArgs.push('-c:v', 'copy', '-b:v', `${sourceBitrate}`);
     } else {
-      const sourceBitrate = vStream?.bitrate || (analysis.sizeBytes && analysis.duration ? Math.round((analysis.sizeBytes * 8) / analysis.duration) : 8000000);
       const targetBitrate = Math.max(6000000, Math.min(14000000, Math.round(sourceBitrate * 0.9)));
       const maxRate = Math.round(targetBitrate * 1.5);
       const bufSize = Math.round(targetBitrate * 2.0);
@@ -488,6 +489,22 @@ export class HlsPackager {
       if (insertIdx === -1) insertIdx = processedLines.length;
 
       processedLines.splice(insertIdx, 0, ...subLines);
+    }
+
+    // Fallback: If FFmpeg did not output an #EXT-X-STREAM-INF line (e.g. older versions when copying video),
+    // ensure the primary video rendition is included in master.m3u8
+    const hasStreamInf = processedLines.some((l) => l.startsWith('#EXT-X-STREAM-INF'));
+    if (!hasStreamInf && fs.existsSync(path.join(outputDir, 'stream_0.m3u8'))) {
+      const vStream = analysis.streams.find((s) => s.codecType === 'video');
+      const vWidth = vStream?.width || analysis.width || 1920;
+      const vHeight = vStream?.height || analysis.height || 1080;
+      const vBitrate = vStream?.bitrate || (analysis.sizeBytes && analysis.duration ? Math.round((analysis.sizeBytes * 8) / analysis.duration) : 2500000);
+      const subAttr = subtitles.length > 0 ? `,SUBTITLES="${subtitleGroup}"` : '';
+      const audioAttr = audioStreams.length > 0 ? ',AUDIO="group_audio"' : '';
+      processedLines.push(
+        `#EXT-X-STREAM-INF:BANDWIDTH=${Math.round(vBitrate * 1.2)},AVERAGE-BANDWIDTH=${vBitrate},RESOLUTION=${vWidth}x${vHeight},CODECS="avc1.640028,mp4a.40.2"${audioAttr}${subAttr}`,
+        'stream_0.m3u8'
+      );
     }
 
     // Switch stream playlists from EVENT to VOD now that packaging is complete
