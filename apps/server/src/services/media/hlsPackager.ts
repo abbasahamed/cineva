@@ -252,11 +252,15 @@ export class HlsPackager {
       'fmp4',
       '-hls_flags',
       'independent_segments',
+      '-hls_fmp4_init_filename',
+      'init_%v.mp4',
+      '-hls_segment_filename',
+      'stream_%v%d.m4s',
       '-master_pl_name',
       'master.m3u8',
       '-var_stream_map',
       varStreamMap,
-      path.join(absOutputDir, 'stream_%v.m3u8'),
+      'stream_%v.m3u8',
     ];
 
     logger.info('[HlsPackager] Starting FFmpeg HLS packaging', {
@@ -286,6 +290,7 @@ export class HlsPackager {
 
     return new Promise<HlsPackageResult>((resolve, reject) => {
       const ffmpeg = spawn(getFfmpegPath(), hlsArgs, {
+        cwd: absOutputDir,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
