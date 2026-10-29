@@ -31,6 +31,27 @@ export interface HlsPackageResult {
 export class HlsPackager {
   private activeProcesses: Map<string, ChildProcess> = new Map();
   private hasHardwareVideoToolbox: boolean | null = null;
+  private hasHardwareAudioToolbox: boolean | null = null;
+
+  /**
+   * Checks whether Apple AudioToolbox hardware AAC encoder is available.
+   */
+  checkAudioToolbox(): boolean {
+    if (this.hasHardwareAudioToolbox !== null) {
+      return this.hasHardwareAudioToolbox;
+    }
+    try {
+      if (process.platform === 'darwin') {
+        const stdout = execSync(`"${getFfmpegPath()}" -encoders`, { encoding: 'utf-8', timeout: 3000 });
+        if (stdout.includes('aac_at')) {
+          this.hasHardwareAudioToolbox = true;
+          return true;
+        }
+      }
+    } catch {}
+    this.hasHardwareAudioToolbox = false;
+    return false;
+  }
 
   /**
    * Checks whether Apple VideoToolbox hardware H.264 encoder is available.
@@ -106,26 +127,47 @@ export class HlsPackager {
       fs.mkdirSync(absOutputDir, { recursive: true });
     }
 
-    // 1. Extract all text subtitle tracks first
+    // 1. Extract all text subtitle tracks in parallel
     const subtitleStreams = analysis.streams.filter((s) => s.codecType === 'subtitle');
     const extractedSubtitles: Array<{ streamIndex: number; filename: string; vttPath: string; subTrack: SubtitleTrackInfo }> = [];
     const subtitleManifestUrls: Record<number, string> = {};
 
     const initialManifest = buildTrackManifest(analysis);
+    const supportedSubTracks = initialManifest.subtitleTracks.filter((t) => t.supported);
 
-    for (const subTrack of initialManifest.subtitleTracks) {
-      if (subTrack.supported) {
+    if (supportedSubTracks.length > 0) {
+      // Single-pass subtitle extraction for all tracks in parallel
+      const subItems = supportedSubTracks.map((subTrack) => {
         const vttFilename = `sub_${subTrack.streamIndex}_${subTrack.language}.vtt`;
         const vttPath = path.join(absOutputDir, vttFilename);
-        const ok = await this.extractSubtitleTrack(absInput, subTrack.streamIndex, vttPath);
-        if (ok) {
+        return { subTrack, vttFilename, vttPath };
+      });
+
+      const batchArgs = ['-y', '-nostdin', '-v', 'warning', '-i', absInput];
+      for (const item of subItems) {
+        batchArgs.push('-map', `0:${item.subTrack.streamIndex}`, '-c:s', 'webvtt', item.vttPath);
+      }
+
+      try {
+        await execFilePromise(getFfmpegPath(), batchArgs, { timeout: 30000 });
+      } catch (batchErr: any) {
+        logger.warn('[HlsPackager] Batch subtitle extraction fell back to per-track', { message: batchErr.message });
+      }
+
+      // Check results or fallback per-track if any was skipped
+      for (const item of subItems) {
+        let exists = fs.existsSync(item.vttPath) && fs.statSync(item.vttPath).size > 0;
+        if (!exists) {
+          exists = await this.extractSubtitleTrack(absInput, item.subTrack.streamIndex, item.vttPath);
+        }
+        if (exists) {
           extractedSubtitles.push({
-            streamIndex: subTrack.streamIndex,
-            filename: vttFilename,
-            vttPath,
-            subTrack,
+            streamIndex: item.subTrack.streamIndex,
+            filename: item.vttFilename,
+            vttPath: item.vttPath,
+            subTrack: item.subTrack,
           });
-          subtitleManifestUrls[subTrack.streamIndex] = vttFilename;
+          subtitleManifestUrls[item.subTrack.streamIndex] = item.vttFilename;
         }
       }
     }
@@ -214,7 +256,8 @@ export class HlsPackager {
           audioCodecArgs.push(`-c:a:${idx}`, 'copy');
         } else {
           // Downmix multi-channel (5.1/7.1) or non-AAC audio to browser-universal 2-channel stereo AAC
-          audioCodecArgs.push(`-c:a:${idx}`, 'aac', `-ac:a:${idx}`, '2', `-b:a:${idx}`, '256k');
+          const aacCodec = this.checkAudioToolbox() ? 'aac_at' : 'aac';
+          audioCodecArgs.push(`-c:a:${idx}`, aacCodec, `-ac:a:${idx}`, '2', `-b:a:${idx}`, '256k');
         }
 
         const lang = aStream.language || 'und';
