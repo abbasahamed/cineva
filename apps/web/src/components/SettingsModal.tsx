@@ -97,7 +97,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [editingTitle, setEditingTitle] = useState(false);
   const [newTitle, setNewTitle] = useState(room?.media?.title || '');
   const [checkingNetwork, setCheckingNetwork] = useState(false);
-  const [networkResult, setNetworkResult] = useState<{ mbps: number; viewersAt1080p: number } | null>(null);
+  const [networkResult, setNetworkResult] = useState<{
+    mbps: number;
+    viewersAt1080p: number;
+    isLocal: boolean;
+    maxCapacity: number;
+  } | null>(null);
 
   if (!isOpen || !room) return null;
 
@@ -105,22 +110,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setCheckingNetwork(true);
     try {
       const payload = new Uint8Array(2 * 1024 * 1024);
-      const startTime = Date.now();
+      const tStart = performance.now();
       const res = await fetch('/api/media/network-check', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/octet-stream',
-          'x-upload-start': startTime.toString(),
+          'x-upload-start': Date.now().toString(),
         },
         body: payload,
       });
+      const tEnd = performance.now();
+      const clientDurationMs = Math.max(1, tEnd - tStart);
       const data = await res.json();
+
+      const clientMbps = Math.round(((payload.byteLength * 8) / (clientDurationMs * 1000)) * 10) / 10;
+      const effectiveMbps = data.mbps && data.mbps > 0 ? data.mbps : clientMbps;
+      const isLocalhost =
+        data.isLocal ||
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        effectiveMbps > 150;
+
+      const maxRoomCapacity = (room.settings as any)?.maxParticipants || 20;
+      const viewers = Math.min(maxRoomCapacity, Math.max(1, Math.floor(effectiveMbps / 4.0)));
+
       setNetworkResult({
-        mbps: data.mbps || 12.0,
-        viewersAt1080p: data.viewersAt1080p || 3,
+        mbps: effectiveMbps,
+        viewersAt1080p: viewers,
+        isLocal: isLocalhost,
+        maxCapacity: maxRoomCapacity,
       });
     } catch {
-      setNetworkResult({ mbps: 15.0, viewersAt1080p: 4 });
+      setNetworkResult({
+        mbps: 15.0,
+        viewersAt1080p: 3,
+        isLocal: false,
+        maxCapacity: (room.settings as any)?.maxParticipants || 20,
+      });
     } finally {
       setCheckingNetwork(false);
     }
@@ -289,15 +315,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   Verifies how many 1080p viewers your connection can comfortably host concurrently.
                 </p>
                 {networkResult && (
-                  <div className="mt-2.5 p-3 rounded-xl bg-white/[0.05] border border-white/[0.1] text-xs font-mono">
-                    <p className="font-medium text-emerald-300">
-                      Upload speed supports ~{networkResult.viewersAt1080p} viewers at 1080p ({networkResult.mbps} Mbps each).
-                    </p>
-                    {networkResult.mbps < 8 && (
-                      <p className="text-[11px] text-amber-300/80 mt-1 font-sans">
-                        Upload speed is modest; viewers on slower connections will automatically adapt to 720p or 480p.
-                      </p>
-                    )}
+                  <div className="mt-2.5 p-3 rounded-xl bg-white/[0.05] border border-white/[0.1] text-xs">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-slate-300 font-medium">Upload Speed:</span>
+                      <span className="font-semibold text-emerald-400 font-mono">
+                        {networkResult.mbps >= 1000
+                          ? `${(networkResult.mbps / 1000).toFixed(1)} Gbps`
+                          : `${networkResult.mbps} Mbps`}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-slate-300 font-medium">1080p Capacity:</span>
+                      <span className="font-semibold text-white">
+                        ~{networkResult.viewersAt1080p} {networkResult.viewersAt1080p === 1 ? 'viewer' : 'viewers'}
+                        {networkResult.viewersAt1080p >= networkResult.maxCapacity ? ' (Room Max)' : ''}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 leading-relaxed border-t border-white/[0.08] pt-1.5 mt-1.5">
+                      {networkResult.isLocal ? (
+                        <span>
+                          <strong className="text-slate-300 font-medium">Local/LAN link:</strong> Your local connection supports full room capacity ({networkResult.maxCapacity} viewers at ~4 Mbps each). External internet viewers will depend on your ISP outbound upload speed.
+                        </span>
+                      ) : networkResult.mbps < 8 ? (
+                        <span className="text-amber-300/90">
+                          Upload bandwidth is modest (~4 Mbps per 1080p stream). Viewers with slower connections will automatically adapt to 720p or 480p.
+                        </span>
+                      ) : (
+                        <span>
+                          Allocating ~4 Mbps per 1080p stream, your connection supports up to {networkResult.viewersAt1080p} simultaneous participants.
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

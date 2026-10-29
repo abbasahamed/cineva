@@ -197,11 +197,19 @@ router.post(
       ? Buffer.byteLength(req.body)
       : 0;
     const mbps = bytes > 0 ? (bytes * 8) / (durationMs * 1000) : 0;
+    const clientIp = req.ip || req.socket.remoteAddress || "";
+    const isLocal =
+      clientIp === "127.0.0.1" ||
+      clientIp === "::1" ||
+      clientIp === "::ffff:127.0.0.1" ||
+      clientIp.includes("127.0.0.1");
+
     res.json({
       bytes,
       durationMs,
       mbps: Math.round(mbps * 10) / 10,
-      viewersAt1080p: Math.max(1, Math.floor(mbps / 4.0)),
+      viewersAt1080p: Math.min(20, Math.max(1, Math.floor(mbps / 4.0))),
+      isLocal,
     });
   }
 );
