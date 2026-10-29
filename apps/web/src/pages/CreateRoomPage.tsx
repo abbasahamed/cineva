@@ -25,7 +25,7 @@ export const CreateRoomPage: React.FC = () => {
   const [roomTitle, setRoomTitle] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSample, setIsSample] = useState(false);
-  const [allowGuestControl, setAllowGuestControl] = useState(true);
+  const [allowGuestControl, setAllowGuestControl] = useState(false);
 
   // Errors & UI states
   const [nameError, setNameError] = useState('');
