@@ -76,6 +76,21 @@ export function isOriginAllowed(origin: string | undefined): boolean {
       }
     }
   }
+  // Allow legitimate public tunnels (Cloudflare, Pinggy, localhost.run)
+  try {
+    const parsed = new URL(origin);
+    const host = parsed.hostname.toLowerCase();
+    if (
+      host.endsWith('.trycloudflare.com') ||
+      host.endsWith('.run.pinggy-free.link') ||
+      host.endsWith('.free.pinggy.net') ||
+      host.endsWith('.pinggy.link') ||
+      host.endsWith('.lhr.life')
+    ) {
+      return true;
+    }
+  } catch {}
+
   if (CONFIG.NODE_ENV !== 'production') {
     if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
       return true;
@@ -275,22 +290,20 @@ app.get('/api/system/diagnostics', async (_req: Request, res: Response) => {
 // Public URL endpoint — the active Cloudflare tunnel URL (or null). The web
 // client uses this to build share links that never expose a localhost address.
 app.get('/api/system/public-url', async (req: Request, res: Response) => {
-  let publicUrl = tunnelService.getActiveTunnelUrl();
-  if (!publicUrl) {
-    try {
-      const authoritative = await tunnelService.getAuthoritativePublicUrl(req);
-      if (
-        authoritative &&
-        !authoritative.includes('localhost') &&
-        !authoritative.includes('127.0.0.1') &&
-        !authoritative.includes('192.168.') &&
-        !authoritative.includes('10.')
-      ) {
-        publicUrl = authoritative;
-      }
-    } catch {
-      // fallback
+  let publicUrl: string | null = null;
+  try {
+    const authoritative = await tunnelService.getAuthoritativePublicUrl(req);
+    if (
+      authoritative &&
+      !authoritative.includes('localhost') &&
+      !authoritative.includes('127.0.0.1') &&
+      !authoritative.includes('192.168.') &&
+      !authoritative.includes('10.')
+    ) {
+      publicUrl = authoritative;
     }
+  } catch {
+    // fallback
   }
   res.json({
     publicUrl: publicUrl || null,

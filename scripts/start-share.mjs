@@ -52,6 +52,17 @@ async function main() {
 
   if (!checkBinary('cloudflared')) {
     console.log('\u2139\ufe0f  cloudflared not detected in PATH; CINEVA will use native SSH-HTTPS tunnel fallback.\n');
+  } else if (process.platform === 'darwin') {
+    // Check if macOS local router DNS fails to resolve api.trycloudflare.com
+    try {
+      const dns = await import('node:dns/promises');
+      await dns.lookup('api.trycloudflare.com');
+    } catch {
+      try {
+        console.log('\u26a1 Resolving router DNS block: setting Wi-Fi DNS to 1.1.1.1 / 8.8.8.8...');
+        execFileSync('networksetup', ['-setdnsservers', 'Wi-Fi', '1.1.1.1', '8.8.8.8'], { stdio: 'ignore' });
+      } catch {}
+    }
   }
 
   // 2. Build the server and web app (idempotent, picks up latest changes).

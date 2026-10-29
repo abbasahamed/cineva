@@ -17,6 +17,7 @@ class TunnelService {
   private fallbackTunnelChild: any = null;
   private lastTunnelError: string | null = null;
   private cloudflareBlocked = false;
+  private discoveryAttempts = new Map<string, number>();
 
   constructor() {
     const rawEnv = (process.env.CINEVA_PUBLIC_URL || process.env.CLOUDFLARE_TUNNEL_DOMAIN || '').trim().replace(/\/+$/, '');
@@ -41,7 +42,7 @@ class TunnelService {
       if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') return true;
 
       return await new Promise<boolean>((resolve) => {
-        const timer = setTimeout(() => resolve(false), 1200);
+        const timer = setTimeout(() => resolve(false), 2500);
         dns.lookup(parsed.hostname, (err, address) => {
           clearTimeout(timer);
           if (err || !address) {
@@ -123,11 +124,19 @@ class TunnelService {
         if (tunnelUrl) {
           const live = await this.isUrlLive(tunnelUrl);
           if (live) {
+            this.discoveryAttempts.delete(tunnelUrl);
             this.setActiveTunnelUrl(tunnelUrl);
             return tunnelUrl;
           } else {
-            logger.warn('[TunnelService] Stale cloudflared process detected (DNS resolution failed). Restarting cloudflared...', { deadUrl: tunnelUrl });
-            this.restartCloudflared(CONFIG.PORT || 4000);
+            const attempts = (this.discoveryAttempts.get(tunnelUrl) || 0) + 1;
+            this.discoveryAttempts.set(tunnelUrl, attempts);
+            if (attempts >= 4) {
+              logger.warn('[TunnelService] Stale cloudflared process detected (DNS resolution failed after multiple attempts). Restarting cloudflared...', { deadUrl: tunnelUrl });
+              this.discoveryAttempts.delete(tunnelUrl);
+              this.restartCloudflared(CONFIG.PORT || 4000);
+            } else {
+              logger.info('[TunnelService] Tunnel discovered; waiting for DNS propagation...', { tunnelUrl, attempt: attempts });
+            }
             return null;
           }
         }
@@ -231,6 +240,9 @@ class TunnelService {
       };
       const onChildExit = (code: number | null) => {
         if (this.cloudflaredChild === child) this.cloudflaredChild = null;
+        if (this.activeTunnelUrl && this.activeTunnelUrl.includes('trycloudflare.com')) {
+          this.activeTunnelUrl = null;
+        }
         if (code !== 0 && !this.activeTunnelUrl) {
           logger.warn('[TunnelService] cloudflared exited non-zero. Activating SSH fallback tunnel...');
           this.cloudflareBlocked = true;
@@ -277,9 +289,6 @@ class TunnelService {
     if (this.fallbackTunnelChild && !this.fallbackTunnelChild.killed) {
       return;
     }
-    if (this.activeTunnelUrl) {
-      return;
-    }
     logger.info('[TunnelService] Spawning SSH-HTTPS tunnel via free.pinggy.io on port 443...', { localPort });
     try {
       const child = spawn('ssh', [
@@ -292,11 +301,18 @@ class TunnelService {
         'free.pinggy.io',
       ]);
 
+      // Pinggy free tunnels expire after 60 min. Proactively cycle at 55 min so guests never hit an unannounced dead tunnel.
+      const refreshTimeout = setTimeout(() => {
+        logger.info('[TunnelService] Proactively cycling SSH tunnel before 60m expiration...');
+        try { child.kill('SIGTERM'); } catch {}
+      }, 55 * 60 * 1000);
+
       child.stdout?.on('data', (d: Buffer) => {
         const text = d.toString();
         const matches = text.match(/https:\/\/[a-z0-9-]+\.(?:free\.pinggy\.net|run\.pinggy-free\.link|pinggy\.link)/gi);
         if (matches && matches.length > 0) {
-          const picked = matches.find((u) => u.includes('free.pinggy.net')) || matches[0];
+          // Prioritize run.pinggy-free.link to bypass regional ISP blocks on .net domains
+          const picked = matches.find((u) => u.includes('run.pinggy-free.link')) || matches.find((u) => u.includes('pinggy.link')) || matches[0];
           this.setActiveTunnelUrl(picked);
         }
       });
@@ -308,13 +324,30 @@ class TunnelService {
         }
       });
 
+      const onTunnelLost = () => {
+        clearTimeout(refreshTimeout);
+        if (this.fallbackTunnelChild === child) {
+          this.fallbackTunnelChild = null;
+        }
+        if (this.activeTunnelUrl && (this.activeTunnelUrl.includes('pinggy') || this.activeTunnelUrl.includes('localhost.run'))) {
+          logger.warn('[TunnelService] Fallback tunnel disconnected. Invalidating URL and reconnecting...', { deadUrl: this.activeTunnelUrl });
+          this.activeTunnelUrl = null;
+        }
+        if (this.cloudflareBlocked && !this.cloudflaredChild) {
+          setTimeout(() => {
+            this.ensureSshTunnelRunning(localPort);
+          }, 2000);
+        }
+      };
+
       child.on('error', (err: any) => {
         logger.warn('[TunnelService] SSH fallback tunnel process error', { error: err?.message });
-        if (this.fallbackTunnelChild === child) this.fallbackTunnelChild = null;
+        onTunnelLost();
       });
 
-      child.on('exit', () => {
-        if (this.fallbackTunnelChild === child) this.fallbackTunnelChild = null;
+      child.on('exit', (code) => {
+        logger.warn('[TunnelService] SSH fallback tunnel process exited', { code });
+        onTunnelLost();
       });
 
       this.fallbackTunnelChild = child;
@@ -469,8 +502,29 @@ class TunnelService {
       if (this.isChecking) return;
       this.isChecking = true;
       try {
-        this.ensureCloudflaredRunning(CONFIG.PORT || 4000);
-        await this.discoverCloudflaredTunnel();
+        if (this.activeTunnelUrl) {
+          const live = await this.isUrlLive(this.activeTunnelUrl);
+          if (!live) {
+            logger.warn('[TunnelService] Heartbeat: active tunnel URL failed DNS lookup. Invalidating...', { deadUrl: this.activeTunnelUrl });
+            this.activeTunnelUrl = null;
+            if (this.cloudflareBlocked) {
+              if (this.fallbackTunnelChild) {
+                try { this.fallbackTunnelChild.kill('SIGTERM'); } catch {}
+                this.fallbackTunnelChild = null;
+              }
+              this.ensureSshTunnelRunning(CONFIG.PORT || 4000);
+            } else {
+              this.restartCloudflared(CONFIG.PORT || 4000);
+            }
+            return;
+          }
+        }
+        if (this.cloudflareBlocked) {
+          this.ensureSshTunnelRunning(CONFIG.PORT || 4000);
+        } else {
+          this.ensureCloudflaredRunning(CONFIG.PORT || 4000);
+          await this.discoverCloudflaredTunnel();
+        }
       } finally {
         this.isChecking = false;
       }

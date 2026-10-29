@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
+import path from 'path';
+import os from 'os';
+import fs from 'fs';
 import { app } from '../index.js';
 import { prisma } from '../db.js';
 import { CONFIG } from '../config.js';
@@ -85,9 +88,18 @@ describe('Public Tunnel Abuse Limits & Capacity Suite', () => {
 
   describe('3. Storage Quota & File Size Limits', () => {
     it('rejects uploads exceeding 5 GB limit via configuration and disk quota', () => {
-      expect(CONFIG.MAX_VIDEO_SIZE_BYTES).toBe(5 * 1024 * 1024 * 1024);
-      const quota = checkUploadDiskQuota(6 * 1024 * 1024 * 1024);
-      expect(quota.allowed).toBe(true); // total capacity check
+      const originalPath = CONFIG.MEDIA_STORAGE_PATH;
+      const testDir = path.resolve(os.tmpdir(), 'test_quota_storage');
+      if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
+      CONFIG.MEDIA_STORAGE_PATH = testDir;
+      try {
+        expect(CONFIG.MAX_VIDEO_SIZE_BYTES).toBe(5 * 1024 * 1024 * 1024);
+        const quota = checkUploadDiskQuota(6 * 1024 * 1024 * 1024);
+        expect(quota.allowed).toBe(true); // total capacity check
+      } finally {
+        CONFIG.MEDIA_STORAGE_PATH = originalPath;
+        try { fs.rmdirSync(testDir); } catch {}
+      }
     });
 
     it('verifies obsolete cloud multipart routes return 404', async () => {

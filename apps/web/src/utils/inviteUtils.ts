@@ -14,13 +14,17 @@ export interface InviteUrlOptions extends PublicBaseUrlOptions {
 }
 
 let memoryCachedBaseUrl: string | null = null;
+let memoryCachedBaseUrlTime = 0;
+const CACHE_TTL_MS = 30000;
 
 export function _clearInviteCacheForTesting(): void {
   memoryCachedBaseUrl = null;
+  memoryCachedBaseUrlTime = 0;
 }
 
 export function _setCachedBaseUrlForTesting(url: string | null): void {
   memoryCachedBaseUrl = url;
+  memoryCachedBaseUrlTime = Date.now();
 }
 
 export function getEnvConfiguredPublicUrl(): string {
@@ -101,8 +105,8 @@ export async function getPublicBaseUrl(options?: PublicBaseUrlOptions): Promise<
     return normalizeBaseUrl(envUrl);
   }
 
-  // 2. Check in-memory cache if verified non-private and not force-refreshed
-  if (!forceRefresh && memoryCachedBaseUrl && !isPrivateAddress(memoryCachedBaseUrl)) {
+  // 2. Check in-memory cache if verified non-private, not force-refreshed, and within TTL
+  if (!forceRefresh && memoryCachedBaseUrl && !isPrivateAddress(memoryCachedBaseUrl) && Date.now() - memoryCachedBaseUrlTime < CACHE_TTL_MS) {
     return memoryCachedBaseUrl;
   }
 
@@ -117,6 +121,7 @@ export async function getPublicBaseUrl(options?: PublicBaseUrlOptions): Promise<
         const serverPubUrl = await getPublicUrl();
         if (serverPubUrl && !isPrivateAddress(serverPubUrl)) {
           memoryCachedBaseUrl = normalizeBaseUrl(serverPubUrl);
+          memoryCachedBaseUrlTime = Date.now();
           return memoryCachedBaseUrl;
         }
       } catch {
