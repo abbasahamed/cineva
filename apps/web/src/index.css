@@ -4047,8 +4047,10 @@ footer .wrap {
 .vr {
   width: 0;
   opacity: 0;
-  height: 3px;
-  accent-color: #fff;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.2);
+  accent-color: #6366f1;
   cursor: pointer;
   transition: width 0.25s var(--ease), opacity 0.2s;
 }
@@ -4057,7 +4059,7 @@ footer .wrap {
 .vw:focus-within .vr {
   width: 80px;
   opacity: 1;
-  margin: 0 8px 0 2px;
+  margin: 0 8px 0 4px;
 }
 
 /* Floating Glass Menu inside Player */

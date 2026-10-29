@@ -2655,6 +2655,9 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                       min={0}
                       max={100}
                       value={isVideoMuted ? 0 : volume}
+                      style={{
+                        background: `linear-gradient(to right, #6366f1 ${isVideoMuted ? 0 : volume}%, rgba(255, 255, 255, 0.2) ${isVideoMuted ? 0 : volume}%)`,
+                      }}
                       aria-label="Volume"
                       onChange={(e) => {
                         setVolume(Number(e.target.value));
