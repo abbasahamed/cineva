@@ -787,7 +787,6 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     bitrate: "2.8 Mbps",
     mode: "Direct play",
   });
-  const [stalledNames, setStalledNames] = useState<string[]>([]);
 
   // Subtitle settings, custom layer, and control bar height observer
   const [subSettings, setSubSettings] = useState<SubtitleSettings>(() => loadSubtitleSettings());
@@ -1075,10 +1074,6 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     const onWaiting = () => {
       if (el.paused) return;
       setIsBuffering(true);
-      const sock = socketService.getSocket();
-      if (sock && sock.connected) {
-        sock.emit(SOCKET_EVENTS.BUFFERING_START, { position: el.currentTime });
-      }
     };
     const onPlaying = () => {
       setIsBuffering(false);
@@ -1089,18 +1084,9 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
           el.muted = false;
         }
       }
-      const sock = socketService.getSocket();
-      if (sock && sock.connected) {
-        sock.emit(SOCKET_EVENTS.BUFFERING_READY, { position: el.currentTime });
-      }
     };
     const onCanPlay = () => {
       setIsBuffering(false);
-      if (el.paused) return;
-      const sock = socketService.getSocket();
-      if (sock && sock.connected) {
-        sock.emit(SOCKET_EVENTS.BUFFERING_READY, { position: el.currentTime });
-      }
     };
     const onEnded = () => setRealVideoPaused(true);
     const onTimeUpdate = () => {
@@ -1173,38 +1159,18 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     const sock = socketService.getSocket();
     if (!sock) return;
 
-    const handleBufferingWait = (data: { stalledNames?: string[]; waitingFor?: string }) => {
-      if (data.stalledNames && data.stalledNames.length > 0) {
-        setStalledNames(data.stalledNames);
-      } else if (data.waitingFor) {
-        setStalledNames([data.waitingFor]);
-      } else {
-        setStalledNames([]);
-      }
-    };
-
     const handleRenditionsUpdated = (data: { masterPlaylistUrl?: string; renditions?: any[] }) => {
       if (hlsRef.current && data.masterPlaylistUrl) {
         hlsRef.current.loadSource(data.masterPlaylistUrl);
       }
     };
 
-    sock.on(SOCKET_EVENTS.BUFFERING_WAIT, handleBufferingWait);
     sock.on(SOCKET_EVENTS.RENDITIONS_UPDATED, handleRenditionsUpdated);
 
     return () => {
-      sock.off(SOCKET_EVENTS.BUFFERING_WAIT, handleBufferingWait);
       sock.off(SOCKET_EVENTS.RENDITIONS_UPDATED, handleRenditionsUpdated);
     };
   }, [connectionStatus]);
-
-  const handleSkipBuffering = useCallback(() => {
-    const sock = socketService.getSocket();
-    if (sock && sock.connected) {
-      sock.emit(SOCKET_EVENTS.BUFFERING_SKIP, {});
-    }
-    setStalledNames([]);
-  }, []);
 
   const manifest = room?.media?.trackManifest;
 
@@ -2317,77 +2283,6 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
               }}
             >
               {indicator.text}
-            </div>
-          )}
-
-          {/* Buffering Wait Top Pill (Non-blocking, never covers center of stage) */}
-          {stalledNames.length > 0 && (
-            <div
-              id="buffering-wait-overlay"
-              style={{
-                position: "absolute",
-                top: "16px",
-                left: "50%",
-                transform: "translateX(-50%)",
-                zIndex: 25,
-                pointerEvents: "none",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                maxWidth: "calc(100% - 32px)",
-              }}
-            >
-              <div
-                style={{
-                  pointerEvents: "auto",
-                  background: "rgba(10, 12, 22, 0.88)",
-                  border: "1px solid rgba(255, 255, 255, 0.16)",
-                  backdropFilter: "blur(12px)",
-                  WebkitBackdropFilter: "blur(12px)",
-                  borderRadius: "9999px",
-                  padding: "6px 14px",
-                  color: "#ffffff",
-                  fontSize: "12px",
-                  fontWeight: 500,
-                  boxShadow: "0 8px 24px rgba(0, 0, 0, 0.5)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <span
-                  style={{
-                    width: "7px",
-                    height: "7px",
-                    borderRadius: "50%",
-                    background: "#f59e0b",
-                    flexShrink: 0,
-                    boxShadow: "0 0 8px #f59e0b",
-                  }}
-                />
-                <span>Waiting for {stalledNames.join(", ")}...</span>
-                {isHost && (
-                  <button
-                    type="button"
-                    onClick={handleSkipBuffering}
-                    style={{
-                      padding: "3px 10px",
-                      borderRadius: "9999px",
-                      background: "rgba(255, 255, 255, 0.15)",
-                      border: "1px solid rgba(255, 255, 255, 0.25)",
-                      color: "#ffffff",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      transition: "all 0.15s ease",
-                      lineHeight: "1.4",
-                    }}
-                  >
-                    Continue without {stalledNames[0]}
-                  </button>
-                )}
-              </div>
             </div>
           )}
 

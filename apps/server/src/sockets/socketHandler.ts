@@ -64,13 +64,6 @@ export function setupSocketHandlers(io: SocketIOServer) {
   // Active sockets per session: `${roomId}:${sessionId}` -> Set<socketId>
   const activeSessionSockets = new Map<string, Set<string>>();
   const videoSignalingRateLimit = new Map<string, { count: number; resetTime: number }>();
-  interface RoomBufferingTracker {
-    stalledParticipants: Set<string>;
-    stalledNames: Map<string, string>;
-    resumeTimer: NodeJS.Timeout | null;
-    wasPlaying?: boolean;
-  }
-  const roomBufferingTrackers = new Map<string, RoomBufferingTracker>();
 
   const isVideoSignalingAllowed = (socketId: string): boolean => {
     const now = Date.now();
@@ -308,11 +301,6 @@ export function setupSocketHandlers(io: SocketIOServer) {
       const now = Date.now();
       const newState = syncEngine.play(socketData.roomId, payload?.position, payload?.playbackRate, now);
 
-      const tracker = roomBufferingTrackers.get(socketData.roomId);
-      if (tracker) {
-        tracker.wasPlaying = true;
-      }
-
       io.to(socketData.roomId).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
         playback: newState,
         serverTimestamp: now,
@@ -347,11 +335,6 @@ export function setupSocketHandlers(io: SocketIOServer) {
 
       const now = Date.now();
       const newState = syncEngine.pause(socketData.roomId, payload?.position, now);
-
-      const tracker = roomBufferingTrackers.get(socketData.roomId);
-      if (tracker) {
-        tracker.wasPlaying = false;
-      }
 
       io.to(socketData.roomId).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
         playback: newState,
@@ -390,11 +373,6 @@ export function setupSocketHandlers(io: SocketIOServer) {
 
       const now = Date.now();
       const newState = syncEngine.seek(socketData.roomId, parsed.data.position, now);
-
-      const tracker = roomBufferingTrackers.get(socketData.roomId);
-      if (tracker && !newState.isPlaying) {
-        tracker.wasPlaying = false;
-      }
 
       io.to(socketData.roomId).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
         playback: newState,
@@ -448,130 +426,6 @@ export function setupSocketHandlers(io: SocketIOServer) {
         playback: newState,
         serverTimestamp: now,
       });
-    });
-
-    // Buffering-aware Sync (Part A3)
-    socket.on(SOCKET_EVENTS.BUFFERING_START, () => {
-      if (!socketData.roomId || !socketData.participantId || !socketData.displayName) return;
-      let tracker = roomBufferingTrackers.get(socketData.roomId);
-      if (!tracker) {
-        tracker = { stalledParticipants: new Set(), stalledNames: new Map(), resumeTimer: null, wasPlaying: false };
-        roomBufferingTrackers.set(socketData.roomId, tracker);
-      }
-      tracker.stalledParticipants.add(socketData.participantId);
-      tracker.stalledNames.set(socketData.participantId, socketData.displayName);
-
-      if (tracker.resumeTimer) {
-        clearTimeout(tracker.resumeTimer);
-        tracker.resumeTimer = null;
-      }
-
-      // Temporarily pause playback if it was running
-      const state = syncEngine.getOrCreateState(socketData.roomId);
-      if (state.isPlaying) {
-        tracker.wasPlaying = true;
-        const curPos = syncEngine.calculateCurrentPosition(socketData.roomId);
-        const newState = syncEngine.pause(socketData.roomId, curPos);
-        io.to(socketData.roomId).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
-          playback: newState,
-          serverTimestamp: Date.now(),
-        });
-      }
-
-      io.to(socketData.roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
-        stalledNames: Array.from(tracker.stalledNames.values()),
-        waitingFor: socketData.displayName,
-        waitingParticipantId: socketData.participantId,
-      });
-    });
-
-    socket.on(SOCKET_EVENTS.BUFFERING_READY, () => {
-      if (!socketData.roomId || !socketData.participantId) return;
-      const tracker = roomBufferingTrackers.get(socketData.roomId);
-      if (!tracker) return;
-
-      tracker.stalledParticipants.delete(socketData.participantId);
-      tracker.stalledNames.delete(socketData.participantId);
-
-      // If everyone is ready, only resume if playback was running before buffering
-      if (tracker.stalledParticipants.size === 0) {
-        io.to(socketData.roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
-          stalledNames: [],
-        });
-
-        if (tracker.resumeTimer) {
-          clearTimeout(tracker.resumeTimer);
-          tracker.resumeTimer = null;
-        }
-
-        const shouldResume = tracker.wasPlaying;
-        tracker.wasPlaying = false;
-
-        if (shouldResume) {
-          const targetPos = syncEngine.calculateCurrentPosition(socketData.roomId);
-          const now = Date.now();
-          const resumeLeadMs = 200; // fixed lead <= 300ms
-          const resumeAt = now + resumeLeadMs;
-          const newState = syncEngine.play(socketData.roomId!, targetPos, undefined, resumeAt);
-
-          io.to(socketData.roomId!).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
-            playback: newState,
-            serverTimestamp: now,
-          });
-        }
-      } else {
-        io.to(socketData.roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
-          stalledNames: Array.from(tracker.stalledNames.values()),
-        });
-      }
-    });
-
-    socket.on(SOCKET_EVENTS.BUFFERING_SKIP, async (payload?: { skipParticipantId?: string }) => {
-      if (!socketData.roomId || !socketData.sessionId) return;
-      const canControl = socketData.isHost ? true : (await roomManager.canControlPlayback(socketData.roomId, socketData.sessionId));
-      if (!canControl) return;
-
-      const tracker = roomBufferingTrackers.get(socketData.roomId);
-      if (!tracker) return;
-
-      if (payload?.skipParticipantId) {
-        tracker.stalledParticipants.delete(payload.skipParticipantId);
-        tracker.stalledNames.delete(payload.skipParticipantId);
-      } else {
-        tracker.stalledParticipants.clear();
-        tracker.stalledNames.clear();
-      }
-
-      if (tracker.resumeTimer) {
-        clearTimeout(tracker.resumeTimer);
-        tracker.resumeTimer = null;
-      }
-
-      if (tracker.stalledParticipants.size === 0) {
-        io.to(socketData.roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
-          stalledNames: [],
-        });
-
-        const shouldResume = tracker.wasPlaying;
-        tracker.wasPlaying = false;
-
-        if (shouldResume) {
-          const targetPos = syncEngine.calculateCurrentPosition(socketData.roomId);
-          const now = Date.now();
-          const resumeLeadMs = 200; // fixed lead <= 300ms
-          const resumeAt = now + resumeLeadMs;
-          const newState = syncEngine.play(socketData.roomId!, targetPos, undefined, resumeAt);
-
-          io.to(socketData.roomId!).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
-            playback: newState,
-            serverTimestamp: now,
-          });
-        }
-      } else {
-        io.to(socketData.roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
-          stalledNames: Array.from(tracker.stalledNames.values()),
-        });
-      }
     });
 
     // 4. Room Management & Settings
@@ -1007,37 +861,6 @@ export function setupSocketHandlers(io: SocketIOServer) {
           roomSockets.delete(participantId);
           if (roomSockets.size === 0) {
             roomParticipantSockets.delete(roomId);
-          }
-        }
-        const tracker = roomBufferingTrackers.get(roomId);
-        if (tracker && tracker.stalledParticipants.has(participantId)) {
-          tracker.stalledParticipants.delete(participantId);
-          tracker.stalledNames.delete(participantId);
-          if (tracker.resumeTimer) {
-            clearTimeout(tracker.resumeTimer);
-            tracker.resumeTimer = null;
-          }
-          if (tracker.stalledParticipants.size === 0) {
-            io.to(roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
-              stalledNames: [],
-            });
-            const shouldResume = tracker.wasPlaying;
-            tracker.wasPlaying = false;
-            if (shouldResume) {
-              const targetPos = syncEngine.calculateCurrentPosition(roomId);
-              const now = Date.now();
-              const resumeLeadMs = 200; // fixed lead <= 300ms
-              const resumeAt = now + resumeLeadMs;
-              const newState = syncEngine.play(roomId, targetPos, undefined, resumeAt);
-              io.to(roomId).emit(SOCKET_EVENTS.PLAYBACK_STATE, {
-                playback: newState,
-                serverTimestamp: now,
-              });
-            }
-          } else {
-            io.to(roomId).emit(SOCKET_EVENTS.BUFFERING_WAIT, {
-              stalledNames: Array.from(tracker.stalledNames.values()),
-            });
           }
         }
       }
