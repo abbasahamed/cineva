@@ -1681,6 +1681,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
     }
   };
 
+  const lastHandledMsgIdRef = useRef<string | null>(null);
+
   const burstReactions = (emoji: string) => {
     const newItems: FloatingEmoji[] = [];
     const baseId = Date.now();
@@ -1698,6 +1700,19 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       setFloatingReactions((prev) => prev.filter((item) => !newItems.some((n) => n.id === item.id)));
     }, 3200);
   };
+
+  // Sync reactions across all room participants via chat stream
+  useEffect(() => {
+    if (!chatMessages.length) return;
+    const latest = chatMessages[chatMessages.length - 1];
+    if (!latest || latest.id === lastHandledMsgIdRef.current) return;
+    lastHandledMsgIdRef.current = latest.id;
+
+    const trimmed = (latest.message || "").trim();
+    if (EMOJIS.includes(trimmed) || trimmed === "😢") {
+      burstReactions(trimmed);
+    }
+  }, [chatMessages]);
 
   const handleChatSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2932,7 +2947,6 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                             type="button"
                             aria-label={`React ${em}`}
                             onClick={() => {
-                              burstReactions(em);
                               handleSendMessage(em);
                               setActiveMenu(null);
                             }}
@@ -3413,7 +3427,9 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                     display: "grid",
                     placeItems: "center",
                   }}
-                  onClick={() => burstReactions(emoji)}
+                  onClick={() => {
+                    handleSendMessage(emoji);
+                  }}
                 >
                   {emoji}
                 </button>
