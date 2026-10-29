@@ -3861,34 +3861,42 @@ footer .wrap {
   box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.8), 0 20px 50px rgba(0, 0, 0, 0.8);
 }
 
-/* Watch Room Floating Control Bar: Glass capsule with directional rim */
+/* Watch Room Floating Control Bar: Compact IINA-style Apple Liquid Glass capsule */
 .room-shell .ctl,
 #ctl.ctl {
   position: absolute;
-  left: 20px;
-  right: 20px;
-  bottom: 20px;
-  border-radius: 22px;
-  padding: 8px 16px 10px;
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%);
+  width: auto !important;
+  min-width: 440px;
+  max-width: calc(100% - 32px);
+  bottom: 24px;
+  border-radius: 18px;
+  padding: 6px 14px 8px;
   background:
-    linear-gradient(rgba(24, 24, 28, 0.75), rgba(24, 24, 28, 0.75)) padding-box,
-    linear-gradient(135deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.05) 35%, rgba(255, 255, 255, 0.05) 65%, rgba(255, 255, 255, 0.5) 100%) border-box !important;
+    linear-gradient(rgba(20, 20, 24, 0.72), rgba(16, 16, 20, 0.78)) padding-box,
+    linear-gradient(135deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.08) 35%, rgba(255, 255, 255, 0.04) 65%, rgba(255, 255, 255, 0.35) 100%) border-box !important;
   border: 1px solid transparent !important;
-  -webkit-backdrop-filter: blur(20px) saturate(1.6) brightness(1.04) !important;
-  backdrop-filter: blur(20px) saturate(1.6) brightness(1.04) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 16px 40px rgba(0, 0, 0, 0.5) !important;
-  transition: opacity 0.3s, transform 0.3s var(--ease);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8) brightness(1.06) !important;
+  backdrop-filter: blur(28px) saturate(1.8) brightness(1.06) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+    0 12px 36px -6px rgba(0, 0, 0, 0.65),
+    0 2px 8px rgba(0, 0, 0, 0.3) !important;
+  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 30;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   overflow: visible;
 }
 
 .seek {
   position: relative;
   width: 100%;
-  height: 22px;
+  height: 14px;
   display: flex;
   align-items: center;
   cursor: pointer;
@@ -3901,22 +3909,22 @@ footer .wrap {
   position: absolute;
   left: 0;
   right: 0;
-  height: 4px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.2);
+  height: 3px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.22);
   transition: height 0.15s;
 }
 
 .seek:hover::before {
-  height: 6px;
+  height: 4.5px;
 }
 
 .buf,
 .pl {
   position: absolute;
   left: 0;
-  height: 4px;
-  border-radius: 4px;
+  height: 3px;
+  border-radius: 3px;
   transition: height 0.15s;
 }
 
@@ -3933,20 +3941,20 @@ footer .wrap {
 
 .seek:hover .buf,
 .seek:hover .pl {
-  height: 6px;
+  height: 4.5px;
 }
 
 .pl::after {
   content: "";
   position: absolute;
-  right: -6px;
+  right: -5px;
   top: 50%;
-  width: 12px;
-  height: 12px;
-  margin-top: -6px;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
   border-radius: 50%;
-  background: #0A84FF;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
   transform: scale(0);
   transition: transform 0.15s;
 }
@@ -3958,12 +3966,13 @@ footer .wrap {
 
 .tip {
   position: absolute;
-  bottom: 24px;
+  bottom: 18px;
   transform: translateX(-50%);
-  padding: 3px 9px;
-  border-radius: 8px;
-  background: rgba(20, 20, 24, 0.9);
-  font: 12px ui-monospace, monospace;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(16, 16, 20, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font: 11px ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   color: #fff;
   opacity: 0;
   pointer-events: none;
@@ -3980,7 +3989,8 @@ footer .wrap {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 2px;
+  justify-content: center;
+  gap: 3px;
 }
 
 .room-shell .cb,
@@ -3988,51 +3998,58 @@ footer .wrap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   border-radius: 50%;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.88);
   background: none;
   border: none;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.18s, color 0.18s, transform 0.12s;
   flex-shrink: 0;
   vertical-align: middle;
 }
 
 .cb:hover,
 .cb[aria-expanded="true"] {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+.cb:active {
+  transform: scale(0.92);
 }
 
 .cb.pp {
-  width: 42px;
-  height: 42px;
-  margin-right: 2px;
+  width: 32px;
+  height: 32px;
+  margin-right: 1px;
 }
 
 .cb svg {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 
 .cb.pp svg {
   fill: currentColor !important;
   stroke: none !important;
-  width: 22px;
-  height: 22px;
+  width: 17px;
+  height: 17px;
 }
 
 .tm {
   display: inline-flex;
   align-items: center;
-  height: 38px;
+  height: 30px;
   line-height: 1;
-  font: 12.5px var(--mono);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", "Geist Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
-  color: var(--t2);
-  margin: 0 10px;
+  color: rgba(235, 235, 245, 0.65);
+  margin: 0 8px;
   white-space: nowrap;
   vertical-align: middle;
 }
@@ -4040,16 +4057,16 @@ footer .wrap {
 .vw {
   display: inline-flex;
   align-items: center;
-  height: 38px;
+  height: 30px;
   vertical-align: middle;
 }
 
 .vr {
   width: 0;
   opacity: 0;
-  height: 4px;
+  height: 3.5px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.22);
   accent-color: #6366f1;
   cursor: pointer;
   transition: width 0.25s var(--ease), opacity 0.2s;
@@ -4057,9 +4074,9 @@ footer .wrap {
 
 .vw:hover .vr,
 .vw:focus-within .vr {
-  width: 80px;
+  width: 64px;
   opacity: 1;
-  margin: 0 8px 0 4px;
+  margin: 0 6px 0 3px;
 }
 
 /* Floating Glass Menu inside Player */
@@ -5288,6 +5305,10 @@ footer .wrap {
     bottom: 6px !important;
     left: 8px !important;
     right: 8px !important;
+    transform: none !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
     padding: 3px 8px 4px !important;
     border-radius: 13px !important;
     box-sizing: border-box !important;
