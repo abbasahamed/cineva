@@ -181,7 +181,7 @@ export class HlsPackager {
     const is8Bit = !vStream?.bitsPerRawSample || vStream.bitsPerRawSample === 8;
     const profile = (vStream?.profile || '').toLowerCase();
     const isSupportedProfile = !profile || profile.includes('high') || profile.includes('main') || profile.includes('baseline');
-    const isSupportedLevel = !vStream?.level || vStream.level <= 42;
+    const isSupportedLevel = !vStream?.level || vStream.level <= 52;
     const canCopyVideo = isH264 && isYuv420p && isWithin1080p && is8Bit && isSupportedProfile && isSupportedLevel;
 
     const videoArgs: string[] = [];
@@ -203,13 +203,13 @@ export class HlsPackager {
           '-bufsize', `${bufSize}`,
           '-profile:v', 'high',
           '-level', '4.2',
-          '-allow_sw', '0'
+          '-allow_sw', '1'
         );
       } else {
         videoArgs.push(
           '-c:v', 'libx264',
-          '-crf', '18',
-          '-preset', 'veryfast',
+          '-crf', '22',
+          '-preset', 'ultrafast',
           '-profile:v', 'high',
           '-level', '4.2'
         );
@@ -257,7 +257,7 @@ export class HlsPackager {
         } else {
           // Downmix multi-channel (5.1/7.1) or non-AAC audio to browser-universal 2-channel stereo AAC
           const aacCodec = this.checkAudioToolbox() ? 'aac_at' : 'aac';
-          audioCodecArgs.push(`-c:a:${idx}`, aacCodec, `-ac:a:${idx}`, '2', `-b:a:${idx}`, '256k');
+          audioCodecArgs.push(`-c:a:${idx}`, aacCodec, `-ac:a:${idx}`, '2', `-b:a:${idx}`, '192k');
         }
 
         const lang = aStream.language || 'und';
@@ -275,6 +275,8 @@ export class HlsPackager {
     const hlsArgs: string[] = [
       '-y',
       '-nostdin',
+      '-threads',
+      '0',
       '-progress',
       'pipe:1',
       '-nostats',
@@ -288,7 +290,7 @@ export class HlsPackager {
       '-f',
       'hls',
       '-hls_time',
-      '4',
+      '6',
       '-hls_playlist_type',
       'event',
       '-hls_segment_type',

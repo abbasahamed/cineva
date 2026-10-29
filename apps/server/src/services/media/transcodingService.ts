@@ -160,6 +160,9 @@ export class TranscodingService {
       if (useHw) {
         args = [
           '-y',
+          '-nostdin',
+          '-threads',
+          '0',
           '-progress',
           'pipe:1',
           '-nostats',
@@ -181,6 +184,8 @@ export class TranscodingService {
           'high',
           '-level',
           '4.2',
+          '-allow_sw',
+          '1',
           '-pix_fmt',
           'yuv420p',
           '-colorspace',
@@ -195,9 +200,12 @@ export class TranscodingService {
           absOutput,
         ];
       } else {
-        // High quality software encoder: libx264 -crf 18 -preset veryfast -profile:v high -level 4.2
+        // Fast software encoder with multithreading
         args = [
           '-y',
+          '-nostdin',
+          '-threads',
+          '0',
           '-progress',
           'pipe:1',
           '-nostats',
@@ -210,9 +218,9 @@ export class TranscodingService {
           '-c:v',
           'libx264',
           '-preset',
-          'veryfast',
+          'ultrafast',
           '-crf',
-          '18',
+          '22',
           '-profile:v',
           'high',
           '-level',
