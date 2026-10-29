@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams, useParams } from 'react-router-dom';
+import { ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
 import { joinRoom, checkRoom } from '../services/api.js';
+import { LiquidGlassCursor } from '../components/LiquidGlassCursor.js';
 
 export const JoinRoomPage: React.FC = () => {
   const navigate = useNavigate();
@@ -231,45 +233,30 @@ export const JoinRoomPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-8 relative overflow-x-hidden selection:bg-[#7c6cfb]/30">
-      {/* 4-Orb Screen-Blended Aurora (Liquid Glass 2.0) */}
-      <div className="aurora" aria-hidden="true">
-        <div className="aurora-layer">
-          <i id="orb1"></i>
-          <i id="orb2"></i>
-          <i id="orb3"></i>
-          <i id="orb4"></i>
-        </div>
+    <div className="join-root create-root min-h-screen flex flex-col items-center justify-center p-5 sm:p-8 relative overflow-x-hidden text-white selection:bg-[#0A84FF]/25 selection:text-white">
+      {/* Liquid Glass Interactive Cursor */}
+      <LiquidGlassCursor />
+
+      {/* Atmospheric Ambient Background: Neutral near-black base with soft blue ambient bloom */}
+      <div className="landing-aurora" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+        <i />
       </div>
 
-      <main className="app-shell">
+      <main className="app-shell relative z-10">
         {/* Back to Home navigation */}
-        <Link to="/" className="top-nav lg" onPointerMove={handlePointerMove}>
-          <svg
-            viewBox="0 0 24 24"
-            width={18}
-            height={18}
-            style={{ width: 18, height: 18, stroke: 'currentColor', fill: 'none', strokeWidth: 2, flexShrink: 0 }}
-          >
-            <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+        <Link to="/" className="top-nav lg-nav" onPointerMove={handlePointerMove} data-cursor="big">
+          <ArrowLeft className="w-4 h-4 stroke-[2.2] shrink-0" />
           <span>Back to Home</span>
         </Link>
 
         {/* Join Watch Room Card */}
-        <section ref={cardRef} className="card lg" onPointerMove={handlePointerMove}>
-          <div className="badge lg">
-            <svg
-              viewBox="0 0 24 24"
-              style={{ width: 16, height: 16, stroke: 'currentColor', fill: 'none', strokeWidth: 2 }}
-            >
-              <path
-                d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span>Join Watch Party</span>
+        <section ref={cardRef} className="card create-card" onPointerMove={handlePointerMove}>
+          <div className="badge">
+            <span className="dot"></span>
+            <span>Watch Party · Instant Sync</span>
           </div>
 
           <h1>Join a watch room</h1>
@@ -288,7 +275,7 @@ export const JoinRoomPage: React.FC = () => {
                 <label className="form-label" style={{ margin: 0 }}>
                   Room code
                 </label>
-                <span style={{ fontSize: 12, color: 'var(--t3)', fontFamily: 'var(--mono)' }}>
+                <span style={{ fontSize: 12, color: 'var(--landing-label-3, rgba(235, 235, 245, 0.44))', fontFamily: 'var(--mono)' }}>
                   6-CHAR CODE
                 </span>
               </div>
@@ -313,7 +300,7 @@ export const JoinRoomPage: React.FC = () => {
               </div>
               {codeMsg && (
                 <p
-                  className={`msg text-xs mt-2 ${
+                  className={`msg text-xs mt-2 flex items-center gap-1.5 ${
                     codeMsg.isOk
                       ? 'text-emerald-400'
                       : codeMsg.isChecking
@@ -323,7 +310,9 @@ export const JoinRoomPage: React.FC = () => {
                   role="status"
                   aria-live="polite"
                 >
-                  {codeMsg.text}
+                  {codeMsg.isOk && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
+                  {codeBad && <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+                  <span>{codeMsg.text}</span>
                 </p>
               )}
             </div>
@@ -349,8 +338,9 @@ export const JoinRoomPage: React.FC = () => {
                 />
               </div>
               {nameError && (
-                <p className="msg text-rose-400 text-xs mt-1.5" role="alert">
-                  {nameError}
+                <p className="msg text-rose-400 text-xs mt-1.5 flex items-center gap-1.5" role="alert">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{nameError}</span>
                 </p>
               )}
             </div>
@@ -360,6 +350,7 @@ export const JoinRoomPage: React.FC = () => {
               className="btn-primary"
               id="joinSubmit"
               disabled={isSubmitting}
+              data-cursor="big"
             >
               <span>{isSubmitting ? 'Joining...' : 'Join Room'}</span>
             </button>
@@ -374,10 +365,10 @@ export const JoinRoomPage: React.FC = () => {
 
       {/* Connecting Status Modal */}
       <div className={`modal-overlay ${isSubmitting ? 'open' : ''}`} id="modal">
-        <div className="modal-box lg">
-          <div className="spinner"></div>
-          <h2>Connecting to Room...</h2>
-          <p className="subtitle" style={{ marginTop: 6 }} id="statusText">
+        <div className="modal-box create-card" style={{ maxWidth: 420 }}>
+          <div className="spinner mb-4 mx-auto"></div>
+          <h2 className="text-xl font-bold text-white tracking-tight">Connecting to Room...</h2>
+          <p className="subtitle" style={{ marginTop: 8 }} id="statusText">
             Synchronizing clocks and video stream with host.
           </p>
         </div>

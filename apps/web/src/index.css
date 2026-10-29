@@ -6350,18 +6350,19 @@ footer .wrap {
   text-align: center;
   font: 600 24px var(--mono);
   text-transform: uppercase;
-  background: rgba(0, 0, 0, 0.32);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.4);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: none;
   color: #fff;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   outline: none;
 }
 
 .code-cell:focus {
-  border-color: #fff;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2), inset 0 2px 5px rgba(0, 0, 0, 0.4);
-  transform: translateY(-2px);
+  border-color: var(--landing-tint, #0A84FF);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 3.5px rgba(10, 132, 255, 0.35);
+  transform: translateY(-1px);
 }
 
 .modal-box {
