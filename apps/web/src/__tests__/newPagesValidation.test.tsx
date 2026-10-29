@@ -88,7 +88,7 @@ describe('New Cineva Pages — Validation & Prefill Tests', () => {
       expect(screen.getByText('OPT123')).toBeTruthy();
     });
 
-    it('rejects files larger than 5 GB with exact prototype error message', async () => {
+    it('rejects files larger than 10 GB with exact prototype error message', async () => {
       render(
         <MemoryRouter>
           <CreateRoomPage />
@@ -98,13 +98,13 @@ describe('New Cineva Pages — Validation & Prefill Tests', () => {
       const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
       expect(fileInput).toBeTruthy();
 
-      // Create dummy 5.1 GB file
+      // Create dummy 10.5 GB file
       const largeFile = new File(['x'], 'huge_movie.mp4', { type: 'video/mp4' });
-      Object.defineProperty(largeFile, 'size', { value: 5.5 * 1024 * 1024 * 1024 });
+      Object.defineProperty(largeFile, 'size', { value: 10.5 * 1024 * 1024 * 1024 });
 
       fireEvent.change(fileInput, { target: { files: [largeFile] } });
 
-      expect(screen.getByText('This file is over 5 GB. Choose a smaller one.')).toBeTruthy();
+      expect(screen.getByText('This file is over 10 GB. Choose a smaller one.')).toBeTruthy();
     });
 
     it('displays "Will be converted for browsers" when MKV file is selected', async () => {

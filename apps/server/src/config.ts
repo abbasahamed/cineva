@@ -20,14 +20,14 @@ export const CONFIG = {
   
   // Abuse prevention limits & capacity controls
   MAX_CONCURRENT_ROOMS: parseInt(process.env.MAX_CONCURRENT_ROOMS || (nodeEnv === "test" ? "100" : nodeEnv === "development" ? "100" : "50"), 10),
-  MAX_TOTAL_STORAGE_GB: parseInt(process.env.MAX_TOTAL_STORAGE_GB || "20", 10),
-  MAX_TOTAL_STORAGE_BYTES: parseInt(process.env.MAX_TOTAL_STORAGE_GB || "20", 10) * 1024 * 1024 * 1024,
+  MAX_TOTAL_STORAGE_GB: parseInt(process.env.MAX_TOTAL_STORAGE_GB || "40", 10),
+  MAX_TOTAL_STORAGE_BYTES: parseInt(process.env.MAX_TOTAL_STORAGE_GB || "40", 10) * 1024 * 1024 * 1024,
 
   // Media Storage Configuration (Local disk storage exclusively)
   STORAGE_DRIVER: "local" as const,
   MEDIA_STORAGE_PATH: path.resolve(process.cwd(), process.env.MEDIA_STORAGE_PATH || "./uploads"),
-  MAX_FILE_SIZE_MB: parseInt(process.env.MAX_FILE_SIZE_MB || "5120", 10),
-  MAX_VIDEO_SIZE_BYTES: parseInt(process.env.MAX_FILE_SIZE_MB || "5120", 10) * 1024 * 1024, // 5,368,709,120 bytes (5 GB)
+  MAX_FILE_SIZE_MB: parseInt(process.env.MAX_FILE_SIZE_MB || "10240", 10),
+  MAX_VIDEO_SIZE_BYTES: parseInt(process.env.MAX_FILE_SIZE_MB || "10240", 10) * 1024 * 1024, // 10,737,418,240 bytes (10 GB)
 
   // Redis Configuration for horizontal scaling (optional)
   REDIS_URL: process.env.REDIS_URL || undefined,

@@ -54,8 +54,8 @@ export const MediaUploadModal: React.FC<MediaUploadModalProps> = ({
       return;
     }
 
-    if (selectedFile.size > 5 * 1024 * 1024 * 1024) {
-      setError('File size exceeds the 5GB upload limit.');
+    if (selectedFile.size > 10 * 1024 * 1024 * 1024) {
+      setError('File size exceeds the 10GB upload limit.');
       return;
     }
 
@@ -203,7 +203,7 @@ export const MediaUploadModal: React.FC<MediaUploadModalProps> = ({
               <span className="text-sm font-semibold text-white mb-1 tracking-tight">
                 Drag & drop video here, or browse
               </span>
-              <span className="text-[11px] text-white/60">MP4, WebM, MKV, MOV • up to 5 GB</span>
+              <span className="text-[11px] text-white/60">MP4, WebM, MKV, MOV • up to 10 GB</span>
             </div>
           )}
         </div>
