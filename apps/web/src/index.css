@@ -4065,11 +4065,38 @@ footer .wrap {
   position: absolute;
   bottom: calc(100% + 10px);
   min-width: 230px;
+  max-width: 320px;
+  max-height: 380px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   border-radius: 18px;
   padding: 6px;
   z-index: 9;
-  background: rgba(36, 36, 42, 0.78);
+  background: rgba(36, 36, 42, 0.88);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
   animation: in 0.2s var(--ease) both;
+}
+
+.mn::-webkit-scrollbar {
+  width: 5px;
+}
+
+.mn::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mn::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 9999px;
+}
+
+.mn::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.45);
 }
 
 @keyframes in {

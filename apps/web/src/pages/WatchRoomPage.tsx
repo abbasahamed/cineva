@@ -775,6 +775,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   const [bufferPercent, setBufferPercent] = useState(0);
   const [activeMenu, setActiveMenu] = useState<"audio" | "subs" | "sub-settings" | "zoom" | "react" | null>(null);
   const [menuLeft, setMenuLeft] = useState<number>(0);
+  const [menuMaxHeight, setMenuMaxHeight] = useState<number>(360);
   const [speed, setSpeed] = useState<number>(1);
   const [zoom, setZoom] = useState<number>(0);
 
@@ -1786,6 +1787,13 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       const r = e.currentTarget.getBoundingClientRect();
       const left = Math.max(0, Math.min(c.width - 246, r.left - c.left + r.width / 2 - 115));
       setMenuLeft(left);
+
+      if (stageRef.current) {
+        const stageRect = stageRef.current.getBoundingClientRect();
+        // Exact pixel room between top of control bar and top of stage, minus 24px safety margin
+        const availableHeight = Math.max(180, Math.floor(c.top - stageRect.top - 24));
+        setMenuMaxHeight(availableHeight);
+      }
     }
     setActiveMenu(menu);
   };
@@ -2761,8 +2769,9 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                     id="mn"
                     role="menu"
                     data-controls="true"
-                    style={{ left: `${menuLeft}px` }}
+                    style={{ left: `${menuLeft}px`, maxHeight: `${menuMaxHeight}px` }}
                     onClick={(e) => e.stopPropagation()}
+                    onWheel={(e) => e.stopPropagation()}
                   >
                     {activeMenu === "audio" && (
                       <>
