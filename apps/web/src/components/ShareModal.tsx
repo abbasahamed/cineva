@@ -23,26 +23,48 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 }) => {
   const { showToast } = useToast();
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedLanLink, setCopiedLanLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [shareUrl, setShareUrl] = useState<string>('');
+  const [lanShareUrl, setLanShareUrl] = useState<string>('');
+  const [isRotated, setIsRotated] = useState(false);
 
   useEffect(() => {
     if (isOpen && roomCode) {
-      getRoomInviteUrl(roomCode)
+      getRoomInviteUrl(roomCode, { forceRefresh: true })
         .then((url) => {
           if (url && !isPrivateAddress(url)) {
-            setShareUrl(url);
+            setShareUrl((prev) => {
+              if (prev && prev !== url) setIsRotated(true);
+              return url;
+            });
           }
         })
         .catch((err) => {
           console.debug('Public invite URL not yet discovered in ShareModal:', err?.message);
         });
+
+      getRoomInviteUrl(roomCode, { useLan: true })
+        .then((lanUrl) => {
+          if (lanUrl) setLanShareUrl(lanUrl);
+        })
+        .catch(() => {});
     }
   }, [isOpen, roomCode]);
 
   if (!isOpen) return null;
 
   const hasNativeShare = typeof navigator !== 'undefined' && !!navigator.share;
+
+  const handleCopyLanLink = async () => {
+    if (!lanShareUrl) return;
+    const ok = await copyToClipboard(lanShareUrl);
+    if (ok) {
+      setCopiedLanLink(true);
+      showToast('Local Wi-Fi link copied (for devices on the same Wi-Fi)', 'success');
+      setTimeout(() => setCopiedLanLink(false), 2000);
+    }
+  };
 
   const handleCopyLink = async () => {
     try {
@@ -141,11 +163,19 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           </button>
         </div>
 
+        {/* Rotation notice */}
+        {isRotated && (
+          <div className="mb-4 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs flex items-center gap-2">
+            <span>⚠️</span>
+            <span>Tunnel refreshed. Copy the updated link below so guests can connect.</span>
+          </div>
+        )}
+
         {/* Share Link Row */}
         <div className="space-y-4 mb-6">
           <div>
             <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-              Direct Invite Link
+              Direct Invite Link (Remote)
             </label>
             <div className="flex items-center gap-2">
               <input
@@ -163,6 +193,30 @@ export const ShareModal: React.FC<ShareModalProps> = ({
               </button>
             </div>
           </div>
+
+          {lanShareUrl && (
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                Same Wi-Fi Link (Direct LAN)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={lanShareUrl}
+                  className="flex-1 px-3.5 py-2.5 rounded-xl glass-input text-xs font-mono text-slate-200 select-all focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleCopyLanLink}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl glass-btn-secondary text-slate-200 text-xs font-medium transition-all active:scale-95"
+                >
+                  {copiedLanLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedLanLink ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Room Code Row */}
           <div>

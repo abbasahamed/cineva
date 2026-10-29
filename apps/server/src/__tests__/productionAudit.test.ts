@@ -260,4 +260,15 @@ describe('Phase 7 Production Audit & Security Test Suite', () => {
     const parsed = JSON.parse(jsonStr);
     expect(parsed.media.size).toBe('5368709120');
   });
+
+  it('exposes public-url with distinct publicUrl and detected LAN address', async () => {
+    const res = await request(app).get('/api/system/public-url');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('publicUrl');
+    expect(res.body).toHaveProperty('lanUrl');
+    expect(res.body).toHaveProperty('tunnelActive');
+    if (res.body.lanUrl) {
+      expect(res.body.lanUrl).toMatch(/^http:\/\/(?:\d{1,3}\.){3}\d{1,3}:\d+$/);
+    }
+  });
 });

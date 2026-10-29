@@ -1,4 +1,4 @@
-import { getPublicUrl } from '../services/api.js';
+import { getPublicUrl, getNetworkSystemInfo } from '../services/api.js';
 
 export interface PublicBaseUrlOptions {
   allowFetch?: boolean;
@@ -11,11 +11,12 @@ export interface InviteUrlOptions extends PublicBaseUrlOptions {
   route?: 'room' | 'join';
   baseUrl?: string;
   skipFetch?: boolean;
+  useLan?: boolean;
 }
 
 let memoryCachedBaseUrl: string | null = null;
 let memoryCachedBaseUrlTime = 0;
-const CACHE_TTL_MS = 30000;
+const CACHE_TTL_MS = 10000; // 10s TTL so changed/rotated tunnels are quickly picked up
 
 export function _clearInviteCacheForTesting(): void {
   memoryCachedBaseUrl = null;
@@ -197,6 +198,20 @@ export function prefetchPublicBaseUrl(): void {
 }
 
 /**
+ * Resolves the LAN base URL (http://<LAN-IP>:4000) for same-Wi-Fi playback.
+ * Useful when guest is on the same local network and does not need public internet tunneling.
+ */
+export async function getLanBaseUrl(): Promise<string | null> {
+  try {
+    const netInfo = await getNetworkSystemInfo();
+    if (netInfo?.lanUrl) {
+      return normalizeBaseUrl(netInfo.lanUrl);
+    }
+  } catch {}
+  return null;
+}
+
+/**
  * Generates the centralized, authoritative public room invitation URL.
  * Preserves room code / room ID and route structure.
  * Default route is 'room' (e.g. https://domain.com/room/CODE) or 'join' (https://domain.com/join/CODE).
@@ -208,6 +223,14 @@ export async function getRoomInviteUrl(
   const trimmedCode = (roomCode || '').trim();
   if (!trimmedCode) {
     throw new Error('Room code is required to generate an invitation URL.');
+  }
+
+  if (options?.useLan) {
+    const lanBase = await getLanBaseUrl();
+    if (lanBase) {
+      const route = options?.route || 'room';
+      return `${lanBase}/${route}/${trimmedCode}`;
+    }
   }
 
   const baseUrl = options?.baseUrl

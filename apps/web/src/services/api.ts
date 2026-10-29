@@ -86,23 +86,45 @@ export async function attachSampleMedia(roomCode: string): Promise<any> {
   return res.json();
 }
 
+export interface PublicUrlInfo {
+  publicUrl: string | null;
+  lanUrl: string | null;
+  tunnelError: string | null;
+  tunnelActive: boolean;
+}
+
+/**
+ * Fetches the server's network diagnostic information:
+ * - Active public tunnel URL (Cloudflare or SSH HTTPS fallback)
+ * - Local Wi-Fi LAN address for local network access
+ * - Real-time tunnel status and error
+ */
+export async function getNetworkSystemInfo(): Promise<PublicUrlInfo | null> {
+  try {
+    const res = await fetch(`${API_BASE}/system/public-url`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as PublicUrlInfo;
+    return {
+      publicUrl: data.publicUrl ? data.publicUrl.trim().replace(/\/+$/, "") : null,
+      lanUrl: data.lanUrl ? data.lanUrl.trim().replace(/\/+$/, "") : null,
+      tunnelError: data.tunnelError || null,
+      tunnelActive: Boolean(data.tunnelActive),
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Fetches the server's active public URL (Cloudflare tunnel) if one is live.
  * Used for invite links so we never share a localhost address when a tunnel
  * is active. Returns null when no tunnel is available.
  */
 export async function getPublicUrl(): Promise<string | null> {
-  try {
-    const res = await fetch(`${API_BASE}/system/public-url`, {
-      headers: { Accept: "application/json" },
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { publicUrl?: string | null };
-    const url = typeof data.publicUrl === "string" ? data.publicUrl.trim() : "";
-    return url ? url.replace(/\/+$/, "") : null;
-  } catch {
-    return null;
-  }
+  const info = await getNetworkSystemInfo();
+  return info?.publicUrl || null;
 }
 
 /**

@@ -43,6 +43,7 @@ export const CreateRoomPage: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState('');
   const [createdRoomCode, setCreatedRoomCode] = useState<string | null>(null);
+  const [lanInviteLink, setLanInviteLink] = useState('');
 
   // Refs
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -279,6 +280,13 @@ export const CreateRoomPage: React.FC = () => {
           // Public link will be resolved on demand or prompt error when user clicks copy/whatsapp
         }
 
+        try {
+          const lan = await getRoomInviteUrl(roomResult.room.roomCode, { useLan: true });
+          if (lan) {
+            setLanInviteLink(lan);
+          }
+        } catch {}
+
         // Upload media with real progress tracking
         await uploadMedia(
           roomResult.room.id,
@@ -342,6 +350,13 @@ export const CreateRoomPage: React.FC = () => {
         } catch {
           // Public link will be resolved on demand or prompt error when user clicks copy/whatsapp
         }
+
+        try {
+          const lan = await getRoomInviteUrl(roomResult.room.roomCode, { useLan: true });
+          if (lan) {
+            setLanInviteLink(lan);
+          }
+        } catch {}
 
         setProgressBarWidth(100);
         setCurrentStage(3);
@@ -696,6 +711,33 @@ export const CreateRoomPage: React.FC = () => {
               >
                 {copyError}
               </p>
+            )}
+            {lanInviteLink && (
+              <div style={{ width: '100%', marginTop: 4, borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 8 }}>
+                <button
+                  type="button"
+                  className="btn frost"
+                  style={{
+                    width: '100%',
+                    height: 32,
+                    fontSize: 11,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    borderRadius: 10,
+                  }}
+                  onClick={async () => {
+                    const ok = await copyToClipboard(lanInviteLink);
+                    if (ok) {
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }
+                  }}
+                >
+                  <span>Copy Local Wi-Fi Link</span>
+                </button>
+              </div>
             )}
             <button
               type="button"

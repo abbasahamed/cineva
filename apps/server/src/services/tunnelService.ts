@@ -31,7 +31,8 @@ class TunnelService {
   }
 
   /**
-   * Validates if a public hostname is syntactically valid AND resolves via DNS.
+   * Validates if a public hostname is syntactically valid, resolves via DNS,
+   * AND is actively reachable over HTTP/HTTPS (not an orphaned or dead tunnel).
    */
   public async isUrlLive(urlStr: string | null): Promise<boolean> {
     if (!urlStr) return false;
@@ -41,7 +42,8 @@ class TunnelService {
       if (!parsed.hostname || parsed.hostname.length <= 3) return false;
       if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') return true;
 
-      return await new Promise<boolean>((resolve) => {
+      // 1. Syntactic & DNS lookup check
+      const dnsOk = await new Promise<boolean>((resolve) => {
         const timer = setTimeout(() => resolve(false), 2500);
         dns.lookup(parsed.hostname, (err, address) => {
           clearTimeout(timer);
@@ -50,6 +52,26 @@ class TunnelService {
           } else {
             resolve(true);
           }
+        });
+      });
+
+      if (!dnsOk) return false;
+
+      // 2. Active HTTP connectivity check: Cloudflare quick tunnels return 530 if process exited
+      return await new Promise<boolean>((resolve) => {
+        const mod = parsed.protocol === 'http:' ? http : require('https');
+        const req = mod.get(
+          `${parsed.origin}/api/system/public-url`,
+          { timeout: 3000, headers: { 'User-Agent': 'Cineva-Tunnel-Check' } },
+          (res: any) => {
+            // 200 OK means server responded through the tunnel. 530 means tunnel process disconnected.
+            resolve(res.statusCode >= 200 && res.statusCode < 500);
+          }
+        );
+        req.on('error', () => resolve(false));
+        req.on('timeout', () => {
+          req.destroy();
+          resolve(false);
         });
       });
     } catch {

@@ -33,6 +33,28 @@ Use this checklist during your live multi-device production testing.
 
 ---
 
+## 🌐 Mobile and Tunnel Network Testing Protocol
+
+When sharing a room with external or mobile devices, use the appropriate link based on network topology:
+
+### 1. Same Local Wi-Fi Network (LAN)
+* **Target scenario**: Phone and host computer are on the same Wi-Fi router.
+* **Link format**: `http://<LAN_IP>:4000/room/<CODE>` (e.g. `http://192.168.0.103:4000/room/ABC123`).
+* **Why**: Direct Wi-Fi access completely bypasses public DNS, ISP filtering, and tunnel overhead.
+* **How to get it**: In Cineva, open the Share modal or room page and click **"Copy Local Wi-Fi Link"**.
+* **Verification**: Open Chrome/Safari on the phone, paste the link. The room and video should load immediately.
+
+### 2. Remote Cellular / External Network (Public Tunnel)
+* **Target scenario**: Phone is using cellular data (LTE/5G) or connected to a remote Wi-Fi network outside the host home.
+* **Link format**: `https://<random-subdomain>.trycloudflare.com/room/<CODE>` (e.g. `https://forum-weight-twice-increases.trycloudflare.com/room/ABC123`).
+* **How to get it**: In Cineva, click **"Copy Link"** (Direct Invite Link Remote).
+* **Important Tunnel Lifecycle Rules**:
+  1. **Ephemeral hostnames**: Cloudflare Quick Tunnels allocate dynamic subdomains. Every time `cloudflared` restarts or is stopped, the previous subdomain expires immediately. Anyone opening an expired subdomain gets `DNS_PROBE_FINISHED_NXDOMAIN` or `HTTP 530`.
+  2. **Tunnel rotation banner**: If the tunnel restarts while you are in a room, Cineva automatically detects the new tunnel URL and displays a warning banner (`⚠️ Tunnel refreshed. Copy the updated link below...`). Old invitation links cannot be reused once rotated.
+  3. **Local router DNS restrictions**: Some home routers (e.g., standard ISP routers) reject DNS resolution for dynamic tunneling domains like `*.trycloudflare.com` with `REFUSED` response code. On cellular networks (or devices with standard public DNS like Cloudflare `1.1.1.1` or Google `8.8.8.8`), `trycloudflare.com` resolves normally. If a phone on local Wi-Fi experiences DNS errors with `trycloudflare.com`, use the **Same Wi-Fi Link (Direct LAN)**.
+
+---
+
 ## ⏱️ Live Synchronization Measurement Table
 
 Record actual measured playhead variance between Host and Guest devices during live testing:

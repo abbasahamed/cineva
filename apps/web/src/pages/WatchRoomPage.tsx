@@ -521,7 +521,10 @@ const PeoplePane: React.FC<PeoplePaneProps> = ({
                   value={isLocMuted ? 0 : userVol}
                   disabled={isLocMuted}
                   onChange={(e) => setParticipantVolume(p.id, parseInt(e.target.value, 10))}
-                  className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-500"
+                  className="flex-1 h-2 rounded-full cursor-pointer transition-all"
+                  style={{
+                    background: `linear-gradient(to right, #0A84FF ${isLocMuted ? 0 : userVol}%, rgba(255, 255, 255, 0.22) ${isLocMuted ? 0 : userVol}%)`,
+                  }}
                   aria-label={`${p.displayName} volume`}
                 />
                 <span className="w-9 text-right font-mono text-[11px] text-slate-400">
@@ -769,6 +772,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   const [chatInput, setChatInput] = useState("");
   const [floatingReactions, setFloatingReactions] = useState<FloatingEmoji[]>([]);
   const [inviteUrl, setInviteUrl] = useState("");
+  const [lanInviteUrl, setLanInviteUrl] = useState("");
+  const [tunnelRotated, setTunnelRotated] = useState(false);
 
   const [volume, setVolume] = useState(80);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
@@ -1189,17 +1194,35 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
 
   useEffect(() => {
     let active = true;
-    getRoomInviteUrl(roomCode)
-      .then((url) => {
+    const fetchUrls = async () => {
+      try {
+        const url = await getRoomInviteUrl(roomCode, { forceRefresh: true });
         if (active && url && !isPrivateAddress(url)) {
-          setInviteUrl(url);
+          setInviteUrl((prev) => {
+            if (prev && prev !== url) {
+              setTunnelRotated(true);
+            }
+            return url;
+          });
         }
-      })
-      .catch((err) => {
+      } catch (err: any) {
         console.debug("Public invite URL not yet discovered:", err?.message);
-      });
+      }
+
+      try {
+        const lanUrl = await getRoomInviteUrl(roomCode, { useLan: true });
+        if (active && lanUrl) {
+          setLanInviteUrl(lanUrl);
+        }
+      } catch {}
+    };
+
+    fetchUrls();
+    // Poll every 12s so if tunnel changes or restarts, the room updates immediately
+    const poll = setInterval(fetchUrls, 12000);
     return () => {
       active = false;
+      clearInterval(poll);
     };
   }, [roomCode]);
 
@@ -2059,6 +2082,24 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
           <div className={`pop gl ${isInviteOpen ? "o" : ""}`} id="pop" style={{ width: "310px", zIndex: 1000 }}>
             <h4>Invite friends</h4>
             <p>Anyone with this code or link can join the room.</p>
+
+            {tunnelRotated && (
+              <div
+                style={{
+                  marginBottom: "8px",
+                  padding: "6px 8px",
+                  borderRadius: "8px",
+                  background: "rgba(255, 159, 10, 0.15)",
+                  border: "1px solid rgba(255, 159, 10, 0.35)",
+                  color: "#ffd60a",
+                  fontSize: "11px",
+                  lineHeight: "1.3",
+                }}
+              >
+                ⚠️ Tunnel refreshed. Copy the updated link below as older links may have expired.
+              </div>
+            )}
+
             <div className="code">
               <span id="rc">{roomCode}</span>
               <button
@@ -2100,6 +2141,33 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
                 <span>Share on WhatsApp</span>
               </button>
             </div>
+
+            {lanInviteUrl && (
+              <div style={{ marginTop: "10px", borderTop: "1px solid rgba(255, 255, 255, 0.08)", paddingTop: "8px" }}>
+                <div style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.6)", marginBottom: "4px" }}>
+                  Same Wi-Fi network:
+                </div>
+                <button
+                  type="button"
+                  style={{
+                    width: "100%",
+                    height: "28px",
+                    background: "rgba(255, 255, 255, 0.06)",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    borderRadius: "8px",
+                    color: "rgba(255, 255, 255, 0.9)",
+                    fontSize: "11px",
+                    cursor: "pointer",
+                  }}
+                  onClick={async () => {
+                    const ok = await copyToClipboard(lanInviteUrl);
+                    if (ok) showToast("Wi-Fi link copied (for devices on your home network)");
+                  }}
+                >
+                  Copy Local Wi-Fi Link
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>

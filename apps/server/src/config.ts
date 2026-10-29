@@ -1,4 +1,5 @@
 import path from "path";
+import fs from "fs";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -43,5 +44,23 @@ export const CONFIG = {
   KEEP_AWAKE: (process.env.KEEP_AWAKE || "true").toLowerCase() === "true",
   // Absolute path to the built web app; served from this process so one
   // port (and one tunnel) fronts both the site and the sockets.
-  WEB_DIST_PATH: path.resolve(__dirname, "..", "..", "web", "dist"),
+  WEB_DIST_PATH: (() => {
+    const check = (p: string) => {
+      try {
+        return fs.existsSync(p) && fs.existsSync(path.join(p, "index.html"));
+      } catch {
+        return false;
+      }
+    };
+    const candidates = [
+      path.resolve(process.cwd(), "apps", "web", "dist"),
+      path.resolve(process.cwd(), "..", "web", "dist"),
+      path.resolve(__dirname, "..", "..", "web", "dist"),
+      path.resolve(__dirname, "..", "web", "dist"),
+    ];
+    for (const c of candidates) {
+      if (check(c)) return c;
+    }
+    return path.resolve(process.cwd(), "apps", "web", "dist");
+  })(),
 };

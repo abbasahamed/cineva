@@ -5,6 +5,7 @@ import { execFile, execSync, spawn, type ChildProcess } from 'child_process';
 import util from 'util';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
@@ -291,6 +292,8 @@ app.get('/api/system/diagnostics', async (_req: Request, res: Response) => {
 // client uses this to build share links that never expose a localhost address.
 app.get('/api/system/public-url', async (req: Request, res: Response) => {
   let publicUrl: string | null = null;
+  let lanUrl: string | null = null;
+
   try {
     const authoritative = await tunnelService.getAuthoritativePublicUrl(req);
     if (
@@ -305,9 +308,34 @@ app.get('/api/system/public-url', async (req: Request, res: Response) => {
   } catch {
     // fallback
   }
+
+  // Detect server LAN IP for local Wi-Fi sharing
+  try {
+    const ifaces = os.networkInterfaces();
+    for (const name of Object.keys(ifaces)) {
+      for (const net of ifaces[name] || []) {
+        if (net.family === 'IPv4' && !net.internal) {
+          if (
+            net.address.startsWith('192.168.') ||
+            net.address.startsWith('10.') ||
+            /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(net.address)
+          ) {
+            lanUrl = `http://${net.address}:${CONFIG.PORT}`;
+            break;
+          }
+        }
+      }
+      if (lanUrl) break;
+    }
+  } catch {
+    // ignore LAN detection error
+  }
+
   res.json({
     publicUrl: publicUrl || null,
+    lanUrl: lanUrl || null,
     tunnelError: publicUrl ? null : tunnelService.getLastTunnelError(),
+    tunnelActive: Boolean(publicUrl),
   });
 });
 

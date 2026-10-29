@@ -202,6 +202,33 @@ describe('inviteUtils unit & regression tests', () => {
     });
   });
 
+  describe('LAN and dynamic tunnel rotation options', () => {
+    it('returns LAN invite URL when useLan is requested', async () => {
+      vi.spyOn(api, 'getNetworkSystemInfo').mockResolvedValue({
+        publicUrl: 'https://forum-weight-twice-increases.trycloudflare.com',
+        lanUrl: 'http://192.168.0.103:4000',
+        tunnelActive: true,
+        tunnelError: null,
+      });
+
+      const inviteUrl = await getRoomInviteUrl('ROOM99', { useLan: true });
+      expect(inviteUrl).toBe('http://192.168.0.103:4000/room/ROOM99');
+    });
+
+    it('refreshes cached tunnel URL when forceRefresh is true', async () => {
+      const getPublicUrlSpy = vi.spyOn(api, 'getPublicUrl')
+        .mockResolvedValueOnce('https://old-tunnel.trycloudflare.com')
+        .mockResolvedValueOnce('https://new-tunnel.trycloudflare.com');
+
+      const firstUrl = await getRoomInviteUrl('ROOM99', { forceRefresh: true });
+      expect(firstUrl).toBe('https://old-tunnel.trycloudflare.com/room/ROOM99');
+
+      const secondUrl = await getRoomInviteUrl('ROOM99', { forceRefresh: true });
+      expect(secondUrl).toBe('https://new-tunnel.trycloudflare.com/room/ROOM99');
+      expect(getPublicUrlSpy).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('copyToClipboard', () => {
     it('uses navigator.clipboard.writeText when available and returns true', async () => {
       const writeTextSpy = vi.fn().mockResolvedValue(undefined);

@@ -268,7 +268,7 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
                   <span className="truncate max-w-[100px]">{displayName}</span>
                   <span className="font-mono text-[#70b5ff] font-bold">{isLocallyMuted ? 'Muted' : `${volume}%`}</span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 py-0.5">
                   <input
                     type="range"
                     min="0"
@@ -280,7 +280,10 @@ export const VideoTile: React.FC<VideoTileProps> = React.memo(({
                       const newVol = parseInt(e.target.value, 10);
                       onVolumeChange?.(newVol);
                     }}
-                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-[#0A84FF]"
+                    className="w-full h-2 rounded-full cursor-pointer transition-all"
+                    style={{
+                      background: `linear-gradient(to right, #0A84FF ${isLocallyMuted ? 0 : volume}%, rgba(255, 255, 255, 0.22) ${isLocallyMuted ? 0 : volume}%)`,
+                    }}
                     aria-label={`${displayName} volume slider`}
                   />
                 </div>

@@ -236,7 +236,9 @@
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.2);
+  height: 6px;
+  border-radius: 9999px;
   cursor: pointer;
 }
 
@@ -246,18 +248,35 @@ input[type="range"]:focus {
 
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
-  height: 12px;
-  width: 12px;
+  height: 13px;
+  width: 13px;
   border-radius: 50%;
   background: #ffffff;
   cursor: pointer;
-  box-shadow: 0 0 12px rgba(99, 102, 241, 0.8), 0 0 0 2px rgba(99, 102, 241, 0.9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 0 0 1.5px #0A84FF;
   transition: transform 0.15s ease, background-color 0.15s ease;
 }
 
 input[type="range"]:hover::-webkit-slider-thumb {
-  transform: scale(1.25);
+  transform: scale(1.2);
   background: #ffffff;
+}
+
+input[type="range"]::-moz-range-thumb {
+  height: 13px;
+  width: 13px;
+  border-radius: 50%;
+  background: #ffffff;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 0 0 1.5px #0A84FF;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.2);
 }
 
 /* Page Entry Transition */
@@ -3894,6 +3913,152 @@ footer .wrap {
   flex-direction: column;
   gap: 3px;
   overflow: visible;
+}
+
+/* Fullscreen control bar scaling: increase dimensions, touch targets, and typography */
+:fullscreen #ctl.ctl,
+:-webkit-full-screen #ctl.ctl,
+.stage.pseudo-fullscreen #ctl.ctl,
+.stage:fullscreen #ctl.ctl,
+#stage:fullscreen #ctl.ctl {
+  min-width: 580px;
+  max-width: min(880px, calc(100% - 64px));
+  bottom: 40px;
+  padding: 10px 22px 12px;
+  border-radius: 24px;
+  gap: 6px;
+}
+
+:fullscreen #ctl .seek,
+:-webkit-full-screen #ctl .seek,
+.stage.pseudo-fullscreen #ctl .seek,
+.stage:fullscreen #ctl .seek,
+#stage:fullscreen #ctl .seek {
+  height: 18px;
+}
+
+:fullscreen #ctl .seek::before,
+:-webkit-full-screen #ctl .seek::before,
+.stage.pseudo-fullscreen #ctl .seek::before,
+.stage:fullscreen #ctl .seek::before,
+#stage:fullscreen #ctl .seek::before,
+:fullscreen #ctl .buf,
+:-webkit-full-screen #ctl .buf,
+.stage.pseudo-fullscreen #ctl .buf,
+.stage:fullscreen #ctl .buf,
+#stage:fullscreen #ctl .buf,
+:fullscreen #ctl .pl,
+:-webkit-full-screen #ctl .pl,
+.stage.pseudo-fullscreen #ctl .pl,
+.stage:fullscreen #ctl .pl,
+#stage:fullscreen #ctl .pl {
+  height: 4.5px;
+  border-radius: 4px;
+}
+
+:fullscreen #ctl .seek:hover::before,
+:-webkit-full-screen #ctl .seek:hover::before,
+.stage.pseudo-fullscreen #ctl .seek:hover::before,
+.stage:fullscreen #ctl .seek:hover::before,
+#stage:fullscreen #ctl .seek:hover::before,
+:fullscreen #ctl .seek:hover .buf,
+:-webkit-full-screen #ctl .seek:hover .buf,
+.stage.pseudo-fullscreen #ctl .seek:hover .buf,
+.stage:fullscreen #ctl .seek:hover .buf,
+#stage:fullscreen #ctl .seek:hover .buf,
+:fullscreen #ctl .seek:hover .pl,
+:-webkit-full-screen #ctl .seek:hover .pl,
+.stage.pseudo-fullscreen #ctl .seek:hover .pl,
+.stage:fullscreen #ctl .seek:hover .pl,
+#stage:fullscreen #ctl .seek:hover .pl {
+  height: 6px;
+}
+
+:fullscreen #ctl .pl::after,
+:-webkit-full-screen #ctl .pl::after,
+.stage.pseudo-fullscreen #ctl .pl::after,
+.stage:fullscreen #ctl .pl::after,
+#stage:fullscreen #ctl .pl::after {
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  right: -7px;
+}
+
+:fullscreen #ctl .cr,
+:-webkit-full-screen #ctl .cr,
+.stage.pseudo-fullscreen #ctl .cr,
+.stage:fullscreen #ctl .cr,
+#stage:fullscreen #ctl .cr {
+  gap: 6px;
+}
+
+:fullscreen #ctl .cb,
+:-webkit-full-screen #ctl .cb,
+.stage.pseudo-fullscreen #ctl .cb,
+.stage:fullscreen #ctl .cb,
+#stage:fullscreen #ctl .cb {
+  width: 38px;
+  height: 38px;
+}
+
+:fullscreen #ctl .cb svg,
+:-webkit-full-screen #ctl .cb svg,
+.stage.pseudo-fullscreen #ctl .cb svg,
+.stage:fullscreen #ctl .cb svg,
+#stage:fullscreen #ctl .cb svg {
+  width: 20px;
+  height: 20px;
+}
+
+:fullscreen #ctl .cb.pp,
+:-webkit-full-screen #ctl .cb.pp,
+.stage.pseudo-fullscreen #ctl .cb.pp,
+.stage:fullscreen #ctl .cb.pp,
+#stage:fullscreen #ctl .cb.pp {
+  width: 42px;
+  height: 42px;
+}
+
+:fullscreen #ctl .cb.pp svg,
+:-webkit-full-screen #ctl .cb.pp svg,
+.stage.pseudo-fullscreen #ctl .cb.pp svg,
+.stage:fullscreen #ctl .cb.pp svg,
+#stage:fullscreen #ctl .cb.pp svg {
+  width: 22px;
+  height: 22px;
+}
+
+:fullscreen #ctl .tm,
+:-webkit-full-screen #ctl .tm,
+.stage.pseudo-fullscreen #ctl .tm,
+.stage:fullscreen #ctl .tm,
+#stage:fullscreen #ctl .tm {
+  height: 38px;
+  font-size: 13.5px;
+  margin: 0 12px;
+}
+
+:fullscreen #ctl .vw,
+:-webkit-full-screen #ctl .vw,
+.stage.pseudo-fullscreen #ctl .vw,
+.stage:fullscreen #ctl .vw,
+#stage:fullscreen #ctl .vw {
+  height: 38px;
+}
+
+:fullscreen #ctl .vw:hover .vr,
+:-webkit-full-screen #ctl .vw:hover .vr,
+.stage.pseudo-fullscreen #ctl .vw:hover .vr,
+.stage:fullscreen #ctl .vw:hover .vr,
+#stage:fullscreen #ctl .vw:hover .vr,
+:fullscreen #ctl .vw:focus-within .vr,
+:-webkit-full-screen #ctl .vw:focus-within .vr,
+.stage.pseudo-fullscreen #ctl .vw:focus-within .vr,
+.stage:fullscreen #ctl .vw:focus-within .vr,
+#stage:fullscreen #ctl .vw:focus-within .vr {
+  width: 80px;
+  height: 4.5px;
 }
 
 #ctl.ctl::before {
