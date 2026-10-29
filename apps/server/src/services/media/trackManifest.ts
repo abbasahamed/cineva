@@ -124,7 +124,7 @@ export function buildTrackManifest(
     }
 
     let title = s.title;
-    if (!title) {
+    if (!title || /vegamovies|download|\.is|\.in|\.to|\.tw|sample|hdhub/i.test(title)) {
       title = lang !== 'und' ? `${langName}${channelDesc}` : `Audio Track ${idx + 1}${channelDesc}`;
     }
 

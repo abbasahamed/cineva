@@ -209,12 +209,12 @@ export class HlsPackager {
       audioStreams.forEach((aStream, idx) => {
         audioMaps.push('-map', `0:${aStream.index}`);
         const isAac = (aStream.codecName || '').toLowerCase() === 'aac';
-        if (isAac && canCopyVideo) {
-          // Can stream copy AAC
+        if (isAac && (aStream.channels || 2) <= 2 && canCopyVideo) {
+          // Can stream copy stereo AAC
           audioCodecArgs.push(`-c:a:${idx}`, 'copy');
         } else {
-          // Re-encode other audio codecs to AAC 256k stereo (5.1 downmix default)
-          audioCodecArgs.push(`-c:a:${idx}`, 'aac', `-ac:${idx}`, '2', `-b:a:${idx}`, '256k');
+          // Downmix multi-channel (5.1/7.1) or non-AAC audio to browser-universal 2-channel stereo AAC
+          audioCodecArgs.push(`-c:a:${idx}`, 'aac', `-ac:a:${idx}`, '2', `-b:a:${idx}`, '256k');
         }
 
         const lang = aStream.language || 'und';
@@ -422,6 +422,7 @@ export class HlsPackager {
     const processedLines: string[] = [];
 
     let audioIndex = 0;
+    const audioNameCounts = new Map<string, number>();
     const subtitleGroup = 'subs';
 
     for (let i = 0; i < lines.length; i++) {
@@ -433,12 +434,26 @@ export class HlsPackager {
         if (aStream) {
           const lang = aStream.language || 'und';
           const langName = formatLanguageName(lang);
-          let title = aStream.title || langName;
-          if (aStream.channels === 6 && !title.includes('5.1')) title += ' (5.1)';
-          if (aStream.channels === 1 && !title.includes('Mono')) title += ' (Mono)';
+          let title = langName;
+          if (
+            aStream.title &&
+            aStream.title.toLowerCase() !== langName.toLowerCase() &&
+            !/vegamovies|download|\.is|\.in|\.to|\.tw|sample|hdhub/i.test(aStream.title)
+          ) {
+            title = `${langName} (${aStream.title})`;
+          }
 
-          // Replace NAME="audio_X" with title
+          // Ensure unique NAME attribute across the audio group (RFC 8216 Section 4.3.4.1)
+          const count = (audioNameCounts.get(title) || 0) + 1;
+          audioNameCounts.set(title, count);
+          if (count > 1) {
+            title += ` (${count})`;
+          }
+
+          // Replace NAME="audio_X" with unique title
           line = line.replace(/NAME="[^"]+"/, `NAME="${title}"`);
+          // All packaged HLS audio is 2-channel stereo
+          line = line.replace(/CHANNELS="[^"]+"/, `CHANNELS="2"`);
           // Ensure correct LANGUAGE attribute
           if (!line.includes('LANGUAGE=')) {
             line = line.replace('DEFAULT=', `LANGUAGE="${lang}",DEFAULT=`);

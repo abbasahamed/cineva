@@ -1017,10 +1017,21 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
               console.warn("[HLS] Fatal network error, recovering...", data);
               hls.startLoad();
               break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
+            case Hls.ErrorTypes.MEDIA_ERROR: {
               console.warn("[HLS] Fatal media error, recovering...", data);
+              const curTime = el.currentTime;
+              const wasPaused = el.paused;
               hls.recoverMediaError();
+              if (curTime > 0) {
+                const restorePos = () => {
+                  el.currentTime = curTime;
+                  if (!wasPaused) el.play().catch(() => {});
+                  el.removeEventListener("loadedmetadata", restorePos);
+                };
+                el.addEventListener("loadedmetadata", restorePos);
+              }
               break;
+            }
             default:
               console.error("[HLS] Unrecoverable error:", data);
               hls.destroy();
@@ -1427,10 +1438,23 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       setSelectedAudioIdx(trackIdx);
       localStorage.setItem(`cineva_audio_${roomCode}`, String(trackIdx));
 
+      const v = videoRef.current;
+      const curTime = v ? v.currentTime : 0;
+      const wasPaused = v ? v.paused : true;
+
       if (hlsRef.current) {
         hlsRef.current.audioTrack = trackIdx;
-      } else if (videoRef.current && (videoRef.current as any).audioTracks) {
-        const list = (videoRef.current as any).audioTracks;
+        // Ensure playhead does not jump back to 0 on track swap
+        if (v && curTime > 0) {
+          setTimeout(() => {
+            if (v && Math.abs(v.currentTime - curTime) > 3) {
+              v.currentTime = curTime;
+              if (!wasPaused) v.play().catch(() => {});
+            }
+          }, 150);
+        }
+      } else if (v && (v as any).audioTracks) {
+        const list = (v as any).audioTracks;
         for (let i = 0; i < list.length; i++) {
           list[i].enabled = i === trackIdx;
         }
