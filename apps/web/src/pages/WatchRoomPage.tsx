@@ -1514,6 +1514,10 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       isLandscapeDrawerOpen,
     isDraggingSlider: isScrubbing,
     onVideoClickDesktop: () => {
+      // Only allow play/pause interaction when the movie is uploaded and ready
+      if (!room?.media || room.media.status !== "ready") {
+        return;
+      }
       if (!canControl) {
         showToast("The host controls playback");
         return;
@@ -1534,6 +1538,10 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
       }
     },
     onDoubleTapSeek: (side) => {
+      // Only allow double-tap seek when media is ready
+      if (!room?.media || room.media.status !== "ready") {
+        return;
+      }
       if (!canControl) {
         showToast("The host controls playback");
         return;
@@ -2182,8 +2190,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
             id="stage"
             aria-label="Video"
           >
-          {/* Animated Center Play/Pause indicator on click */}
-          {playPauseIndicator && (
+          {/* Animated Center Play/Pause indicator on click (only when media is ready) */}
+          {playPauseIndicator && room?.media && room.media.status === "ready" && (
             <div
               key={playPauseIndicator.id}
               className="stage-play-pause-indicator"
