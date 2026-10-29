@@ -126,6 +126,9 @@ router.post(
         return;
       }
 
+      // Automatically prune inactive rooms and orphaned uploads before quota check
+      await roomManager.pruneStaleRooms().catch(() => {});
+
       const quota = checkUploadDiskQuota(req.file.size);
       if (!quota.allowed) {
         if (uploadedPath) await fs.promises.unlink(uploadedPath).catch(() => {});

@@ -33,6 +33,7 @@ export const CONFIG = {
   REDIS_URL: process.env.REDIS_URL || undefined,
 
   ROOM_GRACE_PERIOD_MS: 30 * 1000, // 30s before marking participant as offline
+  ROOM_INACTIVE_TIMEOUT_MS: 10 * 60 * 1000, // 10 minutes inactive room & media eviction
   ROOM_EXPIRATION_HOURS: 24, // 24h room lifespan
 
   // Single-port serving & networking

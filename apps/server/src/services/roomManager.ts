@@ -17,13 +17,13 @@ import { CONFIG } from '../config.js';
 import { logger } from '../utils/logger.js';
 
 export class RoomManager {
-  /** Prunes expired rooms and inactive rooms after the grace period. */
+  /** Prunes expired rooms and inactive rooms after the grace period, plus cleans orphaned upload files. */
   async pruneStaleRooms(): Promise<number> {
     try {
       const now = new Date();
-      // Use generous grace period (at least 5 minutes) so rooms aren't reaped during uploads or page navigation
-      const gracePeriodMs = Math.max(CONFIG.ROOM_GRACE_PERIOD_MS || 30000, 5 * 60 * 1000);
-      const offlineThreshold = new Date(Date.now() - gracePeriodMs);
+      // Reaping threshold: 10 minutes inactive (or configured ROOM_INACTIVE_TIMEOUT_MS)
+      const inactiveThresholdMs = CONFIG.ROOM_INACTIVE_TIMEOUT_MS || 10 * 60 * 1000;
+      const offlineThreshold = new Date(Date.now() - inactiveThresholdMs);
 
       const expiredRooms = await prisma.room.findMany({
         where: {
@@ -33,11 +33,10 @@ export class RoomManager {
         select: { id: true },
       });
 
-      // Never reap newly created rooms that are younger than the grace period
+      // Query active rooms older than inactive threshold or with offline host
       const activeRooms = await prisma.room.findMany({
         where: {
           status: 'active',
-          createdAt: { lt: offlineThreshold },
         },
         include: {
           participants: true,
@@ -56,15 +55,17 @@ export class RoomManager {
         }
 
         if (!r.participants || r.participants.length === 0) {
-          roomsToEnd.add(r.id);
+          if (new Date(r.createdAt).getTime() < offlineThreshold.getTime()) {
+            roomsToEnd.add(r.id);
+          }
           continue;
         }
 
-        // A participant is active if marked online OR seen within grace period
+        // A participant is active if marked online OR seen within the inactivity threshold
         const isParticipantActive = (p: { isOnline: boolean; lastSeenAt: Date }) => {
           if (p.isOnline) return true;
           const lastSeen = new Date(p.lastSeenAt).getTime();
-          return !isNaN(lastSeen) && lastSeen >= Date.now() - gracePeriodMs;
+          return !isNaN(lastSeen) && lastSeen >= Date.now() - inactiveThresholdMs;
         };
 
         const anyActive = r.participants.some(isParticipantActive);
@@ -92,10 +93,56 @@ export class RoomManager {
         }
       }
 
+      // Clean up orphaned upload directories from closed/ended/deleted rooms (> 10 mins old)
+      await this.cleanupOrphanedUploads(inactiveThresholdMs).catch(() => {});
+
       return count;
     } catch (err: any) {
       logger.warn(`[PruneStaleRooms] Failed to prune stale rooms: ${err.message}`);
       return 0;
+    }
+  }
+
+  /**
+   * Scans the upload storage directory and removes orphaned directories belonging
+   * to rooms that no longer exist or have ended and been inactive for > 10 minutes.
+   */
+  async cleanupOrphanedUploads(maxAgeMs: number = 10 * 60 * 1000): Promise<void> {
+    try {
+      const storagePath = CONFIG.MEDIA_STORAGE_PATH;
+      if (!fs.existsSync(storagePath)) return;
+
+      const activeRooms = await prisma.room.findMany({
+        where: { status: 'active' },
+        select: { id: true },
+      });
+      const activeRoomIds = new Set(activeRooms.map((r) => r.id));
+
+      const entries = await fs.promises.readdir(storagePath, { withFileTypes: true });
+      const cutoffTime = Date.now() - maxAgeMs;
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const dirName = entry.name;
+        // Never remove demo assets or the active temp staging directory
+        if (dirName === 'demo' || dirName === 'temp' || dirName.startsWith('.')) continue;
+
+        // If it belongs to a currently active room, do not remove
+        if (activeRoomIds.has(dirName)) continue;
+
+        const dirPath = path.join(storagePath, dirName);
+        try {
+          const stats = await fs.promises.stat(dirPath);
+          if (stats.mtimeMs < cutoffTime) {
+            await fs.promises.rm(dirPath, { recursive: true, force: true });
+            logger.info(`[CleanupOrphanedUploads] Removed stale directory ${dirName}`);
+          }
+        } catch {
+          // Skip if file disappeared or stat failed
+        }
+      }
+    } catch (err: any) {
+      logger.warn(`[CleanupOrphanedUploads] Error cleaning orphaned uploads: ${err.message}`);
     }
   }
 
