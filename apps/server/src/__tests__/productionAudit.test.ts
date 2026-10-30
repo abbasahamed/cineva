@@ -118,14 +118,14 @@ describe('Phase 7 Production Audit & Security Test Suite', () => {
     expect(forbiddenRes.headers['access-control-allow-origin']).toBeUndefined();
   });
 
-  // 4. Upload Security & 10 GB Limit Test
-  it('Should enforce upload file extension & MIME whitelisting, sanitize traversal filenames, and enforce 10 GB limit', async () => {
-    // A. Verify 10 GB binary constant configuration (10 * 1024 * 1024 * 1024 = 10,737,418,240 bytes)
+  // 4. Upload Security & 15 GB Limit Test
+  it('Should enforce upload file extension & MIME whitelisting, sanitize traversal filenames, and enforce 15 GB limit', async () => {
+    // A. Verify 15 GB binary constant configuration (15 * 1024 * 1024 * 1024 = 16,106,127,360 bytes)
     const { MAX_VIDEO_SIZE_BYTES, MAX_VIDEO_SIZE_MB, MAX_VIDEO_SIZE_LABEL } = await import('@cineva/shared');
-    expect(MAX_VIDEO_SIZE_BYTES).toBe(10 * 1024 * 1024 * 1024);
-    expect(MAX_VIDEO_SIZE_BYTES).toBe(10737418240);
-    expect(MAX_VIDEO_SIZE_MB).toBe(10240);
-    expect(MAX_VIDEO_SIZE_LABEL).toBe('10GB');
+    expect(MAX_VIDEO_SIZE_BYTES).toBe(15 * 1024 * 1024 * 1024);
+    expect(MAX_VIDEO_SIZE_BYTES).toBe(16106127360);
+    expect(MAX_VIDEO_SIZE_MB).toBe(15360);
+    expect(MAX_VIDEO_SIZE_LABEL).toBe('15GB');
 
     // B. Malicious executable should be rejected
     const badFileRes = await request(app)

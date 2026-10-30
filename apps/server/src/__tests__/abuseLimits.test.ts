@@ -87,13 +87,13 @@ describe('Public Tunnel Abuse Limits & Capacity Suite', () => {
   });
 
   describe('3. Storage Quota & File Size Limits', () => {
-    it('rejects uploads exceeding 10 GB limit via configuration and disk quota', () => {
+    it('rejects uploads exceeding 15 GB limit via configuration and disk quota', () => {
       const originalPath = CONFIG.MEDIA_STORAGE_PATH;
       const testDir = path.resolve(os.tmpdir(), 'test_quota_storage');
       if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
       CONFIG.MEDIA_STORAGE_PATH = testDir;
       try {
-        expect(CONFIG.MAX_VIDEO_SIZE_BYTES).toBe(10 * 1024 * 1024 * 1024);
+        expect(CONFIG.MAX_VIDEO_SIZE_BYTES).toBe(15 * 1024 * 1024 * 1024);
         const quota = checkUploadDiskQuota(11 * 1024 * 1024 * 1024);
         expect(quota.allowed).toBe(true); // total capacity check
       } finally {

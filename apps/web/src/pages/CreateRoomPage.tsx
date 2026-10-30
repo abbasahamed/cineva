@@ -83,8 +83,8 @@ export const CreateRoomPage: React.FC = () => {
 
   const handleSelectFile = (file: File | null, useSampleMedia = false) => {
     setFileError('');
-    if (file && file.size > 10 * 1073741824) {
-      setFileError('This file is over 10 GB. Choose a smaller one.');
+    if (file && file.size > 15 * 1073741824) {
+      setFileError('This file is over 15 GB. Choose a smaller one.');
       return;
     }
 
@@ -512,7 +512,7 @@ export const CreateRoomPage: React.FC = () => {
                     </svg>
                   </div>
                   <div className="dropzone-title">Drag & drop your video here</div>
-                  <div className="dropzone-sub">MP4, WebM, MKV, MOV • up to 10 GB (or add inside room)</div>
+                  <div className="dropzone-sub">MP4, WebM, MKV, MOV • up to 15 GB (or add inside room)</div>
                   <button
                     type="button"
                     className="sample-btn"

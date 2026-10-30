@@ -402,7 +402,7 @@ export function formatTime(seconds: number): string {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
 
-export const MAX_VIDEO_SIZE_BYTES = 10 * 1024 * 1024 * 1024; // 10,737,418,240 bytes (10 GB in binary)
-export const MAX_VIDEO_SIZE_MB = 10 * 1024; // 10240 MB
-export const MAX_VIDEO_SIZE_LABEL = '10GB';
+export const MAX_VIDEO_SIZE_BYTES = 15 * 1024 * 1024 * 1024; // 16,106,127,360 bytes (15 GB in binary)
+export const MAX_VIDEO_SIZE_MB = 15 * 1024; // 15360 MB
+export const MAX_VIDEO_SIZE_LABEL = '15GB';
 

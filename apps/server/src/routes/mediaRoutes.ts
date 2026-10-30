@@ -56,11 +56,11 @@ const storage = multer.diskStorage({
   },
 });
 
-// Multer disk storage with strict 10 GB file size limit and type inspection
+// Multer disk storage with strict 15 GB file size limit and type inspection
 const upload = multer({
   storage,
   limits: {
-    fileSize: CONFIG.MAX_VIDEO_SIZE_BYTES, // 10 * 1024 * 1024 * 1024 (10,737,418,240 bytes)
+    fileSize: CONFIG.MAX_VIDEO_SIZE_BYTES, // 15 * 1024 * 1024 * 1024 (16,106,127,360 bytes)
     files: 1,
     fields: 3,
     fieldNestingDepth: 0,
@@ -94,7 +94,7 @@ router.post(
     upload.single("video")(req, res, (err) => {
       if (err) {
         if (err.code === "LIMIT_FILE_SIZE") {
-          return res.status(400).json({ error: "Video exceeds the 10GB upload limit" });
+          return res.status(400).json({ error: "Video exceeds the 15GB upload limit" });
         }
         return res.status(400).json({ error: err.message || "File upload error" });
       }

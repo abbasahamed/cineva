@@ -27,8 +27,8 @@ export const CONFIG = {
   // Media Storage Configuration (Local disk storage exclusively)
   STORAGE_DRIVER: "local" as const,
   MEDIA_STORAGE_PATH: path.resolve(process.cwd(), process.env.MEDIA_STORAGE_PATH || "./uploads"),
-  MAX_FILE_SIZE_MB: parseInt(process.env.MAX_FILE_SIZE_MB || "10240", 10),
-  MAX_VIDEO_SIZE_BYTES: parseInt(process.env.MAX_FILE_SIZE_MB || "10240", 10) * 1024 * 1024, // 10,737,418,240 bytes (10 GB)
+  MAX_FILE_SIZE_MB: parseInt(process.env.MAX_FILE_SIZE_MB || "15360", 10),
+  MAX_VIDEO_SIZE_BYTES: parseInt(process.env.MAX_FILE_SIZE_MB || "15360", 10) * 1024 * 1024, // 16,106,127,360 bytes (15 GB)
 
   // Redis Configuration for horizontal scaling (optional)
   REDIS_URL: process.env.REDIS_URL || undefined,

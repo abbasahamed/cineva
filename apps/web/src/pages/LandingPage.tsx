@@ -502,7 +502,7 @@ export const LandingPage: React.FC = () => {
                   <FileVideo className="w-6 h-6" strokeWidth={2} />
                 </div>
                 <h3>Real movie files</h3>
-                <p>MKV, MP4 and more, up to 10 GB, converted for you.</p>
+                <p>MKV, MP4 and more, up to 15 GB, converted for you.</p>
                 <div className="viz conv">
                   <span className="fchip">movie.mkv</span>
                   <span className="cb">
