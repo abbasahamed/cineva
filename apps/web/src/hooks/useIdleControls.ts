@@ -31,6 +31,8 @@ export function useIdleControls({
   onDoubleTapSeek,
 }: UseIdleControlsOptions): UseIdleControlsReturn {
   const [isIdle, setIsIdle] = useState(false);
+  const isIdleRef = useRef(isIdle);
+  isIdleRef.current = isIdle;
 
   // Synchronized refs to eliminate stale closure bugs inside timer callbacks
   const isPlayingRef = useRef(isPlaying);
@@ -52,6 +54,7 @@ export function useIdleControls({
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const singleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastTapTimeRef = useRef<number>(0);
+  const touchActiveRef = useRef<boolean>(false);
 
   // Helper to test if an element is part of the interactive controls
   const isTargetInteractive = useCallback((target: EventTarget | null): boolean => {
@@ -135,7 +138,9 @@ export function useIdleControls({
       unregisterCtl = registerInteractiveRegion(ctlRef.current);
     }
 
-    const handlePointerMove = () => {
+    const handlePointerMove = (e: PointerEvent) => {
+      // Touch moves (scrolling, finger drag, tremors) must not trigger desktop wake or race with touch taps
+      if (e.pointerType === 'touch') return;
       wakeControls();
     };
 
@@ -143,6 +148,7 @@ export function useIdleControls({
       // Check if click was on control bar, button, slider, menu, or modal
       const interactive = isTargetInteractive(e.target);
       if (interactive) {
+        touchActiveRef.current = false;
         // Clicks on controls NEVER toggle or hide controls; wake controls with fresh 5s countdown
         wakeControls();
         return;
@@ -151,8 +157,9 @@ export function useIdleControls({
       // Gesture tap on video surface
       const isTouch =
         e.pointerType === 'touch' ||
-        (typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)')?.matches);
+        (e.pointerType !== 'mouse' && typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)')?.matches);
       if (isTouch) {
+        touchActiveRef.current = true;
         const now = Date.now();
         const delta = now - lastTapTimeRef.current;
         const rect = stage.getBoundingClientRect();
@@ -164,6 +171,7 @@ export function useIdleControls({
             singleTapTimerRef.current = null;
           }
           lastTapTimeRef.current = 0;
+          wakeControls();
           const relX = e.clientX - rect.left;
           const width = rect.width;
           if (relX < width / 3) {
@@ -175,36 +183,51 @@ export function useIdleControls({
           }
         } else {
           lastTapTimeRef.current = now;
+          const wasIdle = isIdleRef.current;
+          if (wasIdle) {
+            // Screen was idle (controls hidden): immediately wake controls so they appear with zero lag
+            // and remain visible for 5000ms
+            wakeControls();
+          }
+
           if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
           singleTapTimerRef.current = setTimeout(() => {
-            // Touch single tap on video surface toggles controls
-            setIsIdle((prev) => {
-              const next = !prev;
-              if (!next) {
-                scheduleIdleTimer();
-              }
-              return next;
-            });
+            if (!wasIdle) {
+              // Tap on video surface while controls were already visible: toggle idle state to hide them
+              setIsIdle(true);
+              clearTimers();
+            }
             singleTapTimerRef.current = null;
           }, 300);
         }
       } else {
+        touchActiveRef.current = false;
         wakeControls();
       }
     };
 
     const handleClick = (e: MouseEvent) => {
-      wakeControls();
       const interactive = isTargetInteractive(e.target);
-      if (interactive) return;
+      if (interactive) {
+        wakeControls();
+        return;
+      }
+
+      // If this click was synthesized by a touch tap, skip desktop play/pause and wake calls
+      if (touchActiveRef.current) {
+        touchActiveRef.current = false;
+        return;
+      }
 
       const isTouch =
         (e as any).pointerType === 'touch' ||
-        (typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)')?.matches);
-      if (!isTouch) {
-        // Desktop click on video background toggles play/pause
-        onVideoClickDesktopRef.current?.();
+        ((e as any).pointerType !== 'mouse' && typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)')?.matches);
+      if (isTouch) {
+        return;
       }
+
+      wakeControls();
+      onVideoClickDesktopRef.current?.();
     };
 
     const handleFocusIn = (e: FocusEvent) => {

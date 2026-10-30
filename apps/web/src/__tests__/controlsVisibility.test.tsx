@@ -354,6 +354,40 @@ describe('Controls Visibility & Idle Engine Verification across 12 Scenarios', (
     });
     expect(stage.classList.contains('idle')).toBe(false);
     expect(subClicksCount.textContent).toBe('1');
+
+    // 6d. Mobile tap to wake: tapping screen when idle wakes controls immediately and keeps them visible for 5s
+    // Advance time until stage becomes idle
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(stage.classList.contains('idle')).toBe(true);
+
+    // Tap screen on mobile (pointerdown + touch click)
+    act(() => {
+      videoSurface.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', clientX: 400, clientY: 200 })
+      );
+      fireEvent.click(videoSurface);
+    });
+    expect(stage.classList.contains('idle')).toBe(false);
+
+    // After 1 second (1000ms), controls MUST still be visible (not vanish after 1s!)
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(stage.classList.contains('idle')).toBe(false);
+
+    // After 4.5 seconds (4500ms total), still visible
+    act(() => {
+      vi.advanceTimersByTime(3500);
+    });
+    expect(stage.classList.contains('idle')).toBe(false);
+
+    // Reaches 5000ms -> fades out
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(stage.classList.contains('idle')).toBe(true);
   });
 
   it('7. Fullscreen parity: 5000ms idle fade, wakes on move, click button stays 5s then hides', () => {
