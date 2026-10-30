@@ -23,7 +23,7 @@ import {
 import Hls from "hls.js";
 import { SOCKET_EVENTS } from "@cineva/shared";
 import { socketService } from "../services/socket.js";
-import { attachSampleMedia } from "../services/api.js";
+import { attachSampleMedia, abortRoom, sendAbortBeacon } from "../services/api.js";
 import {
   formatAudioTrackList,
   formatSubtitleTrackList,
@@ -578,6 +578,21 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
   } = useSyncWatch({ roomCode, displayName, sessionId });
 
   const currentParticipant = participants.find((p) => p.sessionId === sessionId);
+
+  // If room is cancelled/ended or disconnected with error, ensure local uploaded files are deleted
+  const cleanupTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (connectionStatus === "ended" || (connectionStatus === "error" && errorMessage)) {
+      if (isHost && !cleanupTriggeredRef.current) {
+        cleanupTriggeredRef.current = true;
+        const targetId = room?.id || roomCode;
+        if (targetId && sessionId) {
+          abortRoom(targetId, sessionId).catch(() => {});
+          sendAbortBeacon(targetId, sessionId);
+        }
+      }
+    }
+  }, [connectionStatus, errorMessage, isHost, room?.id, roomCode, sessionId]);
 
   useEffect(() => {
     if (connectionStatus === "ended") {
