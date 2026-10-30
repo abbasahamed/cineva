@@ -553,6 +553,7 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
     videoRef,
     room,
     playback,
+    applyPlaybackToVideo,
     participants,
     chatMessages,
     subtitleState,
@@ -643,6 +644,7 @@ const WatchRoomInner: React.FC<WatchRoomInnerProps> = ({ roomCode, displayName, 
         videoRef={videoRef}
         room={room}
         playback={playback}
+        applyPlaybackToVideo={applyPlaybackToVideo}
         participants={participants}
         chatMessages={chatMessages}
         subtitleState={subtitleState}
@@ -675,6 +677,7 @@ interface WatchRoomContentProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   room: any;
   playback: any;
+  applyPlaybackToVideo: (state: any) => void;
   participants: any[];
   chatMessages: any[];
   subtitleState: any;
@@ -708,6 +711,7 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   videoRef,
   room,
   playback,
+  applyPlaybackToVideo,
   participants,
   chatMessages,
   subtitleState,
@@ -1116,6 +1120,10 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
           resolution: resLabel,
         }));
       }
+      // Re-apply authoritative playback state as soon as media metadata is loaded
+      if (playback) {
+        applyPlaybackToVideo(playback);
+      }
     };
     const onError = () => {
       const err = el.error;
@@ -1491,8 +1499,8 @@ const WatchRoomContent: React.FC<WatchRoomContentProps> = ({
   );
 
   const isActuallyPlaying = !realVideoPaused && (!videoRef.current || !videoRef.current.paused) && playback.isPlaying;
-  const curTime = isActuallyPlaying || videoCurrentTime > 0 ? (videoCurrentTime || playback.currentTime) : playback.currentTime;
-  const rawDuration = videoDuration || playback.duration || 0;
+  const curTime = isActuallyPlaying || videoCurrentTime > 0 ? (videoCurrentTime || playback.position || 0) : (playback.position || 0);
+  const rawDuration = videoDuration || room?.media?.duration || playback.duration || 0;
   const totalDuration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : 0;
   const scrubPercent = totalDuration > 0 && Number.isFinite(curTime) ? Math.min(100, Math.max(0, (curTime / totalDuration) * 100)) : 0;
 

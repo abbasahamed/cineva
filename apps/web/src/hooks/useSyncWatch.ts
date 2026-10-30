@@ -746,6 +746,7 @@ export function useSyncWatch({ roomCode, displayName, sessionId }: UseSyncWatchP
     videoRef,
     room,
     playback,
+    applyPlaybackToVideo,
     participants,
     chatMessages,
     subtitleState,
